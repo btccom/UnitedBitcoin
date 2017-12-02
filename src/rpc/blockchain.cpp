@@ -815,13 +815,11 @@ static void ApplyStats(CCoinsStats &stats, CHashWriter& ss, const uint256& hash,
 
 CTransactionRef get_trx(const uint256& hash)
 {
-
-
     CTransactionRef tx;
     uint256 hashBlock;
     if (!GetTransaction(hash, tx, Params().GetConsensus(), hashBlock, true))
-		return CTransactionRef();
-	return tx;
+        return CTransactionRef();
+    return tx;
 }
 
 std::set<CTxDestination> get_destinations_from_vin(const std::vector<CTxIn>& vins)
@@ -830,29 +828,28 @@ std::set<CTxDestination> get_destinations_from_vin(const std::vector<CTxIn>& vin
     for (const auto vin : vins)
     {
         COutPoint prevout = vin.prevout;
-		CTransactionRef tx = get_trx(prevout.hash);
+        CTransactionRef tx = get_trx(prevout.hash);
         if (!tx)
-			return result;
-		std::vector<CTxOut> vout = tx->vout;
-
-		txnouttype type;
-		std::vector<CTxDestination> addresses;
+            return result;
+        std::vector<CTxOut> vout = tx->vout;
+        txnouttype type;
+        std::vector<CTxDestination> addresses;
         int nRequired;
-		ExtractDestinations(vout[prevout.n].scriptPubKey, type, addresses, nRequired);
-		for (auto addr: addresses)
+        ExtractDestinations(vout[prevout.n].scriptPubKey, type, addresses, nRequired);
+        for (auto addr: addresses)
         {
             result.insert(addr);
         }
     }
-	return result;
+    return result;
 }
 
 static void get_whitelist_impl(const std::vector<CTxIn>& vin, const std::vector<CTxOut>& outputs,std::set<CTxDestination>& result)
 {
 	std::set<CTxDestination> addrs = get_destinations_from_vin(vin);
 	for (const auto output : outputs) {
-		txnouttype type;
-		std::vector<CTxDestination> addresses;
+        txnouttype type;
+        std::vector<CTxDestination> addresses;
         int nRequired;
         try
         {
@@ -864,7 +861,7 @@ static void get_whitelist_impl(const std::vector<CTxIn>& vin, const std::vector<
                     result.insert(addr);
                 }
             }
-		}
+        }
         catch(...){
         }
 		
@@ -875,17 +872,17 @@ static std::set<CTxDestination> get_whitelist(int64_t last=0)
 {
 	std::set<CTxDestination> result;
     int64_t nHeight = chainActive.Height();
-	while(nHeight >= last)
+    while(nHeight >= last)
     {
         CBlockIndex* pblockindex_t = chainActive[nHeight];
-	    CBlock block;
+        CBlock block;
         CBlockIndex* pblockindex = mapBlockIndex[pblockindex_t->GetBlockHash()];
         ReadBlockFromDisk(block, pblockindex, Params().GetConsensus());
         std::vector<CTransactionRef> vtx = block.vtx;
         for (auto tx : vtx)
         {
             if(tx->IsCoinBase())
-				continue;
+                continue;
             get_whitelist_impl(tx->vin,tx->vout,result);
         }
 	    nHeight--;
@@ -893,36 +890,6 @@ static std::set<CTxDestination> get_whitelist(int64_t last=0)
 	
     return result;
 }
-
-
-UniValue getwhitelist(const JSONRPCRequest& request)
-{
-
-   
-    if (request.fHelp || request.params.size() != 0) {
-        throw std::runtime_error(
-			   "getwhitelist\n"
-			   "\ngetwhitelist.\n"
-			   "\nExamples:\n"
-			   + HelpExampleCli("getwhitelist", "")
-			   + HelpExampleRpc("getwhitelist", "")
-        );
-	}
-
-	
-	UniValue ret(UniValue::VARR);
-    FlushStateToDisk();
-
-    auto addrs = get_whitelist();
-
-	for (auto addr : addrs)
-    {
-       ret.push_back(EncodeDestination(addr));
-    }
-	
-    return ret;
-}
-
 
 //! Calculate statistics about the unspent transaction output set
 static bool GetUTXOStats(CCoinsView *view, CCoinsStats &stats)
