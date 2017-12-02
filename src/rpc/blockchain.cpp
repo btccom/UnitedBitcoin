@@ -846,8 +846,8 @@ std::set<CTxDestination> get_destinations_from_vin(const std::vector<CTxIn>& vin
 
 static void get_whitelist_impl(const std::vector<CTxIn>& vin, const std::vector<CTxOut>& outputs,std::set<CTxDestination>& result)
 {
-	std::set<CTxDestination> addrs = get_destinations_from_vin(vin);
-	for (const auto output : outputs) {
+    std::set<CTxDestination> addrs = get_destinations_from_vin(vin);
+    for (const auto output : outputs) {
         txnouttype type;
         std::vector<CTxDestination> addresses;
         int nRequired;
