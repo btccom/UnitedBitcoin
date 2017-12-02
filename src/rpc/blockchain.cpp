@@ -40,11 +40,12 @@ struct CUpdatedBlock
     uint256 hash;
     int height;
 };
+std::set<CTxDestination> whitelist;
 
 static std::mutex cs_blockchange;
 static std::condition_variable cond_blockchange;
 static CUpdatedBlock latestblock;
-
+std::set<>
 extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
 
 double GetDifficulty(const CBlockIndex* blockindex)
@@ -891,6 +892,30 @@ static std::set<CTxDestination> get_whitelist(int64_t last=0)
     return result;
 }
 
+UniValue getwhitelist(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() != 0) {
+        throw std::runtime_error(
+               "getwhitelist\n"
+               "\nget the white list from blocknumber.\n"
+               "\nExamples:\n"
+               + HelpExampleCli("getwhitelist","")
+               + HelpExampleRpc("getwhitelist",""));
+    }
+    LOCK(cs_main);
+    int64_t last = 497179;
+    UniValue ret(UniValue::VARR);
+    FlushStateToDisk();
+    whitelist = get_whitelist(last);
+    for (auto addr : whitelist)
+    {
+        ret.push_back(EncodeDestination(addr));
+    }
+    return ret;
+}
+
+
+
 //! Calculate statistics about the unspent transaction output set
 static bool GetUTXOStats(CCoinsView *view, CCoinsStats &stats)
 {
@@ -1687,7 +1712,7 @@ static const CRPCCommand commands[] =
     { "blockchain",         "pruneblockchain",        &pruneblockchain,        {"height"} },
     { "blockchain",         "savemempool",            &savemempool,            {} },
     { "blockchain",         "verifychain",            &verifychain,            {"checklevel","nblocks"} },
-
+    { "blockchain",         "getwhitelist"             &getwhitelist,            {} },
     { "blockchain",         "preciousblock",          &preciousblock,          {"blockhash"} },
 
     /* Not shown in help */
