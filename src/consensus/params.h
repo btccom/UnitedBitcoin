@@ -66,8 +66,8 @@ struct Params {
     /** Committed OP_RETURN value for replay protection */
     std::vector<uint8_t> antiReplayOpReturnCommitment;
 
-
-    bool god_mode;
+	std::string UBCfoundationPubkey;
+	std::string UBCForkGeneratorPubkey;
 	
     /**
      * Minimum blocks including miner confirmation of the total of 2016 blocks in a retargeting period,

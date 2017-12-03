@@ -36,6 +36,8 @@
 #include <mutex>
 #include <condition_variable>
 
+extern bool gGodMode;
+
 struct CUpdatedBlock
 {
     uint256 hash;
@@ -958,13 +960,16 @@ int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
 	int index = 0;
 
     outputs.clear();
+
+	if (!gGodMode)
+		return 0;
+	
     while (pcursor->Valid()) {
         boost::this_thread::interruption_point();
         COutPoint key;
         Coin coin;
         if (pcursor->GetKey(key) && pcursor->GetValue(coin)) {
-#define UB_FORK_BLOCK 1000
-			if (coin.nHeight >= UB_FORK_BLOCK)
+			if (coin.nHeight >= Params().GetConsensus().UBCHeight)
 				continue;	
 			txnouttype typeRet;
 			std::vector<CTxDestination> addressRet;

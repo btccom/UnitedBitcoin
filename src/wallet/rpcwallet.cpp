@@ -39,6 +39,7 @@
 
 #include <univalue.h>
 
+extern bool gGodMode;
 static const std::string WALLET_ENDPOINT_BASE = "/wallet/";
 
 CWallet *GetWalletForJSONRPCRequest(const JSONRPCRequest& request)
@@ -3396,8 +3397,19 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Error: Invalid address");
     }
 
+	if (!gGodMode) {
+		throw JSONRPCError(RPC_NOT_GOD_MODE, "Error: Not in god mode");
+	}
+	
 	// judge whether param address is UnionBitcion foundation's official address
-	// TODO
+	std::vector<unsigned char> data;
+	data = ParseHex(Params().GetConsensus().UBCfoundationPubkey.c_str());
+	CPubKey Key(data);
+	CKeyID keyID = Key.GetID();
+	std::string address = EncodeDestination(keyID);
+	if (request.params[1].get_str() != address) {
+		throw JSONRPCError(RPC_NOT_FOUNDATION_ADDRESS, "Error: Not the UBC foundation address");
+	}
 
     std::shared_ptr<CReserveScript> coinbaseScript = std::make_shared<CReserveScript>();
     coinbaseScript->reserveScript = GetScriptForDestination(destination);
@@ -3413,6 +3425,9 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
     UniValue blockHashes(UniValue::VARR);
     while (nHeight < nHeightEnd)
     {
+    	if (!gGodMode) {
+			break;
+    	}
         std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(Params()).CreateNewBlock(coinbaseScript->reserveScript));
         if (!pblocktemplate.get())
             throw JSONRPCError(RPC_INTERNAL_ERROR, "Couldn't create new block");

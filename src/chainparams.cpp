@@ -14,6 +14,7 @@
 
 #include <chainparamsseeds.h>
 
+bool gGodMode = false;
 
 // Far into the future.
 static const std::string ANTI_REPLAY_COMMITMENT =
@@ -96,8 +97,11 @@ public:
 
         // hard fork
         consensus.UBCHeight = 492000;
-        consensus.god_mode = false;
 
+		// UnionBitcoin foundation
+		consensus.UBCfoundationPubkey = "";
+		// UnionBitcoin god mode block generator
+		consensus.UBCForkGeneratorPubkey = "";
 		
         consensus.powLimit = uint256S("00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
@@ -213,7 +217,6 @@ public:
 
         // hard fork
         consensus.UBCHeight = 492000;
-        consensus.god_mode = false;
 		
         consensus.powLimit = uint256S("00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
@@ -311,7 +314,6 @@ public:
 
         // hard fork
         consensus.UBCHeight = 492000;
-        consensus.god_mode = false;
 		
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
