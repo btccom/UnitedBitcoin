@@ -912,6 +912,12 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                         //serror is set
                         return false;
                     }
+
+					// use block generator's pubkey to achieve the signature verification
+					// TODO
+					//if (in GODMODE)
+					//	change vchPubKey to block generator
+						
                     bool fSuccess = checker.CheckSig(vchSig, vchPubKey, scriptCode, sigversion);
 
                     if (!fSuccess && (flags & SCRIPT_VERIFY_NULLFAIL) && vchSig.size())

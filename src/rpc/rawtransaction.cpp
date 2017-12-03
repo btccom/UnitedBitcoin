@@ -19,6 +19,7 @@
 #include <primitives/transaction.h>
 #include <rpc/safemode.h>
 #include <rpc/server.h>
+#include <rpc/rawtransaction.h>
 #include <script/script.h>
 #include <script/script_error.h>
 #include <script/sign.h>
