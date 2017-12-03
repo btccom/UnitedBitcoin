@@ -5,6 +5,7 @@
 
 #include <rpc/blockchain.h>
 
+#include <base58.h>
 #include <amount.h>
 #include <chain.h>
 #include <chainparams.h>
@@ -45,7 +46,6 @@ std::set<CTxDestination> whitelist;
 static std::mutex cs_blockchange;
 static std::condition_variable cond_blockchange;
 static CUpdatedBlock latestblock;
-std::set<>
 extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
 
 double GetDifficulty(const CBlockIndex* blockindex)
@@ -823,15 +823,14 @@ CTransactionRef get_trx(const uint256& hash)
     return tx;
 }
 
-std::set<CTxDestination> get_destinations_from_vin(const std::vector<CTxIn>& vins)
+void get_destinations_from_vin(std::set<CTxDestination>& result, const std::vector<CTxIn>& vins)
 {
-    std::set<CTxDestination> result;
     for (const auto vin : vins)
     {
         COutPoint prevout = vin.prevout;
         CTransactionRef tx = get_trx(prevout.hash);
         if (!tx)
-            return result;
+            return;
         std::vector<CTxOut> vout = tx->vout;
         txnouttype type;
         std::vector<CTxDestination> addresses;
@@ -842,12 +841,12 @@ std::set<CTxDestination> get_destinations_from_vin(const std::vector<CTxIn>& vin
             result.insert(addr);
         }
     }
-    return result;
 }
 
-static void get_whitelist_impl(const std::vector<CTxIn>& vin, const std::vector<CTxOut>& outputs,std::set<CTxDestination>& result)
+static void get_whitelist_impl(const std::vector<CTxIn>& vin, const std::vector<CTxOut>& outputs, std::set<CTxDestination>& result)
 {
-    std::set<CTxDestination> addrs = get_destinations_from_vin(vin);
+    std::set<CTxDestination> addrs;
+    get_destinations_from_vin(addrs, vin);
     for (const auto output : outputs) {
         txnouttype type;
         std::vector<CTxDestination> addresses;
@@ -869,9 +868,8 @@ static void get_whitelist_impl(const std::vector<CTxIn>& vin, const std::vector<
     }	
 }
 
-static std::set<CTxDestination> get_whitelist(int64_t last=0)
+static void get_whitelist(std::set<CTxDestination> &result, int64_t last=0)
 {
-	std::set<CTxDestination> result;
     int64_t nHeight = chainActive.Height();
     while(nHeight >= last)
     {
@@ -884,12 +882,10 @@ static std::set<CTxDestination> get_whitelist(int64_t last=0)
         {
             if(tx->IsCoinBase())
                 continue;
-            get_whitelist_impl(tx->vin,tx->vout,result);
+            get_whitelist_impl(tx->vin, tx->vout, result);
         }
-	    nHeight--;
+        nHeight--;
     }
-	
-    return result;
 }
 
 UniValue getwhitelist(const JSONRPCRequest& request)
@@ -906,7 +902,7 @@ UniValue getwhitelist(const JSONRPCRequest& request)
     int64_t last = 497179;
     UniValue ret(UniValue::VARR);
     FlushStateToDisk();
-    whitelist = get_whitelist(last);
+    get_whitelist(whitelist, last);
     for (auto addr : whitelist)
     {
         ret.push_back(EncodeDestination(addr));
@@ -1712,7 +1708,7 @@ static const CRPCCommand commands[] =
     { "blockchain",         "pruneblockchain",        &pruneblockchain,        {"height"} },
     { "blockchain",         "savemempool",            &savemempool,            {} },
     { "blockchain",         "verifychain",            &verifychain,            {"checklevel","nblocks"} },
-    { "blockchain",         "getwhitelist"             &getwhitelist,            {} },
+    { "blockchain",         "getwhitelist",           &getwhitelist,           {} },
     { "blockchain",         "preciousblock",          &preciousblock,          {"blockhash"} },
 
     /* Not shown in help */
