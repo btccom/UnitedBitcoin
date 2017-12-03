@@ -4,7 +4,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <rpc/blockchain.h>
-#include <key.h>
+
 #include <base58.h>
 #include <amount.h>
 #include <chain.h>
@@ -950,42 +950,6 @@ static bool GetUTXOStats(CCoinsView *view, CCoinsStats &stats)
     stats.nDiskSize = view->EstimateSize();
     return true;
 }
-
-int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
-{
-	FlushStateToDisk();
-    std::unique_ptr<CCoinsViewCursor> pcursor(pcoinsdbview->Cursor());
-	int index = 0;
-
-    outputs.clear();
-    while (pcursor->Valid()) {
-        boost::this_thread::interruption_point();
-        COutPoint key;
-        Coin coin;
-        if (pcursor->GetKey(key) && pcursor->GetValue(coin)) {
-#define UB_FORK_BLOCK 1000
-			if (coin.nHeight >= UB_FORK_BLOCK)
-				continue;	
-			txnouttype typeRet;
-			std::vector<CTxDestination> addressRet;
-			int nRequiredRet;
-			bool ret = ExtractDestinations(coin.out.scriptPubKey, typeRet, addressRet, nRequiredRet);
-			if (ret && addressRet.size() == 1) {
-				// judge if the lock script owner is in the whitelist
-				if (whitelist.find(addressRet[0]) != whitelist.end()) {
-					outputs.emplace_back(std::make_pair(key, coin.out));
-					++index;
-					if (index >= count) break;
-				}
-			}
-        }
-        pcursor->Next();
-    }
-
-    return outputs.size();
-
-}
-
 
 UniValue pruneblockchain(const JSONRPCRequest& request)
 {

@@ -2125,7 +2125,10 @@ CAmount CWallet::GetLegacyBalance(const isminefilter& filter, int minDepth, cons
     for (const auto& entry : mapWallet) {
         const CWalletTx& wtx = entry.second;
         const int depth = wtx.GetDepthInMainChain();
-        if (depth < 0 || !CheckFinalTx(*wtx.tx) || wtx.GetBlocksToMaturity() > 0) {
+        CValidationState state;
+        if (depth < 0 || !ContextualCheckTransactionForCurrentBlock(
+                *wtx.tx, state,
+                Params().GetConsensus()) || wtx.GetBlocksToMaturity() > 0) {
             continue;
         }
 
@@ -2942,6 +2945,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletT
 
         if (sign)
         {
+            uint32_t nHashType = SIGHASH_ALL | SIGHASH_FORKID;
             CTransaction txNewConst(txNew);
             int nIn = 0;
             for (const auto& coin : setCoins)
@@ -2949,7 +2953,7 @@ bool CWallet::CreateTransaction(const std::vector<CRecipient>& vecSend, CWalletT
                 const CScript& scriptPubKey = coin.txout.scriptPubKey;
                 SignatureData sigdata;
 
-                if (!ProduceSignature(TransactionSignatureCreator(this, &txNewConst, nIn, coin.txout.nValue, SIGHASH_ALL), scriptPubKey, sigdata))
+                if (!ProduceSignature(TransactionSignatureCreator(this, &txNewConst, nIn, coin.txout.nValue, nHashType), scriptPubKey, sigdata))
                 {
                     strFailReason = _("Signing transaction failed");
                     return false;

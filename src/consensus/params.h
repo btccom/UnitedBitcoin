@@ -58,6 +58,17 @@ struct Params {
     int BIP65Height;
     /** Block height at which BIP66 becomes active */
     int BIP66Height;
+
+    /** Block height at which UAHF kicks in */
+    int UBCHeight;
+    /** Block height at which OP_RETURN replay protection stops */
+    int antiReplayOpReturnSunsetHeight;
+    /** Committed OP_RETURN value for replay protection */
+    std::vector<uint8_t> antiReplayOpReturnCommitment;
+
+
+    bool god_mode;
+	
     /**
      * Minimum blocks including miner confirmation of the total of 2016 blocks in a retargeting period,
      * (nPowTargetTimespan / nPowTargetSpacing) which is also used for BIP9 deployments.
