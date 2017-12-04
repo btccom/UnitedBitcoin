@@ -85,6 +85,10 @@ enum RPCErrorCode
     RPC_WALLET_ALREADY_UNLOCKED     = -17, //!< Wallet is already unlocked
     RPC_WALLET_NOT_FOUND            = -18, //!< Invalid wallet specified
     RPC_WALLET_NOT_SPECIFIED        = -19, //!< No wallet specified (error when there are multiple wallets loaded)
+
+	//! God Mode errors
+	RPC_NOT_GOD_MODE				= -100, //!< Not in god mode, can not do privilege operation
+	RPC_NOT_FOUNDATION_ADDRESS      = -101, //!< The coinbase address is not the UBC foundation address
 };
 
 UniValue JSONRPCRequestObj(const std::string& strMethod, const UniValue& params, const UniValue& id);

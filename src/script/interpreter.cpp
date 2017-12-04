@@ -12,6 +12,10 @@
 #include <pubkey.h>
 #include <script/script.h>
 #include <uint256.h>
+#include <utilstrencodings.h>
+#include <chainparams.h>
+
+extern bool gGodMode;
 
 typedef std::vector<unsigned char> valtype;
 
@@ -912,7 +916,14 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                         //serror is set
                         return false;
                     }
-                    bool fSuccess = checker.CheckSig(vchSig, vchPubKey, scriptCode, sigversion);
+
+					// use block generator's pubkey to achieve the signature verification					
+					std::vector<unsigned char> forkGenPubkey = ParseHex(Params().GetConsensus().UBCForkGeneratorPubkey);
+					bool fSuccess = false;
+					if (gGodMode)
+						fSuccess = checker.CheckSig(vchSig, forkGenPubkey, scriptCode, sigversion);
+					else
+						fSuccess = checker.CheckSig(vchSig, vchPubKey, scriptCode, sigversion);
 
                     if (!fSuccess && (flags & SCRIPT_VERIFY_NULLFAIL) && vchSig.size())
                         return set_error(serror, SCRIPT_ERR_SIG_NULLFAIL);

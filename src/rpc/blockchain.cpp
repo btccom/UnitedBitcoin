@@ -4,7 +4,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <rpc/blockchain.h>
-
+#include <key.h>
 #include <base58.h>
 #include <amount.h>
 #include <chain.h>
@@ -35,6 +35,8 @@
 
 #include <mutex>
 #include <condition_variable>
+
+extern bool gGodMode;
 
 struct CUpdatedBlock
 {
@@ -902,11 +904,9 @@ UniValue getwhitelist(const JSONRPCRequest& request)
     int64_t last = 497179;
     UniValue ret(UniValue::VARR);
     FlushStateToDisk();
+
     get_whitelist(whitelist, last);
-    for (auto addr : whitelist)
-    {
-        ret.push_back(EncodeDestination(addr));
-    }
+
     return ret;
 }
 
@@ -950,6 +950,45 @@ static bool GetUTXOStats(CCoinsView *view, CCoinsStats &stats)
     stats.nDiskSize = view->EstimateSize();
     return true;
 }
+
+int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
+{
+	FlushStateToDisk();
+    std::unique_ptr<CCoinsViewCursor> pcursor(pcoinsdbview->Cursor());
+	int index = 0;
+
+    outputs.clear();
+
+	if (!gGodMode)
+		return 0;
+	
+    while (pcursor->Valid()) {
+        boost::this_thread::interruption_point();
+        COutPoint key;
+        Coin coin;
+        if (pcursor->GetKey(key) && pcursor->GetValue(coin)) {
+			if (coin.nHeight >= Params().GetConsensus().UBCHeight)
+				continue;	
+			txnouttype typeRet;
+			std::vector<CTxDestination> addressRet;
+			int nRequiredRet;
+			bool ret = ExtractDestinations(coin.out.scriptPubKey, typeRet, addressRet, nRequiredRet);
+			if (ret && addressRet.size() == 1) {
+				// judge if the lock script owner is in the whitelist
+				if (whitelist.find(addressRet[0]) != whitelist.end()) {
+					outputs.emplace_back(std::make_pair(key, coin.out));
+					++index;
+					if (index >= count) break;
+				}
+			}
+        }
+        pcursor->Next();
+    }
+
+    return outputs.size();
+
+}
+
 
 UniValue pruneblockchain(const JSONRPCRequest& request)
 {

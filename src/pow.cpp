@@ -10,6 +10,8 @@
 #include <primitives/block.h>
 #include <uint256.h>
 
+extern bool gGodMode;
+
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
     assert(pindexLast != nullptr);
@@ -76,6 +78,9 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&
     bool fNegative;
     bool fOverflow;
     arith_uint256 bnTarget;
+
+	if (gGodMode)
+		return true;
 
     bnTarget.SetCompact(nBits, &fNegative, &fOverflow);
 

@@ -41,6 +41,7 @@
 #include <validationinterface.h>
 #include <versionbits.h>
 #include <warnings.h>
+#include <pubkey.h>
 
 #include <atomic>
 #include <sstream>
@@ -90,6 +91,8 @@ CAmount maxTxFee = DEFAULT_TRANSACTION_MAXFEE;
 
 CBlockPolicyEstimator feeEstimator;
 CTxMemPool mempool(&feeEstimator);
+
+extern bool gGodMode;
 
 static void CheckBlockIndex(const Consensus::Params& consensusParams);
 
@@ -2086,9 +2089,6 @@ void static UpdateTip(CBlockIndex *pindexNew, const CChainParams& chainParams) {
             DoWarning(strWarning);
         }
     }
-
-    if(chainActive.Height() == Params().GetConsensus().UBCHeight- 1)
-        //Params().GetConsensus().god_mode = true;
 	
     LogPrintf("%s: new best=%s height=%d version=0x%08x log2_work=%.8g tx=%lu date='%s' progress=%f cache=%.1fMiB(%utxo)", __func__,
       chainActive.Tip()->GetBlockHash().ToString(), chainActive.Height(), chainActive.Tip()->nVersion,
@@ -2882,6 +2882,30 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
     // First transaction must be coinbase, the rest must not be
     if (block.vtx.empty() || !block.vtx[0]->IsCoinBase())
         return state.DoS(100, false, REJECT_INVALID, "bad-cb-missing", false, "first tx is not coinbase");
+
+	// Check coinbase of the block in god mode
+	if (gGodMode) {
+		if (block.vtx[0]->vout.empty())
+			return state.DoS(100, false, REJECT_INVALID, "coinbase-vout-missing", false, "coinbase has no vout");
+
+		// get key from coinbase
+		txnouttype type;
+        std::vector<CTxDestination> addresses;
+        int nRequired;
+        bool ret = ExtractDestinations(block.vtx[0]->vout[0].scriptPubKey, type, addresses, nRequired);
+		if (!ret || addresses.size() != 1)
+			return state.DoS(100, false, REJECT_INVALID, "coinbase-invalid-script", false, "coinbase script is not valid");
+
+		// get key from chainparams
+		std::vector<unsigned char> data;
+		data = ParseHex(Params().GetConsensus().UBCfoundationPubkey.c_str());
+		CPubKey Key(data);
+		CKeyID keyID = Key.GetID();
+
+		if (boost::get<CKeyID>(addresses[0]) != keyID)
+			return state.DoS(100, false, REJECT_INVALID, "coinbase-not-ub-foundation-script", false, "coinbase script is not for ub foundation");
+	}
+	
     for (unsigned int i = 1; i < block.vtx.size(); i++)
         if (block.vtx[i]->IsCoinBase())
             return state.DoS(100, false, REJECT_INVALID, "bad-cb-multiple", false, "more than one coinbase");
