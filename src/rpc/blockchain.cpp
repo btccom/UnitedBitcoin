@@ -4,7 +4,8 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <rpc/blockchain.h>
-
+#include <key.h>
+#include <base58.h>
 #include <amount.h>
 #include <chain.h>
 #include <chainparams.h>
@@ -35,6 +36,8 @@
 #include <mutex>
 #include <condition_variable>
 
+extern bool gGodMode;
+
 struct CUpdatedBlock
 {
     uint256 hash;
@@ -45,7 +48,6 @@ std::set<CTxDestination> whitelist;
 static std::mutex cs_blockchange;
 static std::condition_variable cond_blockchange;
 static CUpdatedBlock latestblock;
-std::set<>
 extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
 
 double GetDifficulty(const CBlockIndex* blockindex)
@@ -823,15 +825,14 @@ CTransactionRef get_trx(const uint256& hash)
     return tx;
 }
 
-std::set<CTxDestination> get_destinations_from_vin(const std::vector<CTxIn>& vins)
+void get_destinations_from_vin(std::set<CTxDestination>& result, const std::vector<CTxIn>& vins)
 {
-    std::set<CTxDestination> result;
     for (const auto vin : vins)
     {
         COutPoint prevout = vin.prevout;
         CTransactionRef tx = get_trx(prevout.hash);
         if (!tx)
-            return result;
+            return;
         std::vector<CTxOut> vout = tx->vout;
         txnouttype type;
         std::vector<CTxDestination> addresses;
@@ -842,12 +843,12 @@ std::set<CTxDestination> get_destinations_from_vin(const std::vector<CTxIn>& vin
             result.insert(addr);
         }
     }
-    return result;
 }
 
-static void get_whitelist_impl(const std::vector<CTxIn>& vin, const std::vector<CTxOut>& outputs,std::set<CTxDestination>& result)
+static void get_whitelist_impl(const std::vector<CTxIn>& vin, const std::vector<CTxOut>& outputs, std::set<CTxDestination>& result)
 {
-    std::set<CTxDestination> addrs = get_destinations_from_vin(vin);
+    std::set<CTxDestination> addrs;
+    get_destinations_from_vin(addrs, vin);
     for (const auto output : outputs) {
         txnouttype type;
         std::vector<CTxDestination> addresses;
@@ -869,9 +870,8 @@ static void get_whitelist_impl(const std::vector<CTxIn>& vin, const std::vector<
     }	
 }
 
-static std::set<CTxDestination> get_whitelist(int64_t last=0)
+static void get_whitelist(std::set<CTxDestination> &result, int64_t last=0)
 {
-	std::set<CTxDestination> result;
     int64_t nHeight = chainActive.Height();
     while(nHeight >= last)
     {
@@ -884,12 +884,10 @@ static std::set<CTxDestination> get_whitelist(int64_t last=0)
         {
             if(tx->IsCoinBase())
                 continue;
-            get_whitelist_impl(tx->vin,tx->vout,result);
+            get_whitelist_impl(tx->vin, tx->vout, result);
         }
-	    nHeight--;
+        nHeight--;
     }
-	
-    return result;
 }
 
 UniValue getwhitelist(const JSONRPCRequest& request)
@@ -906,8 +904,11 @@ UniValue getwhitelist(const JSONRPCRequest& request)
     int64_t last = 497179;
     UniValue ret(UniValue::VARR);
     FlushStateToDisk();
+<<<<<<< HEAD
     whitelist = get_whitelist(last);
     /*
+=======
+    get_whitelist(whitelist, last);
     for (auto addr : whitelist)
     {
         ret.push_back(EncodeDestination(addr));
@@ -956,6 +957,45 @@ static bool GetUTXOStats(CCoinsView *view, CCoinsStats &stats)
     stats.nDiskSize = view->EstimateSize();
     return true;
 }
+
+int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
+{
+	FlushStateToDisk();
+    std::unique_ptr<CCoinsViewCursor> pcursor(pcoinsdbview->Cursor());
+	int index = 0;
+
+    outputs.clear();
+
+	if (!gGodMode)
+		return 0;
+	
+    while (pcursor->Valid()) {
+        boost::this_thread::interruption_point();
+        COutPoint key;
+        Coin coin;
+        if (pcursor->GetKey(key) && pcursor->GetValue(coin)) {
+			if (coin.nHeight >= Params().GetConsensus().UBCHeight)
+				continue;	
+			txnouttype typeRet;
+			std::vector<CTxDestination> addressRet;
+			int nRequiredRet;
+			bool ret = ExtractDestinations(coin.out.scriptPubKey, typeRet, addressRet, nRequiredRet);
+			if (ret && addressRet.size() == 1) {
+				// judge if the lock script owner is in the whitelist
+				if (whitelist.find(addressRet[0]) != whitelist.end()) {
+					outputs.emplace_back(std::make_pair(key, coin.out));
+					++index;
+					if (index >= count) break;
+				}
+			}
+        }
+        pcursor->Next();
+    }
+
+    return outputs.size();
+
+}
+
 
 UniValue pruneblockchain(const JSONRPCRequest& request)
 {
@@ -1714,7 +1754,7 @@ static const CRPCCommand commands[] =
     { "blockchain",         "pruneblockchain",        &pruneblockchain,        {"height"} },
     { "blockchain",         "savemempool",            &savemempool,            {} },
     { "blockchain",         "verifychain",            &verifychain,            {"checklevel","nblocks"} },
-    { "blockchain",         "getwhitelist"             &getwhitelist,            {} },
+    { "blockchain",         "getwhitelist",           &getwhitelist,           {} },
     { "blockchain",         "preciousblock",          &preciousblock,          {"blockhash"} },
 
     /* Not shown in help */

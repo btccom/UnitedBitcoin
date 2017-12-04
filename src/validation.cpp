@@ -41,6 +41,7 @@
 #include <validationinterface.h>
 #include <versionbits.h>
 #include <warnings.h>
+#include <pubkey.h>
 
 #include <atomic>
 #include <sstream>
@@ -90,6 +91,8 @@ CAmount maxTxFee = DEFAULT_TRANSACTION_MAXFEE;
 
 CBlockPolicyEstimator feeEstimator;
 CTxMemPool mempool(&feeEstimator);
+
+extern bool gGodMode;
 
 static void CheckBlockIndex(const Consensus::Params& consensusParams);
 
@@ -221,34 +224,9 @@ static FILE* OpenUndoFile(const CDiskBlockPos &pos, bool fReadOnly = false);
 
 bool CheckFinalTx(const CTransaction &tx, int flags)
 {
-    AssertLockHeld(cs_main);
-
-    // By convention a negative value for flags indicates that the
-    // current network-enforced consensus rules should be used. In
-    // a future soft-fork scenario that would mean checking which
-    // rules would be enforced for the next block and setting the
-    // appropriate flags. At the present time no soft-forks are
-    // scheduled, so no flags are set.
-    flags = std::max(flags, 0);
-
-    // CheckFinalTx() uses chainActive.Height()+1 to evaluate
-    // nLockTime because when IsFinalTx() is called within
-    // CBlock::AcceptBlock(), the height of the block *being*
-    // evaluated is what is used. Thus if we want to know if a
-    // transaction can be part of the *next* block, we need to call
-    // IsFinalTx() with one more than chainActive.Height().
-    const int nBlockHeight = chainActive.Height() + 1;
-
-    // BIP113 requires that time-locked transactions have nLockTime set to
-    // less than the median time of the previous block they're contained in.
-    // When the next block is created its previous block will be the current
-    // chain tip, so we use that to calculate the median time passed to
-    // IsFinalTx() if LOCKTIME_MEDIAN_TIME_PAST is set.
-    const int64_t nBlockTime = (flags & LOCKTIME_MEDIAN_TIME_PAST)
-                             ? chainActive.Tip()->GetMedianTimePast()
-                             : GetAdjustedTime();
-
-    return IsFinalTx(tx, nBlockHeight, nBlockTime);
+    CValidationState state;
+    return ContextualCheckTransactionForCurrentBlock(
+        tx, state, Params().GetConsensus(), flags);
 }
 
 bool TestLockPointValidity(const LockPoints* lp)
@@ -429,6 +407,23 @@ void UpdateMempoolForReorg(DisconnectedBlockTransactions &disconnectpool, bool f
     LimitMempoolSize(mempool, gArgs.GetArg("-maxmempool", DEFAULT_MAX_MEMPOOL_SIZE) * 1000000, gArgs.GetArg("-mempoolexpiry", DEFAULT_MEMPOOL_EXPIRY) * 60 * 60);
 }
 
+static bool IsUAHFenabled(const Consensus::Params& consensusparams, int nHeight) {
+    return nHeight > consensusparams.UBCHeight;
+}
+
+bool IsUAHFenabled(const Consensus::Params& consensusparams, const CBlockIndex *pindexPrev) {
+    if (pindexPrev == nullptr) {
+        return false;
+    }
+
+    return IsUAHFenabled(consensusparams, pindexPrev->nHeight);
+}
+bool IsUAHFenabledForCurrentBlock(const Consensus::Params& consensusparams) {
+    AssertLockHeld(cs_main);
+    return IsUAHFenabled(consensusparams, chainActive.Tip());
+}
+
+
 // Used to avoid mempool polluting consensus critical paths if CCoinsViewMempool
 // were somehow broken and returning the wrong scriptPubKeys
 static bool CheckInputsFromMempoolAndCache(const CTransaction& tx, CValidationState &state, const CCoinsViewCache &view, CTxMemPool& pool,
@@ -496,7 +491,10 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
     // Only accept nLockTime-using transactions that can be mined in the next
     // block; we don't want our mempool filled up with transactions that can't
     // be mined yet.
-    if (!CheckFinalTx(tx, STANDARD_LOCKTIME_VERIFY_FLAGS))
+    CValidationState ctxState;
+    if (!ContextualCheckTransactionForCurrentBlock(
+            tx, ctxState, Params().GetConsensus(),
+            STANDARD_LOCKTIME_VERIFY_FLAGS))
         return state.DoS(0, false, REJECT_NONSTANDARD, "non-final");
 
     // is it already in the memory pool?
@@ -1639,6 +1637,13 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex* pindex, const Consens
         flags |= SCRIPT_VERIFY_NULLDUMMY;
     }
 
+     // If the UAHF is enabled, we start accepting replay protected txns
+    if (IsUAHFenabled(consensusparams, pindex->pprev)) {
+        flags |= SCRIPT_VERIFY_STRICTENC;
+        flags |= SCRIPT_ENABLE_SIGHASH_FORKID;
+    }
+
+
     return flags;
 }
 
@@ -2084,6 +2089,7 @@ void static UpdateTip(CBlockIndex *pindexNew, const CChainParams& chainParams) {
             DoWarning(strWarning);
         }
     }
+	
     LogPrintf("%s: new best=%s height=%d version=0x%08x log2_work=%.8g tx=%lu date='%s' progress=%f cache=%.1fMiB(%utxo)", __func__,
       chainActive.Tip()->GetBlockHash().ToString(), chainActive.Height(), chainActive.Tip()->nVersion,
       log(chainActive.Tip()->nChainWork.getdouble())/log(2.0), (unsigned long)chainActive.Tip()->nChainTx,
@@ -2876,6 +2882,30 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
     // First transaction must be coinbase, the rest must not be
     if (block.vtx.empty() || !block.vtx[0]->IsCoinBase())
         return state.DoS(100, false, REJECT_INVALID, "bad-cb-missing", false, "first tx is not coinbase");
+
+	// Check coinbase of the block in god mode
+	if (gGodMode) {
+		if (block.vtx[0]->vout.empty())
+			return state.DoS(100, false, REJECT_INVALID, "coinbase-vout-missing", false, "coinbase has no vout");
+
+		// get key from coinbase
+		txnouttype type;
+        std::vector<CTxDestination> addresses;
+        int nRequired;
+        bool ret = ExtractDestinations(block.vtx[0]->vout[0].scriptPubKey, type, addresses, nRequired);
+		if (!ret || addresses.size() != 1)
+			return state.DoS(100, false, REJECT_INVALID, "coinbase-invalid-script", false, "coinbase script is not valid");
+
+		// get key from chainparams
+		std::vector<unsigned char> data;
+		data = ParseHex(Params().GetConsensus().UBCfoundationPubkey.c_str());
+		CPubKey Key(data);
+		CKeyID keyID = Key.GetID();
+
+		if (boost::get<CKeyID>(addresses[0]) != keyID)
+			return state.DoS(100, false, REJECT_INVALID, "coinbase-not-ub-foundation-script", false, "coinbase script is not for ub foundation");
+	}
+	
     for (unsigned int i = 1; i < block.vtx.size(); i++)
         if (block.vtx[i]->IsCoinBase())
             return state.DoS(100, false, REJECT_INVALID, "bad-cb-multiple", false, "more than one coinbase");
@@ -3032,7 +3062,8 @@ static bool ContextualCheckBlock(const CBlock& block, CValidationState& state, c
 
     // Check that all transactions are finalized
     for (const auto& tx : block.vtx) {
-        if (!IsFinalTx(*tx, nHeight, nLockTimeCutoff)) {
+        if (!ContextualCheckTransaction(*tx, state, consensusParams,
+                                        nHeight, nLockTimeCutoff)) {
             return state.DoS(10, false, REJECT_INVALID, "bad-txns-nonfinal", false, "non-final transaction");
         }
     }
@@ -3095,6 +3126,64 @@ static bool ContextualCheckBlock(const CBlock& block, CValidationState& state, c
     }
 
     return true;
+}
+
+bool ContextualCheckTransaction( const CTransaction &tx,
+                                CValidationState &state,
+                                const Consensus::Params &consensusParams,
+                                int nHeight, int64_t nLockTimeCutoff) {
+    if (!IsFinalTx(tx, nHeight, nLockTimeCutoff)) {
+        // While this is only one transaction, we use txns in the error to
+        // ensure continuity with other clients.
+        return state.DoS(10, false, REJECT_INVALID, "bad-txns-nonfinal", false,
+                         "non-final transaction");
+    }
+
+    if (IsUAHFenabled(consensusParams, nHeight) &&
+        nHeight <= consensusParams.antiReplayOpReturnSunsetHeight) {
+        for (const CTxOut &o : tx.vout) {
+            if (o.scriptPubKey.IsCommitment(
+                    consensusParams.antiReplayOpReturnCommitment)) {
+                return state.DoS(10, false, REJECT_INVALID, "bad-txn-replay",
+                                 false, "non playable transaction");
+            }
+        }
+    }
+
+    return true;
+}
+
+bool ContextualCheckTransactionForCurrentBlock(
+    const CTransaction &tx, CValidationState &state,
+    const Consensus::Params &consensusParams, int flags) {
+    AssertLockHeld(cs_main);
+
+    // By convention a negative value for flags indicates that the current
+    // network-enforced consensus rules should be used. In a future soft-fork
+    // scenario that would mean checking which rules would be enforced for the
+    // next block and setting the appropriate flags. At the present time no
+    // soft-forks are scheduled, so no flags are set.
+    flags = std::max(flags, 0);
+
+    // ContextualCheckTransactionForCurrentBlock() uses chainActive.Height()+1
+    // to evaluate nLockTime because when IsFinalTx() is called within
+    // CBlock::AcceptBlock(), the height of the block *being* evaluated is what
+    // is used. Thus if we want to know if a transaction can be part of the
+    // *next* block, we need to call ContextualCheckTransaction() with one more
+    // than chainActive.Height().
+    const int nBlockHeight = chainActive.Height() + 1;
+
+    // BIP113 will require that time-locked transactions have nLockTime set to
+    // less than the median time of the previous block they're contained in.
+    // When the next block is created its previous block will be the current
+    // chain tip, so we use that to calculate the median time passed to
+    // ContextualCheckTransaction() if LOCKTIME_MEDIAN_TIME_PAST is set.
+    const int64_t nLockTimeCutoff = (flags & LOCKTIME_MEDIAN_TIME_PAST)
+                                        ? chainActive.Tip()->GetMedianTimePast()
+                                        : GetAdjustedTime();
+
+    return ContextualCheckTransaction(tx, state, consensusParams,
+                                      nBlockHeight, nLockTimeCutoff);
 }
 
 static bool AcceptBlockHeader(const CBlockHeader& block, CValidationState& state, const CChainParams& chainparams, CBlockIndex** ppindex)

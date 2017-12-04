@@ -303,6 +303,10 @@ void PruneAndFlush();
 /** Prune block files up to a given height */
 void PruneBlockFilesManual(int nManualPruneHeight);
 
+/** Check is UAHF has activated. */
+bool IsUAHFenabled(const Consensus::Params& consensusparams, const CBlockIndex *pindexPrev);
+bool IsUAHFenabledForCurrentBlock(const Consensus::Params& consensusparams);
+
 /** (try to) add transaction to memory pool
  * plTxnReplaced will be appended to with all transactions replaced from mempool **/
 bool AcceptToMemoryPool(CTxMemPool& pool, CValidationState &state, const CTransactionRef &tx,
@@ -401,6 +405,27 @@ bool ReadBlockFromDisk(CBlock& block, const CBlockIndex* pindex, const Consensus
 
 /** Context-independent validity checks */
 bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true, bool fCheckMerkleRoot = true);
+
+/**
+ * Context dependent validity checks for non coinbase transactions. This
+ * doesn't check the validity of the transaction against the UTXO set, but
+ * simply characteristic that are suceptible to change over time such as feature
+ * activation/deactivation and CLTV.
+ */
+bool ContextualCheckTransaction(const CTransaction &tx,
+                                CValidationState &state,
+                                const Consensus::Params &consensusParams,
+                                int nHeight, int64_t nLockTimeCutoff);
+
+/**
+ * This is a variant of ContextualCheckTransaction which computes the contextual
+ * check for a transaction based on the chain tip.
+ *
+ * See consensus/consensus.h for flag definitions.
+ */
+bool ContextualCheckTransactionForCurrentBlock(
+    const CTransaction &tx, CValidationState &state,
+    const Consensus::Params &consensusParams, int flags = -1);
 
 /** Check a block is completely valid from start to finish (only works on top of our current best block, with cs_main held) */
 bool TestBlockValidity(CValidationState& state, const CChainParams& chainparams, const CBlock& block, CBlockIndex* pindexPrev, bool fCheckPOW = true, bool fCheckMerkleRoot = true);
