@@ -71,7 +71,6 @@ bool fFeeEstimatesInitialized = false;
 static const bool DEFAULT_PROXYRANDOMIZE = true;
 static const bool DEFAULT_REST_ENABLE = false;
 static const bool DEFAULT_STOPAFTERBLOCKIMPORT = false;
-extern bool gGodMode;
 
 std::unique_ptr<CConnman> g_connman;
 std::unique_ptr<PeerLogicValidation> peerLogic;
@@ -1650,11 +1649,6 @@ bool AppInitMain(boost::thread_group& threadGroup, CScheduler& scheduler)
     }
     LogPrintf("nBestHeight = %d\n", chain_active_height);
 
-	// set the initial gGodMode flag when the process up
-	gGodMode = false;
-	if (chain_active_height >= Params().GetConsensus().UBCHeight 
-		&& chain_active_height < Params().GetConsensus().UBCHeight + 500)
-		gGodMode = true;
 
     if (gArgs.GetBoolArg("-listenonion", DEFAULT_LISTEN_ONION))
         StartTorControl(threadGroup, scheduler);
