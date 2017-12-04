@@ -907,10 +907,12 @@ UniValue getwhitelist(const JSONRPCRequest& request)
     UniValue ret(UniValue::VARR);
     FlushStateToDisk();
     whitelist = get_whitelist(last);
+    /*
     for (auto addr : whitelist)
     {
         ret.push_back(EncodeDestination(addr));
     }
+    */
     return ret;
 }
 
