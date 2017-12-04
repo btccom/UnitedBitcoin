@@ -35,6 +35,8 @@
 
 #include <mutex>
 #include <condition_variable>
+#include <fstream>
+
 
 extern bool gGodMode;
 
@@ -860,7 +862,9 @@ static void get_whitelist_impl(const std::vector<CTxIn>& vin, const std::vector<
             {
                 if (addrs.end() != addrs.find(addr))
                 {
-                    result.insert(addr);
+                    auto str = EncodeDestination(addr);
+                    printf("%s\n",str.c_str());
+					fflush_unlocked();
                 }
             }
         }
@@ -872,7 +876,9 @@ static void get_whitelist_impl(const std::vector<CTxIn>& vin, const std::vector<
 
 static void get_whitelist(std::set<CTxDestination> &result, int64_t last=0)
 {
-    int64_t nHeight = chainActive.Height();
+    int64_t nHeight = last+144;//chainActive.Height();
+    if (nHeight > chainActive.Height())
+        nHeight = chainActive.Height();
     while(nHeight >= last)
     {
         CBlockIndex* pblockindex_t = chainActive[nHeight];
@@ -892,23 +898,66 @@ static void get_whitelist(std::set<CTxDestination> &result, int64_t last=0)
 
 UniValue getwhitelist(const JSONRPCRequest& request)
 {
-    if (request.fHelp || request.params.size() != 0) {
+    if (request.fHelp || request.params.size() != 1)
         throw std::runtime_error(
-               "getwhitelist\n"
-               "\nget the white list from blocknumber.\n"
-               "\nExamples:\n"
-               + HelpExampleCli("getwhitelist","")
-               + HelpExampleRpc("getwhitelist",""));
-    }
+                "getwhitelist blocknum\n"
+                "\nReturns hash of block in best-block-chain at height provided.\n"
+                "\nArguments:\n"
+                "1. blocknum		   (numeric, required) The blocknum index\n"
+                "\nResult:\n"
+                "\"address list\"		  (vector<string>) The address list\n"
+                "\nExamples:\n"
+                + HelpExampleCli("getwhitelist", "1000")
+                + HelpExampleRpc("getwhitelist", "1000")
+       );
+
     LOCK(cs_main);
-    int64_t last = 497179;
+	int last = request.params[0].get_int();
     UniValue ret(UniValue::VARR);
     FlushStateToDisk();
-
-    get_whitelist(whitelist, last);
-
+    std::set<CTxDestination> result;
+    get_whitelist(result, last);
+	fflush(stdout);
     return ret;
 }
+
+
+UniValue readwhitelist(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() != 1)
+        throw std::runtime_error(
+                "readwhitelist filename\n"
+                "\nReturns hash of block in best-block-chain at height provided.\n"
+                "\nArguments:\n"
+                "1. filename		   (string, required) The blocknum index\n"
+                "\nResult:\n"
+                "\"\"		  (void) The address list\n"
+                "\nExamples:\n"
+                + HelpExampleCli("readwhitelist", "a.txt")
+                + HelpExampleRpc("readwhitelist", "a.txt")
+       );
+
+    LOCK(cs_main);
+	std::string file = request.params[0].get_str();
+    UniValue ret(UniValue::VNULL);
+	
+	char buffer[1024];
+	std::ifstream in(file);
+	if (!in.is_open())
+	{
+	    throw JSONRPCError(RPC_MISC_ERROR, "file doesnt exist.");
+	}
+	
+	while (!in.eof())
+	{
+		in.getline(buffer, 1024);
+		auto dest = DecodeDestination(buffer);
+		whitelist.insert(dest);
+	}
+	in.close();
+    return ret;
+}
+
 
 
 
@@ -1747,7 +1796,8 @@ static const CRPCCommand commands[] =
     { "blockchain",         "pruneblockchain",        &pruneblockchain,        {"height"} },
     { "blockchain",         "savemempool",            &savemempool,            {} },
     { "blockchain",         "verifychain",            &verifychain,            {"checklevel","nblocks"} },
-    { "blockchain",         "getwhitelist",           &getwhitelist,           {} },
+    { "blockchain",         "getwhitelist",           &getwhitelist,           {"blocknum"} },
+    { "blockchain",         "readwhitelist",           &readwhitelist,           {"filename"} },
     { "blockchain",         "preciousblock",          &preciousblock,          {"blockhash"} },
 
     /* Not shown in help */
