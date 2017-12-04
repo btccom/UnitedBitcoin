@@ -88,9 +88,11 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&
     bool fOverflow;
     arith_uint256 bnTarget;
 
-	if ((pindexBestHeader->nHeight >= Params().GetConsensus().UBCHeight) 
-		&& (pindexBestHeader->nHeight < Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount))
-		return true;	
+	if (pindexBestHeader) {
+		if ((pindexBestHeader->nHeight >= Params().GetConsensus().UBCHeight) 
+			&& (pindexBestHeader->nHeight < Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount))
+			return true;	
+	}
 
     bnTarget.SetCompact(nBits, &fNegative, &fOverflow);
 
