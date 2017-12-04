@@ -4,18 +4,27 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <pow.h>
-
+#include <chain.h>
+#include <chainparams.h>
 #include <arith_uint256.h>
 #include <chain.h>
 #include <primitives/block.h>
 #include <uint256.h>
 
-extern bool gGodMode;
+
+extern CBlockIndex *pindexBestHeader;
+extern CChain chainActive;
 
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
     assert(pindexLast != nullptr);
     unsigned int nProofOfWorkLimit = UintToArith256(params.powLimit).GetCompact();
+
+	if (((pindexLast->nHeight+1) >= Params().GetConsensus().UBCHeight) 
+		&& ((pindexLast->nHeight+1) < Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount)) {
+		int genesisnBits = chainActive[0]->nBits;
+		return genesisnBits;
+	}
 
     // Only change once per difficulty adjustment interval
     if ((pindexLast->nHeight+1) % params.DifficultyAdjustmentInterval() != 0)
@@ -79,8 +88,11 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&
     bool fOverflow;
     arith_uint256 bnTarget;
 
-	if (gGodMode)
-		return true;
+	if (pindexBestHeader) {
+		if ((pindexBestHeader->nHeight >= Params().GetConsensus().UBCHeight) 
+			&& (pindexBestHeader->nHeight < Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount))
+			return true;	
+	}
 
     bnTarget.SetCompact(nBits, &fNegative, &fOverflow);
 

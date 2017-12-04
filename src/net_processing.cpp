@@ -1238,7 +1238,7 @@ inline void static SendBlockTransactions(const CBlock& block, const BlockTransac
     connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::BLOCKTXN, resp));
 }
 
-bool static ProcessHeadersMessage(CNode *pfrom, CConnman *connman, const std::vector<CBlockHeader>& headers, const CChainParams& chainparams, bool punish_duplicate_invalid)
+bool static ProcessHeadersMessage(CNode *pfrom, CConnman *connman, std::vector<CBlockHeader>& headers, const CChainParams& chainparams, bool punish_duplicate_invalid)
 {
     const CNetMsgMaker msgMaker(pfrom->GetSendVersion());
     size_t nCount = headers.size();
@@ -1299,6 +1299,14 @@ bool static ProcessHeadersMessage(CNode *pfrom, CConnman *connman, const std::ve
 
     CValidationState state;
     CBlockHeader first_invalid_header;
+
+    int tLastBlockIndex=0;
+    tLastBlockIndex = GetRightBestHeader(headers, state, chainparams, &pindexLast);
+    if(tLastBlockIndex == 0)
+        return true;
+    headers.resize(tLastBlockIndex);
+
+	
     if (!ProcessNewBlockHeaders(headers, state, chainparams, &pindexLast, &first_invalid_header)) {
         int nDoS;
         if (state.IsInvalid(nDoS)) {
@@ -2282,6 +2290,13 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
 
         const CBlockIndex *pindex = nullptr;
         CValidationState state;
+
+        int tLastBlockIndex=0;
+        tLastBlockIndex = GetRightBestHeader({cmpctblock.header}, state, chainparams, &pindex);
+	 if(tLastBlockIndex == 0)
+	 	return true;
+
+		
         if (!ProcessNewBlockHeaders({cmpctblock.header}, state, chainparams, &pindex)) {
             int nDoS;
             if (state.IsInvalid(nDoS)) {
@@ -2440,7 +2455,9 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             // the peer if the header turns out to be for an invalid block.
             // Note that if a peer tries to build on an invalid chain, that
             // will be detected and the peer will be banned.
-            return ProcessHeadersMessage(pfrom, connman, {cmpctblock.header}, chainparams, /*punish_duplicate_invalid=*/false);
+            std::vector<CBlockHeader> tmpHeader;
+	    tmpHeader.push_back(cmpctblock.header); 
+            return ProcessHeadersMessage(pfrom, connman, tmpHeader, chainparams, /*punish_duplicate_invalid=*/false);
         }
 
         if (fBlockReconstructed) {
@@ -3535,7 +3552,7 @@ bool PeerLogicValidation::SendMessages(CNode* pto, std::atomic<bool>& interruptM
         // Check for headers sync timeouts
         if (state.fSyncStarted && state.nHeadersSyncTimeout < std::numeric_limits<int64_t>::max()) {
             // Detect whether this is a stalling initial-headers-sync peer
-            if (pindexBestHeader->GetBlockTime() <= GetAdjustedTime() - 24*60*60) {
+            if (pindexBestHeader->GetBlockTime() <= GetAdjustedTime() - 24*60*60 && (pindexBestHeader->nHeight + 1) != Params().GetConsensus().UBCHeight) {
                 if (nNow > state.nHeadersSyncTimeout && nSyncStarted == 1 && (nPreferredDownload - state.fPreferredDownload >= 1)) {
                     // Disconnect a (non-whitelisted) peer if it is our only sync peer,
                     // and we have others we could be using instead.

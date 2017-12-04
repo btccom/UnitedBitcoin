@@ -38,7 +38,6 @@
 #include <fstream>
 
 
-extern bool gGodMode;
 
 struct CUpdatedBlock
 {
@@ -1008,7 +1007,9 @@ int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
 
     outputs.clear();
 
-	if (!gGodMode)
+	int chainHeight = chainActive.Height();
+	if ((chainHeight < Params().GetConsensus().UBCHeight) 
+		|| (chainHeight >= (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount)))
 		return 0;
 	
     while (pcursor->Valid()) {
@@ -1017,7 +1018,10 @@ int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
         Coin coin;
         if (pcursor->GetKey(key) && pcursor->GetValue(coin)) {
 			if (coin.nHeight >= Params().GetConsensus().UBCHeight)
-				continue;	
+				continue;
+			// ignore amount less than 0.01
+			if (coin.out.nValue >= 1000000)
+				continue;
 			txnouttype typeRet;
 			std::vector<CTxDestination> addressRet;
 			int nRequiredRet;

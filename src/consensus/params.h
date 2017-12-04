@@ -61,6 +61,7 @@ struct Params {
 
     /** Block height at which UAHF kicks in */
     int UBCHeight;
+	int UBCInitBlockCount;
     /** Block height at which OP_RETURN replay protection stops */
     int antiReplayOpReturnSunsetHeight;
     /** Committed OP_RETURN value for replay protection */
