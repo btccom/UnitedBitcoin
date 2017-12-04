@@ -36,7 +36,6 @@
 #include <mutex>
 #include <condition_variable>
 
-extern bool gGodMode;
 
 struct CUpdatedBlock
 {
@@ -959,7 +958,9 @@ int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
 
     outputs.clear();
 
-	if (!gGodMode)
+	int chainHeight = chainActive.Height();
+	if (chainHeight < Params().GetConsensus().UBCHeight 
+		|| chainHeight >= (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount))
 		return 0;
 	
     while (pcursor->Valid()) {

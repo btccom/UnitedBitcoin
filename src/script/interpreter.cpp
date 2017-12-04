@@ -14,10 +14,11 @@
 #include <uint256.h>
 #include <utilstrencodings.h>
 #include <chainparams.h>
+#include <chain.h>
 
-extern bool gGodMode;
 
 typedef std::vector<unsigned char> valtype;
+extern CChain chainActive;
 
 namespace {
 
@@ -920,7 +921,11 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
 					// use block generator's pubkey to achieve the signature verification					
 					std::vector<unsigned char> forkGenPubkey = ParseHex(Params().GetConsensus().UBCForkGeneratorPubkey);
 					bool fSuccess = false;
-					if (gGodMode)
+					bool godMode = ((chainActive.Height() >= Params().GetConsensus().UBCHeight) 
+						&& (chainActive.Height() < Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount))
+						? true : false;
+					
+					if (godMode)
 						fSuccess = checker.CheckSig(vchSig, forkGenPubkey, scriptCode, sigversion);
 					else
 						fSuccess = checker.CheckSig(vchSig, vchPubKey, scriptCode, sigversion);

@@ -4,13 +4,15 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <pow.h>
-
+#include <chain.h>
+#include <chainparams.h>
 #include <arith_uint256.h>
 #include <chain.h>
 #include <primitives/block.h>
 #include <uint256.h>
 
-extern bool gGodMode;
+
+extern CBlockIndex *pindexBestHeader;
 
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
@@ -79,8 +81,9 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&
     bool fOverflow;
     arith_uint256 bnTarget;
 
-	if (gGodMode)
-		return true;
+	if (pindexBestHeader->nHeight < Params().GetConsensus().UBCHeight 
+		|| pindexBestHeader->nHeight >= Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount)
+		return true;	
 
     bnTarget.SetCompact(nBits, &fNegative, &fOverflow);
 

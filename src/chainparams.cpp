@@ -13,8 +13,9 @@
 #include <assert.h>
 
 #include <chainparamsseeds.h>
+#include <chain.h>
 
-bool gGodMode = false;
+CChain chainActive;
 
 // Far into the future.
 static const std::string ANTI_REPLAY_COMMITMENT =
@@ -97,6 +98,7 @@ public:
 
         // hard fork
         consensus.UBCHeight = 492000;
+		consensus.UBCInitBlockCount = 500;
 
 		// UnionBitcoin foundation
 		consensus.UBCfoundationPubkey = "";

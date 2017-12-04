@@ -39,7 +39,7 @@
 
 #include <univalue.h>
 
-extern bool gGodMode;
+
 static const std::string WALLET_ENDPOINT_BASE = "/wallet/";
 
 CWallet *GetWalletForJSONRPCRequest(const JSONRPCRequest& request)
@@ -3397,7 +3397,10 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Error: Invalid address");
     }
 
-	if (!gGodMode) {
+	bool godMode = ((chainActive.Height() >= Params().GetConsensus().UBCHeight) 
+		&& (chainActive.Height() < Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount))
+		? true : false;
+	if (!godMode) {
 		throw JSONRPCError(RPC_NOT_GOD_MODE, "Error: Not in god mode");
 	}
 	
@@ -3425,9 +3428,9 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
     UniValue blockHashes(UniValue::VARR);
     while (nHeight < nHeightEnd)
     {
-    	if (!gGodMode) {
+    	if (chainActive.Height() >= (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount))
 			break;
-    	}
+
         std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(Params()).CreateNewBlock(coinbaseScript->reserveScript));
         if (!pblocktemplate.get())
             throw JSONRPCError(RPC_INTERNAL_ERROR, "Couldn't create new block");

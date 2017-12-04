@@ -64,7 +64,7 @@
 CCriticalSection cs_main;
 
 BlockMap mapBlockIndex;
-CChain chainActive;
+extern CChain chainActive;
 CBlockIndex *pindexBestHeader = nullptr;
 CWaitableCriticalSection csBestBlock;
 CConditionVariable cvBlockChange;
@@ -92,7 +92,6 @@ CAmount maxTxFee = DEFAULT_TRANSACTION_MAXFEE;
 CBlockPolicyEstimator feeEstimator;
 CTxMemPool mempool(&feeEstimator);
 
-extern bool gGodMode;
 
 static void CheckBlockIndex(const Consensus::Params& consensusParams);
 
@@ -2884,7 +2883,10 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
         return state.DoS(100, false, REJECT_INVALID, "bad-cb-missing", false, "first tx is not coinbase");
 
 	// Check coinbase of the block in god mode
-	if (gGodMode) {
+	int chainHeight = chainActive.Height();
+	bool godMode = (chainHeight >= Params().GetConsensus().UBCHeight 
+		|| chainHeight < Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount) ? true : false;
+	if (godMode) {
 		if (block.vtx[0]->vout.empty())
 			return state.DoS(100, false, REJECT_INVALID, "coinbase-vout-missing", false, "coinbase has no vout");
 
@@ -3008,8 +3010,14 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, CValidationSta
 
     // Check proof of work
     const Consensus::Params& consensusParams = params.GetConsensus();
-    if (block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))
-        return state.DoS(100, false, REJECT_INVALID, "bad-diffbits", false, "incorrect proof of work");
+
+	int headerHeight = pindexBestHeader->nHeight;
+	if (headerHeight < Params().GetConsensus().UBCHeight - 1
+		|| headerHeight >= Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount)
+	{
+		if (block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))
+    	return state.DoS(100, false, REJECT_INVALID, "bad-diffbits", false, "incorrect proof of work");
+	}
 
     // Check against checkpoints
     if (fCheckpointsEnabled) {
