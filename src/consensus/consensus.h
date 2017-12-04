@@ -8,6 +8,24 @@
 
 #include <stdlib.h>
 #include <stdint.h>
+static const uint64_t UB_FORK_BLOCK_NUM = 200;
+
+inline unsigned int MaxBlockSize(uint64_t nblock) {
+    if (nblock < UB_FORK_BLOCK_NUM)
+        return 4000*1000;
+
+    return (32*1000*1000);
+}
+//static const unsigned int MAX_TRANSACTION_SIZE = 1000*1000;	
+inline unsigned int MaxBlockSigops(uint64_t nblock) {
+    return MaxBlockSize(nblock) / 50;
+}
+inline unsigned int MaxBlockSerializedSize(uint64_t nblock){
+	if (nblock < UB_FORK_BLOCK_NUM)
+        return 4000*1000;
+
+    return (32*1000*1000);
+}
 
 /** The maximum allowed size for a serialized block, in bytes (only for buffer size limits) */
 static const unsigned int MAX_BLOCK_SERIALIZED_SIZE = 4000000;
