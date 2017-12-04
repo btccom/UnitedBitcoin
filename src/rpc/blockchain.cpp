@@ -904,16 +904,9 @@ UniValue getwhitelist(const JSONRPCRequest& request)
     int64_t last = 497179;
     UniValue ret(UniValue::VARR);
     FlushStateToDisk();
-<<<<<<< HEAD
-    whitelist = get_whitelist(last);
-    /*
-=======
+
     get_whitelist(whitelist, last);
-    for (auto addr : whitelist)
-    {
-        ret.push_back(EncodeDestination(addr));
-    }
-    */
+
     return ret;
 }
 
