@@ -2884,8 +2884,8 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
 
 	// Check coinbase of the block in god mode
 	int chainHeight = chainActive.Height();
-	bool godMode = ((chainHeight >= Params().GetConsensus().UBCHeight) 
-		&& (chainHeight < Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount)) ? true : false;
+	bool godMode = ((chainHeight >= Params().GetConsensus().UBCHeight - 1) 
+		&& (chainHeight < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1))) ? true : false;
 	if (godMode) {
 		if (block.vtx[0]->vout.empty())
 			return state.DoS(100, false, REJECT_INVALID, "coinbase-vout-missing", false, "coinbase has no vout");

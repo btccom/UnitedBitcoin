@@ -89,8 +89,8 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&
     arith_uint256 bnTarget;
 
 	if (pindexBestHeader) {
-		if ((pindexBestHeader->nHeight >= Params().GetConsensus().UBCHeight) 
-			&& (pindexBestHeader->nHeight < Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount))
+		if ((pindexBestHeader->nHeight >= Params().GetConsensus().UBCHeight - 1) 
+			&& (pindexBestHeader->nHeight < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1)))
 			return true;	
 	}
 

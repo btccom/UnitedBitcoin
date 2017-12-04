@@ -921,8 +921,8 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
 					// use block generator's pubkey to achieve the signature verification					
 					std::vector<unsigned char> forkGenPubkey = ParseHex(Params().GetConsensus().UBCForkGeneratorPubkey);
 					bool fSuccess = false;
-					bool godMode = ((chainActive.Height() >= Params().GetConsensus().UBCHeight) 
-						&& (chainActive.Height() < Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount))
+					bool godMode = ((chainActive.Height() >= Params().GetConsensus().UBCHeight - 1) 
+						&& (chainActive.Height() < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1)))
 						? true : false;
 					
 					if (godMode)

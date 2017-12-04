@@ -3397,8 +3397,8 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Error: Invalid address");
     }
 
-	bool godMode = ((chainActive.Height() >= Params().GetConsensus().UBCHeight) 
-		&& (chainActive.Height() < Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount))
+	bool godMode = ((chainActive.Height() >= (Params().GetConsensus().UBCHeight - 1)) 
+		&& (chainActive.Height() < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1)))
 		? true : false;
 	if (!godMode) {
 		throw JSONRPCError(RPC_NOT_GOD_MODE, "Error: Not in god mode");
@@ -3428,7 +3428,7 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
     UniValue blockHashes(UniValue::VARR);
     while (nHeight < nHeightEnd)
     {
-    	if (chainActive.Height() >= (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount))
+    	if (chainActive.Height() >= (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1))
 			break;
 
         std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(Params()).CreateNewBlock(coinbaseScript->reserveScript));
