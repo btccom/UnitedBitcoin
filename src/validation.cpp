@@ -2884,8 +2884,8 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
 
 	// Check coinbase of the block in god mode
 	int chainHeight = chainActive.Height();
-	bool godMode = (chainHeight >= Params().GetConsensus().UBCHeight 
-		|| chainHeight < Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount) ? true : false;
+	bool godMode = ((chainHeight >= Params().GetConsensus().UBCHeight) 
+		&& (chainHeight < Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount)) ? true : false;
 	if (godMode) {
 		if (block.vtx[0]->vout.empty())
 			return state.DoS(100, false, REJECT_INVALID, "coinbase-vout-missing", false, "coinbase has no vout");
@@ -3010,13 +3010,9 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, CValidationSta
 
     // Check proof of work
     const Consensus::Params& consensusParams = params.GetConsensus();
-	int headerHeight = pindexBestHeader->nHeight;
-	if (headerHeight < Params().GetConsensus().UBCHeight - 1
-		|| headerHeight >= Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount)
-	{
-		if (block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))
+
+	if (block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))
     	return state.DoS(100, false, REJECT_INVALID, "bad-diffbits", false, "incorrect proof of work");
-	}
 
     // Check against checkpoints
     if (fCheckpointsEnabled) {
@@ -3295,7 +3291,7 @@ int GetRightBestHeader(const std::vector<CBlockHeader>& headers, CValidationStat
 {
     LOCK(cs_main);
     int i;
-    for (i = 0; i < headers.size(); ++i) {
+    for (i = 0; i < (int)headers.size(); ++i) {
         CBlockIndex *pindex = nullptr; // Use a temp pindex instead of ppindex to avoid a const_cast
         if (!TryAcceptBlockHeader(headers[i], state, chainparams, &pindex)) {
             break;
