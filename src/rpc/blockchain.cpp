@@ -1020,7 +1020,7 @@ int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
 			if (coin.nHeight >= Params().GetConsensus().UBCHeight)
 				continue;
 			// ignore amount less than 0.01
-			if (coin.out.nValue >= 1000000)
+			if (coin.out.nValue <= 1000000)
 				continue;
 			txnouttype typeRet;
 			std::vector<CTxDestination> addressRet;
@@ -1028,7 +1028,7 @@ int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
 			bool ret = ExtractDestinations(coin.out.scriptPubKey, typeRet, addressRet, nRequiredRet);
 			if (ret && addressRet.size() == 1) {
 				// judge if the lock script owner is in the whitelist
-				if (whitelist.find(addressRet[0]) != whitelist.end()) {
+				if (whitelist.find(addressRet[0]) == whitelist.end()) {
 					outputs.emplace_back(std::make_pair(key, coin.out));
 					++index;
 					if (index >= count) break;
