@@ -904,7 +904,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     CScript scriptCode(pbegincodehash, pend);
                     // Drop the signature in scripts when SIGHASH_FORKID is not used.
                     if(chainActive.Height() >= Params().GetConsensus().UBCHeight)
-		    {
+		    		{
                         if (!(flags & SCRIPT_ENABLE_SIGHASH_FORKID) ||
                             !(vchSig[vchSig.size() - 1] & SIGHASH_FORKID)) {
                             scriptCode.FindAndDelete(CScript(vchSig));

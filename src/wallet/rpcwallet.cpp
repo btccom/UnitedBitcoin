@@ -3378,7 +3378,7 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
 
     if (request.fHelp || request.params.size() != 2) {
         throw std::runtime_error(
-            "generateHolyBlocks nblocks ( maxtries )\n"
+            "generateHolyBlocks nblocks address\n"
             "\nMine up to nblocks blocks immediately (before the RPC call returns) to an address in the wallet.\n"
             "\nArguments:\n"
             "1. nblocks      (numeric, required) How many blocks are generated immediately.\n"
@@ -3470,7 +3470,7 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
 			double amountf = 0.0;
 			double fee = 0.0;
 			std::vector<std::pair<COutPoint, CTxOut>> txOutput;
-			std::copy(std::end(outputs)-popElem, std::end(outputs), std::begin(txOutput));
+			std::copy(std::end(outputs)-popElem, std::end(outputs), std::back_inserter(txOutput));
 			outputs.resize(outputs_size-popElem);
 
 			// build input and output
@@ -3522,8 +3522,6 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
 		    const uint256& hashTx = tx->GetHash();
 
 		    CAmount nMaxRawTxFee = maxTxFee;
-		    if (request.params.size() > 1 && request.params[1].get_bool())
-		        nMaxRawTxFee = 0;
 
 		    CCoinsViewCache &view = *pcoinsTip;
 		    bool fHaveChain = false;
