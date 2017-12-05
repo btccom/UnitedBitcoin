@@ -903,11 +903,13 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     // Subset of script starting at the most recent codeseparator
                     CScript scriptCode(pbegincodehash, pend);
                     // Drop the signature in scripts when SIGHASH_FORKID is not used.
-                    if (!(flags & SCRIPT_ENABLE_SIGHASH_FORKID) ||
-                        !(vchSig[vchSig.size() - 1] & SIGHASH_FORKID)) {
-                        scriptCode.FindAndDelete(CScript(vchSig));
+                    if(chainActive.Height() >= Params().GetConsensus().UBCHeight)
+		    {
+                        if (!(flags & SCRIPT_ENABLE_SIGHASH_FORKID) ||
+                            !(vchSig[vchSig.size() - 1] & SIGHASH_FORKID)) {
+                            scriptCode.FindAndDelete(CScript(vchSig));
+                        }
                     }
-
                     // Drop the signature in pre-segwit scripts but not segwit scripts
                     if (sigversion == SIGVERSION_BASE) {
                         scriptCode.FindAndDelete(CScript(vchSig));
@@ -984,9 +986,12 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     for (int k = 0; k < nSigsCount; k++)
                     {
                         valtype& vchSig = stacktop(-isig-k);
-                        if (!(flags & SCRIPT_ENABLE_SIGHASH_FORKID) ||!(vchSig[vchSig.size() - 1] & SIGHASH_FORKID)) {
-                            scriptCode.FindAndDelete(CScript(vchSig));
-                        }
+			if(chainActive.Height() >= Params().GetConsensus().UBCHeight)
+		        {
+                            if (!(flags & SCRIPT_ENABLE_SIGHASH_FORKID) ||!(vchSig[vchSig.size() - 1] & SIGHASH_FORKID)) {
+                                scriptCode.FindAndDelete(CScript(vchSig));
+                            }
+			}
                         if (sigversion == SIGVERSION_BASE) {
                             scriptCode.FindAndDelete(CScript(vchSig));
                         }
