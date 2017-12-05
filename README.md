@@ -1,27 +1,24 @@
-Bitcoin Core integration/staging tree
+UnionBitcoin integration/staging tree
 =====================================
 
 [![Build Status](https://travis-ci.org/bitcoin/bitcoin.svg?branch=master)](https://travis-ci.org/bitcoin/bitcoin)
 
-https://bitcoincore.org
+http://u.ub.com
 
-What is Bitcoin?
+What is UnionBitcoin?
 ----------------
 
-Bitcoin is an experimental digital currency that enables instant payments to
-anyone, anywhere in the world. Bitcoin uses peer-to-peer technology to operate
-with no central authority: managing transactions and issuing money are carried
-out collectively by the network. Bitcoin Core is the name of open source
-software which enables the use of this currency.
+The purpose of creation of UnionBitcoin is to establish a smart credit currency system with smart contracts that can widely serve the society, based on the credit of zombie Bitcoins. UnionBitcoin’s credit is 100% based on Bitcoin with addition of credit foundation from several other high quality blockchains, and its gene is 100% inherited from Bitcoin. With the extensibility of smart contracts, the practical application value of UnionBitcoin will be greatly enhanced. UnionBitcoin is a super joint credit carrier with the target of establishing a powerful global network of smart value collaboration under the joint credit of Bitcoin and multiple other digital currencies. It is still Bitcoin, but exceeds Bitcoin.
+
 
 For more information, as well as an immediately useable, binary version of
-the Bitcoin Core software, see https://bitcoin.org/en/download, or read the
+the Bitcoin Core software, see http://u.ub.com/en/download, or read the
 [original whitepaper](https://bitcoincore.org/bitcoin.pdf).
 
 License
 -------
 
-Bitcoin Core is released under the terms of the MIT license. See [COPYING](COPYING) for more
+UnionBitcoin is released under the terms of the MIT license. See [COPYING](COPYING) for more
 information or see https://opensource.org/licenses/MIT.
 
 Development Process
