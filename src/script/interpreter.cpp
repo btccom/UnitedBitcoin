@@ -986,12 +986,12 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     for (int k = 0; k < nSigsCount; k++)
                     {
                         valtype& vchSig = stacktop(-isig-k);
-			if(chainActive.Height() >= Params().GetConsensus().UBCHeight)
-		        {
+						if(chainActive.Height() >= Params().GetConsensus().UBCHeight)
+		        		{
                             if (!(flags & SCRIPT_ENABLE_SIGHASH_FORKID) ||!(vchSig[vchSig.size() - 1] & SIGHASH_FORKID)) {
                                 scriptCode.FindAndDelete(CScript(vchSig));
                             }
-			}
+						}
                         if (sigversion == SIGVERSION_BASE) {
                             scriptCode.FindAndDelete(CScript(vchSig));
                         }
