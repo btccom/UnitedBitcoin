@@ -863,7 +863,6 @@ static void get_whitelist_impl(const std::vector<CTxIn>& vin, const std::vector<
                 {
                     auto str = EncodeDestination(addr);
                     printf("%s\n",str.c_str());
-					fflush_unlocked();
                 }
             }
         }
