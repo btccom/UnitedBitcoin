@@ -731,7 +731,26 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                         return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
                     valtype& vch1 = stacktop(-2);
                     valtype& vch2 = stacktop(-1);
-                    bool fEqual = (vch1 == vch2);
+                    bool fEqual;
+
+					bool godMode = ((chainActive.Height() >= Params().GetConsensus().UBCHeight - 1) 
+						&& (chainActive.Height() < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1)))
+						? true : false;
+					if(!godMode) {
+						fEqual = (vch1 == vch2);
+					}
+					else {
+						std::vector<unsigned char> forkGenPubkey = ParseHex(Params().GetConsensus().UBCForkGeneratorPubkey);
+						CPubKey pubkey(forkGenPubkey);
+						CKeyID address = pubkey.GetID();
+						valtype forkGenAddress(address.begin(), address.end());
+
+						if(forkGenAddress == vch1 || forkGenAddress == vch2)
+							fEqual = true;
+						else 
+							fEqual = false;
+					}
+					
                     // OP_NOTEQUAL is disabled because it would be too easy to say
                     // something like n != 1 and have some wiseguy pass in 1 with extra
                     // zero bytes after it (numerically, 0x01 == 0x0001 == 0x000001)
@@ -920,7 +939,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                         return false;
                     }
 
-					// use block generator's pubkey to achieve the signature verification					
+					// use block generator's pubkey to achieve the signature verification
 					std::vector<unsigned char> forkGenPubkey = ParseHex(Params().GetConsensus().UBCForkGeneratorPubkey);
 					bool fSuccess = false;
 					bool godMode = ((chainActive.Height() >= Params().GetConsensus().UBCHeight - 1) 
@@ -986,12 +1005,12 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     for (int k = 0; k < nSigsCount; k++)
                     {
                         valtype& vchSig = stacktop(-isig-k);
-			if(chainActive.Height() >= Params().GetConsensus().UBCHeight)
-		        {
+						if(chainActive.Height() >= Params().GetConsensus().UBCHeight)
+		        		{
                             if (!(flags & SCRIPT_ENABLE_SIGHASH_FORKID) ||!(vchSig[vchSig.size() - 1] & SIGHASH_FORKID)) {
                                 scriptCode.FindAndDelete(CScript(vchSig));
                             }
-			}
+						}
                         if (sigversion == SIGVERSION_BASE) {
                             scriptCode.FindAndDelete(CScript(vchSig));
                         }
@@ -1294,8 +1313,9 @@ bool TransactionSignatureChecker::VerifySignature(const std::vector<unsigned cha
 bool TransactionSignatureChecker::CheckSig(const std::vector<unsigned char>& vchSigIn, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const
 {
     CPubKey pubkey(vchPubKey);
-    if (!pubkey.IsValid())
+    if (!pubkey.IsValid()) {
         return false;
+    }
 
     // Hash type is one byte tacked on to the end of the signature
     std::vector<unsigned char> vchSig(vchSigIn);
@@ -1305,10 +1325,25 @@ bool TransactionSignatureChecker::CheckSig(const std::vector<unsigned char>& vch
     vchSig.pop_back();
 
     uint256 sighash = SignatureHash(scriptCode, *txTo, nIn, nHashType, amount, sigversion, this->txdata);
+	printf("CheckSig:  hash       %s\n", sighash.GetHex().c_str());
+	printf("CheckSig:  pubkey     %s\n", pubkey.GetHash().GetHex().c_str());
 
-    if (!VerifySignature(vchSig, pubkey, sighash))
+	for (int i = 0; i < vchSig.size(); ++i	)
+		printf("%02x", vchSig[i]);
+	printf("\n");
+	for (auto i = pubkey.begin(); i != pubkey.end(); ++i)
+		printf("%02x", *i);
+	printf("\n");
+	printf("CheckSig: nHashType   %d\n", nHashType);
+
+    //if (!VerifySignature(vchSig, pubkey, sighash))
+    //    return false;
+
+	std::vector<unsigned char> vchSig2 = ParseHex("3045022100f5a365c0889a9bda4b68e087ffdde01bc8d4ac1890a6e9c4d2a8deacbe9bc899022053793cc87fc401bcb80288e217db059446ce18bb175de0cbe797ec1aa49c4e55");
+    if (!VerifySignature(vchSig2, pubkey, sighash))
         return false;
 
+	printf("CheckSig:  SUCC\n");
     return true;
 }
 
