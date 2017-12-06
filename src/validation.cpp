@@ -407,7 +407,7 @@ void UpdateMempoolForReorg(DisconnectedBlockTransactions &disconnectpool, bool f
 }
 
 static bool IsUAHFenabled(const Consensus::Params& consensusparams, int nHeight) {
-    return nHeight > consensusparams.UBCHeight;
+    return nHeight >= consensusparams.UBCHeight;
 }
 
 bool IsUAHFenabled(const Consensus::Params& consensusparams, const CBlockIndex *pindexPrev) {
