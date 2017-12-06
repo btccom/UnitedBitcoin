@@ -3431,23 +3431,6 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
     	if (chainActive.Height() >= (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1))
 			break;
 
-        std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(Params()).CreateNewBlock(coinbaseScript->reserveScript));
-        if (!pblocktemplate.get())
-            throw JSONRPCError(RPC_INTERNAL_ERROR, "Couldn't create new block");
-
-		// initialize coinbase
-        CBlock *pblock = &pblocktemplate->block;
-        {
-            LOCK(cs_main);
-		    unsigned int nHeight = chainActive.Tip()->nHeight+1; // Height first in coinbase required for block.version=2
-		    CMutableTransaction txCoinbase(*pblock->vtx[0]);
-		    txCoinbase.vin[0].scriptSig = (CScript() << nHeight << CScriptNum(nExtraNonce)) + COINBASE_FLAGS;
-		    assert(txCoinbase.vin[0].scriptSig.size() <= 100);
-
-		    pblock->vtx[0] = MakeTransactionRef(std::move(txCoinbase));
-		    pblock->hashMerkleRoot = BlockMerkleRoot(*pblock);
-        }
-
 		// if mempool is not empty, clear it
 		if (mempool.size() != 0)
 			mempool.clear();
@@ -3530,6 +3513,11 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
 			UniValue result = signrawtransaction(jsonreq);
 			result.getObjMap(objMap);
 			hexRawSignTrx = objMap["hex"];
+			UniValue completeSign(UniValue::VBOOL);
+			completeSign = objMap["complete"];
+			
+			if (!completeSign.getBool())
+				throw JSONRPCError(RPC_ABNORMAL_SIGN_TRX, "not completely signed transaction");
 
 		    // parse hex string from parameter
 		    // add to mempool
@@ -3567,6 +3555,23 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
 	    	}			
 			
 		}
+
+        std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(Params()).CreateNewBlock(coinbaseScript->reserveScript));
+        if (!pblocktemplate.get())
+            throw JSONRPCError(RPC_INTERNAL_ERROR, "Couldn't create new block");
+
+		// initialize coinbase
+        CBlock *pblock = &pblocktemplate->block;
+        {
+            LOCK(cs_main);
+		    unsigned int nHeight = chainActive.Tip()->nHeight+1; // Height first in coinbase required for block.version=2
+		    CMutableTransaction txCoinbase(*pblock->vtx[0]);
+		    txCoinbase.vin[0].scriptSig = (CScript() << nHeight << CScriptNum(nExtraNonce)) + COINBASE_FLAGS;
+		    assert(txCoinbase.vin[0].scriptSig.size() <= 100);
+
+		    pblock->vtx[0] = MakeTransactionRef(std::move(txCoinbase));
+        }		
+		pblock->hashMerkleRoot = BlockMerkleRoot(*pblock);
 		
         std::shared_ptr<const CBlock> shared_pblock = std::make_shared<const CBlock>(*pblock);
         if (!ProcessNewBlock(Params(), shared_pblock, true, nullptr))

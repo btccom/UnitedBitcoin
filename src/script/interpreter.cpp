@@ -1239,8 +1239,9 @@ uint256 SignatureHash(const CScript& scriptCode, const CTransaction& txTo, unsig
 {
     assert(nIn < txTo.vin.size());
 
-    if (sigversion == SIGVERSION_WITNESS_V0 || ((nHashType & SIGHASH_FORKID) &&
-        (flags & SCRIPT_ENABLE_SIGHASH_FORKID))) {
+    //if (sigversion == SIGVERSION_WITNESS_V0 || ((nHashType & SIGHASH_FORKID) &&
+    //    (flags & SCRIPT_ENABLE_SIGHASH_FORKID))) {
+	if (sigversion == SIGVERSION_WITNESS_V0 ) {
         uint256 hashPrevouts;
         uint256 hashSequence;
         uint256 hashOutputs;
@@ -1325,25 +1326,9 @@ bool TransactionSignatureChecker::CheckSig(const std::vector<unsigned char>& vch
     vchSig.pop_back();
 
     uint256 sighash = SignatureHash(scriptCode, *txTo, nIn, nHashType, amount, sigversion, this->txdata);
-	printf("CheckSig:  hash       %s\n", sighash.GetHex().c_str());
-	printf("CheckSig:  pubkey     %s\n", pubkey.GetHash().GetHex().c_str());
-
-	for (int i = 0; i < vchSig.size(); ++i	)
-		printf("%02x", vchSig[i]);
-	printf("\n");
-	for (auto i = pubkey.begin(); i != pubkey.end(); ++i)
-		printf("%02x", *i);
-	printf("\n");
-	printf("CheckSig: nHashType   %d\n", nHashType);
-
-    //if (!VerifySignature(vchSig, pubkey, sighash))
-    //    return false;
-
-	std::vector<unsigned char> vchSig2 = ParseHex("3045022100f5a365c0889a9bda4b68e087ffdde01bc8d4ac1890a6e9c4d2a8deacbe9bc899022053793cc87fc401bcb80288e217db059446ce18bb175de0cbe797ec1aa49c4e55");
-    if (!VerifySignature(vchSig2, pubkey, sighash))
+    if (!VerifySignature(vchSig, pubkey, sighash))
         return false;
 
-	printf("CheckSig:  SUCC\n");
     return true;
 }
 

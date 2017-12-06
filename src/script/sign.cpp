@@ -31,17 +31,9 @@ bool TransactionSignatureCreator::CreateSig(std::vector<unsigned char>& vchSig, 
         return false;
 
     uint256 hash = SignatureHash(scriptCode, *txTo, nIn, nHashType, amount, sigversion);
-	printf("CreateSig: hash        %s\n", hash.GetHex().c_str());
-	printf("CreateSig: pubkeystr   %s\n", pubkeystr.c_str());
     if (!key.Sign(hash, vchSig))
         return false;
-	for (int i = 0; i < vchSig.size(); ++i	)
-		printf("%02x", vchSig[i]);
-	printf("\n");
-	for (auto i = pubkey.begin(); i != pubkey.end(); ++i)
-		printf("%02x", *i);
-	printf("\n");
-	printf("CreateSig: nHashType   %d\n", nHashType);
+
     vchSig.push_back((unsigned char)nHashType);
     return true;
 }

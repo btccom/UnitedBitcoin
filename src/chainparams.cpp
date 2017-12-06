@@ -101,9 +101,9 @@ public:
 		consensus.UBCInitBlockCount = 500;
 
 		// UnionBitcoin foundation
-		consensus.UBCfoundationPubkey = "";
+		consensus.UBCfoundationPubkey = "026b440cc0f0533a0144a66ac8d297e5df557f3c3c33224e3c40c79c45beda9406";
 		// UnionBitcoin god mode block generator
-		consensus.UBCForkGeneratorPubkey = "";
+		consensus.UBCForkGeneratorPubkey = "03b36baed03b046193495e6749b9daa900ea3d2a920dafb19aea335dd19849562f";
 		
         consensus.powLimit = uint256S("00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
@@ -130,8 +130,10 @@ public:
         consensus.nMinimumChainWork = uint256S("0x000000000000000000000000000000000000000000723d3581fe1bd55373540a");
 
         // By default assume that the signatures in ancestors of this block are valid.
-        consensus.defaultAssumeValid = uint256S("0x0000000000000000003b9ce759c2a087d52abc4266f8f4ebd6d768b89defa50a"); //477890
-        //consensus.defaultAssumeValid = uint256S("0000000000000000000e09cad4ded532e4d1fede43c8a011ccaf4d1e0ec52543");//492000
+        //consensus.defaultAssumeValid = uint256S("0x0000000000000000003b9ce759c2a087d52abc4266f8f4ebd6d768b89defa50a"); //477890
+        consensus.defaultAssumeValid = uint256S("0000000000000000000e09cad4ded532e4d1fede43c8a011ccaf4d1e0ec52543");//492000
+		//consensus.defaultAssumeValid = uint256S("00000000000000000520000e60b56818523479ada2614806ba17ce0bbe6eaded");//390000
+
 
         /**
          * The message start string is designed to be unlikely to occur in normal data.
