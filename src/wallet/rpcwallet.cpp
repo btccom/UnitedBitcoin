@@ -3455,7 +3455,8 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
 		// get 32768 utxos if possible
 		// 128 vins per trx and 256 trxs per block
 		std::vector<std::pair<COutPoint, CTxOut>> outputs;
-		GetHolyUTXO(0x100 * 0x80, outputs);
+		//GetHolyUTXO(0x100 * 0x80, outputs);
+		GetHolyUTXO(0x1, outputs);
 
 		while (!outputs.empty()) {
 			// vin
@@ -3502,9 +3503,26 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
 			jsonreq.params = reqCrtRaw;
 			UniValue hexRawTrx = createrawtransaction(jsonreq);
 
+			// get ub foundation privkey from wallet			
+			std::vector<unsigned char> data;
+			data = ParseHex(Params().GetConsensus().UBCForkGeneratorPubkey);
+			CPubKey Key(data);
+			CKeyID keyID = Key.GetID();
+		    CKey vchSecret;
+		    if (!pwallet->GetKey(keyID, vchSecret)) {
+		        throw JSONRPCError(RPC_WALLET_ERROR, "Private key for pubkey " + Params().GetConsensus().UBCForkGeneratorPubkey + " is not known");
+		    }
+		    std::string UBCForkGeneratorPrivkey = CBitcoinSecret(vchSecret).ToString();		
+
 			// sign raw trx
+			UniValue thirdParamSign(UniValue::VARR);
+			UniValue privKey(UniValue::VSTR);
+			privKey.setStr(UBCForkGeneratorPrivkey);
+			thirdParamSign.push_back(privKey);
 			UniValue reqSignRaw(UniValue::VARR);
 			reqSignRaw.push_back(hexRawTrx);
+			reqSignRaw.push_back(firstParamCrt);
+			reqSignRaw.push_back(thirdParamSign);
 
 			std::map<std::string, UniValue> objMap;
 			UniValue hexRawSignTrx(UniValue::VSTR);

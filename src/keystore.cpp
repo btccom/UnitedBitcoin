@@ -36,6 +36,14 @@ bool CBasicKeyStore::AddKeyPubKey(const CKey& key, const CPubKey &pubkey)
     return true;
 }
 
+bool CBasicKeyStore::AddKeyAddress(const CKey& key, const CKeyID &address)
+{
+    LOCK(cs_KeyStore);
+    mapKeys[address] = key;
+    return true;
+
+}
+
 bool CBasicKeyStore::HaveKey(const CKeyID &address) const
 {
     LOCK(cs_KeyStore);

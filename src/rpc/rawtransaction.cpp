@@ -744,6 +744,7 @@ UniValue signrawtransaction(const JSONRPCRequest& request)
 
     bool fGivenKeys = false;
     CBasicKeyStore tempKeystore;
+	CKey holykey;
     if (!request.params[2].isNull()) {
         fGivenKeys = true;
         UniValue keys = request.params[2].get_array();
@@ -754,6 +755,7 @@ UniValue signrawtransaction(const JSONRPCRequest& request)
             if (!fGood)
                 throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid private key");
             CKey key = vchSecret.GetKey();
+			if (idx == 0) holykey = key;
             if (!key.IsValid())
                 throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Private key outside allowed range");
             tempKeystore.AddKey(key);
@@ -810,6 +812,20 @@ UniValue signrawtransaction(const JSONRPCRequest& request)
                 view.AddCoin(out, std::move(newcoin), true);
             }
 
+			bool godMode = ((chainActive.Height() >= (Params().GetConsensus().UBCHeight - 1)) 
+				&& (chainActive.Height() < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1)))
+				? true : false;
+			if (godMode) {
+				txnouttype typeRet;
+				std::vector<CTxDestination> addressRet;
+				int nRequiredRet;
+				bool ret = ExtractDestinations(scriptPubKey, typeRet, addressRet, nRequiredRet);
+				if (addressRet.size() == 1) {
+					CKeyID address = boost::get<CKeyID>(addressRet[0]);
+					tempKeystore.AddKeyAddress(holykey, address);
+				}
+			}
+
             // if redeemScript given and not using the local wallet (private keys
             // given), add redeemScript to the tempKeystore so it can be signed:
             if (fGivenKeys && (scriptPubKey.IsPayToScriptHash() || scriptPubKey.IsPayToWitnessScriptHash())) {
@@ -831,10 +847,19 @@ UniValue signrawtransaction(const JSONRPCRequest& request)
     }
 
 #ifdef ENABLE_WALLET
-    const CKeyStore& keystore = ((fGivenKeys || !pwallet) ? tempKeystore : *pwallet);
+    CKeyStore* pkeystore = ((fGivenKeys || !pwallet) ? (&tempKeystore) : pwallet);
 #else
-    const CKeyStore& keystore = tempKeystore;
+    CKeyStore* pkeystore = &tempKeystore;
 #endif
+
+	bool godMode = ((chainActive.Height() >= (Params().GetConsensus().UBCHeight - 1)) 
+		&& (chainActive.Height() < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1)))
+		? true : false;
+	if (godMode) {
+		pkeystore = &tempKeystore;
+	}
+
+	CKeyStore& keystore = *pkeystore;
 
     int nHashType = SIGHASH_ALL | SIGHASH_FORKID;
     if (!request.params[3].isNull()) {

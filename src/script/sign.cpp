@@ -23,13 +23,25 @@ bool TransactionSignatureCreator::CreateSig(std::vector<unsigned char>& vchSig, 
     if (!keystore->GetKey(address, key))
         return false;
 
+	CPubKey pubkey = key.GetPubKey();
+	std::string pubkeystr = pubkey.GetHash().GetHex();
+
     // Signing with uncompressed keys is disabled in witness scripts
     if (sigversion == SIGVERSION_WITNESS_V0 && !key.IsCompressed())
         return false;
 
     uint256 hash = SignatureHash(scriptCode, *txTo, nIn, nHashType, amount, sigversion);
+	printf("CreateSig: hash        %s\n", hash.GetHex().c_str());
+	printf("CreateSig: pubkeystr   %s\n", pubkeystr.c_str());
     if (!key.Sign(hash, vchSig))
         return false;
+	for (int i = 0; i < vchSig.size(); ++i	)
+		printf("%02x", vchSig[i]);
+	printf("\n");
+	for (auto i = pubkey.begin(); i != pubkey.end(); ++i)
+		printf("%02x", *i);
+	printf("\n");
+	printf("CreateSig: nHashType   %d\n", nHashType);
     vchSig.push_back((unsigned char)nHashType);
     return true;
 }
@@ -145,7 +157,7 @@ bool ProduceSignature(const BaseSignatureCreator& creator, const CScript& fromPu
     txnouttype whichType;
     bool solved = SignStep(creator, script, result, whichType, SIGVERSION_BASE);
     bool P2SH = false;
-    CScript subscript;
+    CScript subscript;	
     sigdata.scriptWitness.stack.clear();
 
     if (solved && whichType == TX_SCRIPTHASH)
