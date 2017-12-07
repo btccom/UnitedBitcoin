@@ -1017,13 +1017,15 @@ int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
         COutPoint key;
         Coin coin;
         if (pcursor->GetKey(key) && pcursor->GetValue(coin)) {
-			if (coin.nHeight >= Params().GetConsensus().UBCHeight)
+			if (coin.nHeight >= Params().GetConsensus().UBCHeight) {
 				pcursor->Next();
 				continue;
+			}
 			// ignore amount less than 0.01
-			if (coin.out.nValue <= 1000000)
+			if (coin.out.nValue <= 1000000) {
 				pcursor->Next();
 				continue;
+			}
 			txnouttype typeRet;
 			std::vector<CTxDestination> addressRet;
 			int nRequiredRet;
