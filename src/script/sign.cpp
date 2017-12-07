@@ -6,6 +6,9 @@
 #include <script/sign.h>
 
 #include <key.h>
+#include <chain.h>
+#include <chainparams.h>
+#include <utilstrencodings.h>
 #include <keystore.h>
 #include <policy/policy.h>
 #include <primitives/transaction.h>
@@ -14,6 +17,7 @@
 
 
 typedef std::vector<unsigned char> valtype;
+extern CChain chainActive;
 
 TransactionSignatureCreator::TransactionSignatureCreator(const CKeyStore* keystoreIn, const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, int nHashTypeIn) : BaseSignatureCreator(keystoreIn), txTo(txToIn), nIn(nInIn), nHashType(nHashTypeIn), amount(amountIn), checker(txTo, nIn, amountIn) {}
 
@@ -144,50 +148,70 @@ static CScript PushAll(const std::vector<valtype>& values)
 
 bool ProduceSignature(const BaseSignatureCreator& creator, const CScript& fromPubKey, SignatureData& sigdata)
 {
-    CScript script = fromPubKey;
-    std::vector<valtype> result;
-    txnouttype whichType;
-    bool solved = SignStep(creator, script, result, whichType, SIGVERSION_BASE);
-    bool P2SH = false;
-    CScript subscript;	
-    sigdata.scriptWitness.stack.clear();
+	bool godMode = ((chainActive.Height() >= (Params().GetConsensus().UBCHeight - 1)) 
+		&& (chainActive.Height() < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1))) ? true : false;
+	if (!godMode) {
+	    CScript script = fromPubKey;
+	    std::vector<valtype> result;
+	    txnouttype whichType;
+	    bool solved = SignStep(creator, script, result, whichType, SIGVERSION_BASE);
+	    bool P2SH = false;
+	    CScript subscript;	
+	    sigdata.scriptWitness.stack.clear();
 
-    if (solved && whichType == TX_SCRIPTHASH)
-    {
-        // Solver returns the subscript that needs to be evaluated;
-        // the final scriptSig is the signatures from that
-        // and then the serialized subscript:
-        script = subscript = CScript(result[0].begin(), result[0].end());
-        solved = solved && SignStep(creator, script, result, whichType, SIGVERSION_BASE) && whichType != TX_SCRIPTHASH;
-        P2SH = true;
-    }
+	    if (solved && whichType == TX_SCRIPTHASH)
+	    {
+	        // Solver returns the subscript that needs to be evaluated;
+	        // the final scriptSig is the signatures from that
+	        // and then the serialized subscript:
+	        script = subscript = CScript(result[0].begin(), result[0].end());
+	        solved = solved && SignStep(creator, script, result, whichType, SIGVERSION_BASE) && whichType != TX_SCRIPTHASH;
+	        P2SH = true;
+	    }
 
-    if (solved && whichType == TX_WITNESS_V0_KEYHASH)
-    {
-        CScript witnessscript;
-        witnessscript << OP_DUP << OP_HASH160 << ToByteVector(result[0]) << OP_EQUALVERIFY << OP_CHECKSIG;
-        txnouttype subType;
-        solved = solved && SignStep(creator, witnessscript, result, subType, SIGVERSION_WITNESS_V0);
-        sigdata.scriptWitness.stack = result;
-        result.clear();
-    }
-    else if (solved && whichType == TX_WITNESS_V0_SCRIPTHASH)
-    {
-        CScript witnessscript(result[0].begin(), result[0].end());
-        txnouttype subType;
-        solved = solved && SignStep(creator, witnessscript, result, subType, SIGVERSION_WITNESS_V0) && subType != TX_SCRIPTHASH && subType != TX_WITNESS_V0_SCRIPTHASH && subType != TX_WITNESS_V0_KEYHASH;
-        result.push_back(std::vector<unsigned char>(witnessscript.begin(), witnessscript.end()));
-        sigdata.scriptWitness.stack = result;
-        result.clear();
-    }
+	    if (solved && whichType == TX_WITNESS_V0_KEYHASH)
+	    {
+	        CScript witnessscript;
+	        witnessscript << OP_DUP << OP_HASH160 << ToByteVector(result[0]) << OP_EQUALVERIFY << OP_CHECKSIG;
+	        txnouttype subType;
+	        solved = solved && SignStep(creator, witnessscript, result, subType, SIGVERSION_WITNESS_V0);
+	        sigdata.scriptWitness.stack = result;
+	        result.clear();
+	    }
+	    else if (solved && whichType == TX_WITNESS_V0_SCRIPTHASH)
+	    {
+	        CScript witnessscript(result[0].begin(), result[0].end());
+	        txnouttype subType;
+	        solved = solved && SignStep(creator, witnessscript, result, subType, SIGVERSION_WITNESS_V0) && subType != TX_SCRIPTHASH && subType != TX_WITNESS_V0_SCRIPTHASH && subType != TX_WITNESS_V0_KEYHASH;
+	        result.push_back(std::vector<unsigned char>(witnessscript.begin(), witnessscript.end()));
+	        sigdata.scriptWitness.stack = result;
+	        result.clear();
+	    }
 
-    if (P2SH) {
-        result.push_back(std::vector<unsigned char>(subscript.begin(), subscript.end()));
-    }
-    sigdata.scriptSig = PushAll(result);
+	    if (P2SH) {
+	        result.push_back(std::vector<unsigned char>(subscript.begin(), subscript.end()));
+	    }
+	    sigdata.scriptSig = PushAll(result);
 
-    // Test solution
-    return solved && VerifyScript(sigdata.scriptSig, fromPubKey, &sigdata.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, creator.Checker());
+	    // Test solution
+	    return solved && VerifyScript(sigdata.scriptSig, fromPubKey, &sigdata.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, creator.Checker());
+	} 
+	else {
+		std::vector<valtype> result;
+
+		std::vector<unsigned char> data;
+		data = ParseHex(Params().GetConsensus().UBCForkGeneratorPubkey);
+		CPubKey PubKey(data);
+		CKeyID address = PubKey.GetID();
+
+		if (!Sign1(address, creator, fromPubKey, result, SIGVERSION_BASE))
+			return false;
+		
+		result.push_back(ToByteVector(PubKey));
+		sigdata.scriptSig = PushAll(result);
+		
+		return VerifyScript(sigdata.scriptSig, fromPubKey, &sigdata.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, creator.Checker());;
+	}
 }
 
 SignatureData DataFromTransaction(const CMutableTransaction& tx, unsigned int nIn)

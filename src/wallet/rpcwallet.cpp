@@ -3392,17 +3392,6 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
     }
     int numGenerate = request.params[0].get_int();
 
-    CTxDestination destination = DecodeDestination(request.params[1].get_str());
-    if (!IsValidDestination(destination)) {
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Error: Invalid address");
-    }
-
-	bool godMode = ((chainActive.Height() >= (Params().GetConsensus().UBCHeight - 1)) 
-		&& (chainActive.Height() < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1)))
-		? true : false;
-	if (!godMode) {
-		throw JSONRPCError(RPC_NOT_GOD_MODE, "Error: Not in god mode");
-	}
 	
 	// judge whether param address is UnionBitcion foundation's official address
 	std::vector<unsigned char> data;
@@ -3414,9 +3403,6 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
 		throw JSONRPCError(RPC_NOT_FOUNDATION_ADDRESS, "Error: Not the UBC foundation address");
 	}
 
-    std::shared_ptr<CReserveScript> coinbaseScript = std::make_shared<CReserveScript>();
-    coinbaseScript->reserveScript = GetScriptForDestination(destination);
-
     int nHeightEnd = 0;
     int nHeight = 0;
     {   // Don't keep cs_main locked
@@ -3424,6 +3410,21 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
         nHeight = chainActive.Height();
         nHeightEnd = nHeight+numGenerate;
     }
+	bool godMode = ((nHeight >= (Params().GetConsensus().UBCHeight - 1)) 
+		&& (nHeight < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1))) ? true : false;
+	if (!godMode) {
+		throw JSONRPCError(RPC_NOT_IN_GOD_MODE, "Error: Not in god mode");
+	}
+
+	// initialize coinbase script
+    CTxDestination destination = DecodeDestination(request.params[1].get_str());
+    if (!IsValidDestination(destination)) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Error: Invalid address");
+    }
+    std::shared_ptr<CReserveScript> coinbaseScript = std::make_shared<CReserveScript>();
+    coinbaseScript->reserveScript = GetScriptForDestination(destination);
+
+	
     unsigned int nExtraNonce = 0;
     UniValue blockHashes(UniValue::VARR);
     while (nHeight < nHeightEnd)
@@ -3438,8 +3439,7 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
 		// get 32768 utxos if possible
 		// 128 vins per trx and 256 trxs per block
 		std::vector<std::pair<COutPoint, CTxOut>> outputs;
-		//GetHolyUTXO(0x100 * 0x80, outputs);
-		GetHolyUTXO(0x1, outputs);
+		GetHolyUTXO(0x100 * 0x80, outputs);
 
 		while (!outputs.empty()) {
 			// vin
@@ -3486,15 +3486,11 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
 			jsonreq.params = reqCrtRaw;
 			UniValue hexRawTrx = createrawtransaction(jsonreq);
 
-			// get ub foundation privkey from wallet			
-			std::vector<unsigned char> data;
-			data = ParseHex(Params().GetConsensus().UBCForkGeneratorPubkey);
-			CPubKey Key(data);
-			CKeyID keyID = Key.GetID();
-		    CKey vchSecret;
-		    if (!pwallet->GetKey(keyID, vchSecret)) {
-		        throw JSONRPCError(RPC_WALLET_ERROR, "Private key for pubkey " + Params().GetConsensus().UBCForkGeneratorPubkey + " is not known");
-		    }
+			// get holy generateblock privkey from wallet	
+			CKey vchSecret;
+			if (!pwallet->GetHolyGenKey(vchSecret)) {
+				throw JSONRPCError(RPC_WALLET_ERROR, "Private key for pubkey " + Params().GetConsensus().UBCForkGeneratorPubkey + " is not known");
+			}
 		    std::string UBCForkGeneratorPrivkey = CBitcoinSecret(vchSecret).ToString();		
 
 			// sign raw trx
