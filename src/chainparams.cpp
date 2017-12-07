@@ -97,7 +97,7 @@ public:
         consensus.antiReplayOpReturnCommitment = GetAntiReplayCommitment();
 
         // hard fork
-        consensus.UBCHeight = 492000;
+        consensus.UBCHeight = 498777 ;
 		consensus.UBCInitBlockCount = 500;
 
 		// UnionBitcoin foundation

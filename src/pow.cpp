@@ -20,11 +20,17 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
     assert(pindexLast != nullptr);
     unsigned int nProofOfWorkLimit = UintToArith256(params.powLimit).GetCompact();
 
-	if (((pindexLast->nHeight+1) >= Params().GetConsensus().UBCHeight) 
-		&& ((pindexLast->nHeight+1) < Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount)) {
-		int genesisnBits = chainActive[0]->nBits;
-		return genesisnBits;
-	}
+    if ((pindexLast->nHeight+1)== Params().GetConsensus().UBCHeight)  
+    {
+        const arith_uint256 bnPowLimit = UintToArith256(params.powLimit);
+        arith_uint256 bnNew;
+        bnNew.SetCompact(pindexLast->nBits);
+        bnNew *= 100;
+        if (bnNew > bnPowLimit)
+        bnNew = bnPowLimit;
+        
+        return bnNew.GetCompact();
+    }
 
     // Only change once per difficulty adjustment interval
     if ((pindexLast->nHeight+1) % params.DifficultyAdjustmentInterval() != 0)
