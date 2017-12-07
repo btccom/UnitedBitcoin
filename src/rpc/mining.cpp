@@ -116,10 +116,20 @@ UniValue generateBlocks(std::shared_ptr<CReserveScript> coinbaseScript, int nGen
         nHeight = chainActive.Height();
         nHeightEnd = nHeight+nGenerate;
     }
+
+	bool godMode = ((nHeight >= (Params().GetConsensus().UBCHeight - 1)) 
+		&& (nHeight < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1))) ? true : false;
+	if (godMode) {
+		throw JSONRPCError(RPC_IN_GOD_MODE, "Error: ordinary generateBlocks can not be used in god mode");
+	}
+
     unsigned int nExtraNonce = 0;
     UniValue blockHashes(UniValue::VARR);
     while (nHeight < nHeightEnd)
     {
+    	if (nHeight >= (Params().GetConsensus().UBCHeight - 1))
+			break;
+		
         std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(Params()).CreateNewBlock(coinbaseScript->reserveScript));
         if (!pblocktemplate.get())
             throw JSONRPCError(RPC_INTERNAL_ERROR, "Couldn't create new block");

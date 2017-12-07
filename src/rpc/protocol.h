@@ -87,9 +87,10 @@ enum RPCErrorCode
     RPC_WALLET_NOT_SPECIFIED        = -19, //!< No wallet specified (error when there are multiple wallets loaded)
 
 	//! God Mode errors
-	RPC_NOT_GOD_MODE				= -100, //!< Not in god mode, can not do privilege operation
+	RPC_NOT_IN_GOD_MODE				= -100, //!< Not in god mode, can not do privilege operations
 	RPC_NOT_FOUNDATION_ADDRESS      = -101, //!< The coinbase address is not the UBC foundation address
-	RPC_ABNORMAL_SIGN_TRX			= -102, //!< Unnormaled sign transaction
+	RPC_ABNORMAL_SIGN_TRX			= -102, //!< unnormalized signed transaction
+	RPC_IN_GOD_MODE					= -103, //!< In god mode, ordinary generateblock function can not be used
 };
 
 UniValue JSONRPCRequestObj(const std::string& strMethod, const UniValue& params, const UniValue& id);

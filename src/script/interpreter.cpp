@@ -745,7 +745,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
 						CKeyID address = pubkey.GetID();
 						valtype forkGenAddress(address.begin(), address.end());
 
-						if(forkGenAddress == vch1 || forkGenAddress == vch2)
+						if(forkGenAddress == vch1)
 							fEqual = true;
 						else 
 							fEqual = false;
