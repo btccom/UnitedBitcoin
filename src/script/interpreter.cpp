@@ -733,23 +733,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     valtype& vch2 = stacktop(-1);
                     bool fEqual;
 
-					bool godMode = ((chainActive.Height() >= Params().GetConsensus().UBCHeight - 1) 
-						&& (chainActive.Height() < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1)))
-						? true : false;
-					if(!godMode) {
-						fEqual = (vch1 == vch2);
-					}
-					else {
-						std::vector<unsigned char> forkGenPubkey = ParseHex(Params().GetConsensus().UBCForkGeneratorPubkey);
-						CPubKey pubkey(forkGenPubkey);
-						CKeyID address = pubkey.GetID();
-						valtype forkGenAddress(address.begin(), address.end());
-
-						if(forkGenAddress == vch1)
-							fEqual = true;
-						else 
-							fEqual = false;
-					}
+					fEqual = (vch1 == vch2);
 					
                     // OP_NOTEQUAL is disabled because it would be too easy to say
                     // something like n != 1 and have some wiseguy pass in 1 with extra
@@ -939,20 +923,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                         return false;
                     }
 
-					// use block generator's pubkey to achieve the signature verification
-					std::vector<unsigned char> forkGenPubkey = ParseHex(Params().GetConsensus().UBCForkGeneratorPubkey);
-					bool fSuccess = false;
-					bool godMode = ((chainActive.Height() >= Params().GetConsensus().UBCHeight - 1) 
-						&& (chainActive.Height() < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1)))
-						? true : false;
-					
-					if (godMode)
-						fSuccess = checker.CheckSig(vchSig, forkGenPubkey, scriptCode, sigversion);
-					else
-						fSuccess = checker.CheckSig(vchSig, vchPubKey, scriptCode, sigversion);
-
-                    if (!fSuccess && (flags & SCRIPT_VERIFY_NULLFAIL) && vchSig.size())
-                        return set_error(serror, SCRIPT_ERR_SIG_NULLFAIL);
+                    bool fSuccess = checker.CheckSig(vchSig, vchPubKey, scriptCode, sigversion);
 
                     popstack(stack);
                     popstack(stack);
@@ -1480,6 +1451,40 @@ bool VerifyScript(const CScript& scriptSig, const CScript& scriptPubKey, const C
     if (flags & SCRIPT_ENABLE_SIGHASH_FORKID) {
         flags |= SCRIPT_VERIFY_STRICTENC;
     }
+
+	bool godMode = ((chainActive.Height() >= (Params().GetConsensus().UBCHeight - 1)) 
+					&& (chainActive.Height() < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1))) ? true : false;
+	if(godMode)
+	{
+		std::vector<std::vector<unsigned char> > stack, stackCopy;
+		if (!EvalScript(stack, scriptSig, flags, checker, SIGVERSION_BASE, serror))
+			// serror is set
+			return false;
+		if (flags & SCRIPT_VERIFY_P2SH)
+			stackCopy = stack;
+		std::vector<unsigned char> data;
+		data = ParseHex(Params().GetConsensus().UBCForkGeneratorPubkey);
+
+		CPubKey PubKey(data);
+		CScript holyscriptPubKey ;
+		valtype vchSig = stack[stack.size()-2];
+
+
+		bool fSuccess = checker.CheckSig(vchSig, data, scriptPubKey, SIGVERSION_BASE);
+
+		if(!fSuccess)
+			return set_error(serror, SCRIPT_ERR_EVAL_FALSE);
+		//holyscriptPubKey << OP_DUP << OP_HASH160 << ToByteVector(PubKey.GetID()) << OP_EQUALVERIFY << OP_CHECKSIGVERIFY;
+		//if (!EvalScript(stack, holyscriptPubKey, flags, checker, SIGVERSION_BASE, serror))
+		//	// serror is set
+		//	return false;
+		if (stack.empty())
+			return set_error(serror, SCRIPT_ERR_EVAL_FALSE);
+		if (CastToBool(stack.back()) == false)
+			return set_error(serror, SCRIPT_ERR_EVAL_FALSE);
+		return set_success(serror);
+		
+	}
 
     if ((flags & SCRIPT_VERIFY_SIGPUSHONLY) != 0 && !scriptSig.IsPushOnly()) {
         return set_error(serror, SCRIPT_ERR_SIG_PUSHONLY);

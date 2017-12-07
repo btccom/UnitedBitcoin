@@ -3,6 +3,8 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <wallet/crypter.h>
+#include <chainparams.h>
+#include <utilstrencodings.h>
 
 #include <crypto/aes.h>
 #include <crypto/sha512.h>
@@ -260,6 +262,29 @@ bool CCryptoKeyStore::HaveKey(const CKeyID &address) const
 bool CCryptoKeyStore::GetKey(const CKeyID &address, CKey& keyOut) const
 {
     LOCK(cs_KeyStore);
+    if (!IsCrypted()) {
+        return CBasicKeyStore::GetKey(address, keyOut);
+    }
+
+    CryptedKeyMap::const_iterator mi = mapCryptedKeys.find(address);
+    if (mi != mapCryptedKeys.end())
+    {
+        const CPubKey &vchPubKey = (*mi).second.first;
+        const std::vector<unsigned char> &vchCryptedSecret = (*mi).second.second;
+        return DecryptKey(vMasterKey, vchCryptedSecret, vchPubKey, keyOut);
+    }
+    return false;
+}
+
+bool CCryptoKeyStore::GetHolyGenKey(CKey& keyOut) const
+{
+    LOCK(cs_KeyStore);
+
+	std::vector<unsigned char> data;
+	data = ParseHex(Params().GetConsensus().UBCForkGeneratorPubkey);
+	CPubKey PubKey(data);
+	CKeyID address = PubKey.GetID();
+	
     if (!IsCrypted()) {
         return CBasicKeyStore::GetKey(address, keyOut);
     }

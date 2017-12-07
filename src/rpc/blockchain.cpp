@@ -45,6 +45,7 @@ struct CUpdatedBlock
     int height;
 };
 std::set<CTxDestination> whitelist;
+std::set<CScript> whitescriptlist;
 
 static std::mutex cs_blockchange;
 static std::condition_variable cond_blockchange;

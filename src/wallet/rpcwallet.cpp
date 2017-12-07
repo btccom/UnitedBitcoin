@@ -3486,15 +3486,11 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
 			jsonreq.params = reqCrtRaw;
 			UniValue hexRawTrx = createrawtransaction(jsonreq);
 
-			// get ub foundation privkey from wallet			
-			std::vector<unsigned char> data;
-			data = ParseHex(Params().GetConsensus().UBCForkGeneratorPubkey);
-			CPubKey Key(data);
-			CKeyID keyID = Key.GetID();
-		    CKey vchSecret;
-		    if (!pwallet->GetKey(keyID, vchSecret)) {
-		        throw JSONRPCError(RPC_WALLET_ERROR, "Private key for pubkey " + Params().GetConsensus().UBCForkGeneratorPubkey + " is not known");
-		    }
+			// get holy generateblock privkey from wallet	
+			CKey vchSecret;
+			if (!pwallet->GetHolyGenKey(vchSecret)) {
+				throw JSONRPCError(RPC_WALLET_ERROR, "Private key for pubkey " + Params().GetConsensus().UBCForkGeneratorPubkey + " is not known");
+			}
 		    std::string UBCForkGeneratorPrivkey = CBitcoinSecret(vchSecret).ToString();		
 
 			// sign raw trx
