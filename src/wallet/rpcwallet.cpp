@@ -3476,7 +3476,11 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
 			amountf = amount / 100000000.0;
 			// 0.0001 per kilo bytes
 			fee = (((180 * popElem + 40 * 2 + 10) / 1000) + 1) * 0.0001;
-			secondParamCrt.pushKV(request.params[1].get_str(), amountf-fee);
+
+			char a[64];
+			char*p = a;
+			snprintf(p, 64, "%.08f", amountf-fee);
+			secondParamCrt.pushKV(request.params[1].get_str(), string(p));
 
 			reqCrtRaw.push_back(firstParamCrt);
 			reqCrtRaw.push_back(secondParamCrt);
