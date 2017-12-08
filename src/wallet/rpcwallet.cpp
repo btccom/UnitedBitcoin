@@ -3529,6 +3529,9 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
 
 		    CAmount nMaxRawTxFee = maxTxFee;
 
+			{ // cs_main scope
+				LOCK(cs_main);
+
 		    CCoinsViewCache &view = *pcoinsTip;
 		    bool fHaveChain = false;
 		    for (size_t o = 0; !fHaveChain && o < tx->vout.size(); o++) {
@@ -3550,8 +3553,9 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
 		                throw JSONRPCError(RPC_TRANSACTION_ERROR, state.GetRejectReason());
 		            }
 		        }
-	    	} else if (fHaveChain) {
-	        	throw JSONRPCError(RPC_TRANSACTION_ALREADY_IN_CHAIN, "transaction already in block chain");
+		    	} else if (fHaveChain) {
+		        	throw JSONRPCError(RPC_TRANSACTION_ALREADY_IN_CHAIN, "transaction already in block chain");
+		    	}
 	    	}			
 			
 		}
@@ -3577,6 +3581,7 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
         if (!ProcessNewBlock(Params(), shared_pblock, true, nullptr))
             throw JSONRPCError(RPC_INTERNAL_ERROR, "ProcessNewBlock, block not accepted");
         ++nHeight;
+		PruneAndFlush();
         blockHashes.push_back(pblock->GetHash().GetHex());
 
     }
