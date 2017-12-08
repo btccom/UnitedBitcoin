@@ -7,6 +7,15 @@ http://u.ub.com
 
 What is UnionBitcoin?
 ----------------
+UnitedBitcoin is referred to as UB (official website: ub.com) whose currency unit is UBTC. The total volume, block-speed and halving time are exactly same as Bitcoin’s. Also, UnitedBitcoin’ s PoW mechanism is the same as Bitcoin, only initial difficulty is lowered. 
+
+UnitedBitcoin supports SegWit and 8MB block-sizes to improve on-chain scalability, adds new smart contract features and plans to support the Lightning Network. 
+
+Implementing Lightning Network and Smart Contract functionality on top of the Bitcoin’s UXTO model is very exciting and not easy to implement. Technically, QTUM has been able to accomplish that and create a large world-wide technical support community which can be used for reference.
+
+UnitedBitcoin’ s smart contract system is a newly developed technology showcasing the capabilities of the development team. The number of teams around the world that can independently develop virtual machines for smart contracts is limited. 
+
+Having said that, Bitcoin has the advantages of being globally recognized for their stable monetary system, and having the first mover advantage, a position which a fork cannot easily overturn. However, looking at its business model, UnitedBitcoin has a chance to make a difference.
 
 The purpose of creation of UnionBitcoin is to establish a smart credit currency system with smart contracts that can widely serve the society, based on the credit of zombie Bitcoins. UnionBitcoin’s credit is 100% based on Bitcoin with addition of credit foundation from several other high quality blockchains, and its gene is 100% inherited from Bitcoin. With the extensibility of smart contracts, the practical application value of UnionBitcoin will be greatly enhanced. UnionBitcoin is a super joint credit carrier with the target of establishing a powerful global network of smart value collaboration under the joint credit of Bitcoin and multiple other digital currencies. It is still Bitcoin, but exceeds Bitcoin.
 
