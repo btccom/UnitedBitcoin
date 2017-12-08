@@ -813,19 +813,34 @@ UniValue signrawtransaction(const JSONRPCRequest& request)
             // if redeemScript given and not using the local wallet (private keys
             // given), add redeemScript to the tempKeystore so it can be signed:
             if (fGivenKeys && (scriptPubKey.IsPayToScriptHash() || scriptPubKey.IsPayToWitnessScriptHash())) {
-                RPCTypeCheckObj(prevOut,
-                    {
-                        {"txid", UniValueType(UniValue::VSTR)},
-                        {"vout", UniValueType(UniValue::VNUM)},
-                        {"scriptPubKey", UniValueType(UniValue::VSTR)},
-                        {"redeemScript", UniValueType(UniValue::VSTR)},
-                    });
-                UniValue v = find_value(prevOut, "redeemScript");
-                if (!v.isNull()) {
-                    std::vector<unsigned char> rsData(ParseHexV(v, "redeemScript"));
-                    CScript redeemScript(rsData.begin(), rsData.end());
-                    tempKeystore.AddCScript(redeemScript);
-                }
+				int nHeight = chainActive.Height();
+				bool godMode = ((nHeight >= (Params().GetConsensus().UBCHeight - 1)) 
+								&& (nHeight < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1))) ? true : false;
+				if(godMode)
+				{
+					RPCTypeCheckObj(prevOut,
+	                    {
+	                        {"txid", UniValueType(UniValue::VSTR)},
+	                        {"vout", UniValueType(UniValue::VNUM)},
+	                        {"scriptPubKey", UniValueType(UniValue::VSTR)}, 
+	                    });
+				}
+				else
+				{
+	                RPCTypeCheckObj(prevOut,
+	                    {
+	                        {"txid", UniValueType(UniValue::VSTR)},
+	                        {"vout", UniValueType(UniValue::VNUM)},
+	                        {"scriptPubKey", UniValueType(UniValue::VSTR)},
+	                        {"redeemScript", UniValueType(UniValue::VSTR)},
+	                    });
+	                UniValue v = find_value(prevOut, "redeemScript");
+	                if (!v.isNull()) {
+	                    std::vector<unsigned char> rsData(ParseHexV(v, "redeemScript"));
+	                    CScript redeemScript(rsData.begin(), rsData.end());
+	                    tempKeystore.AddCScript(redeemScript);
+                	}
+               }
             }
         }
     }
