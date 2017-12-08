@@ -1050,8 +1050,8 @@ int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
 						++index;
 						if (index >= count) break;
 					}
-					// judge if the lock script owner is belong to block UBCForkGenerator
-					CKeyID address = boost::get<CKeyID>(addressRet[0]);
+					// judge if the lock script is belong to block UBCForkGenerator
+					CKeyID address = boost::get<CKeyID>(&addressRet[0]);
 					if (KeyID == address) {
 						pcursor->Next();
 						continue;
