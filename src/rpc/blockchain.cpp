@@ -1011,6 +1011,13 @@ int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
 	if ((chainHeight < Params().GetConsensus().UBCHeight - 1) 
 		|| (chainHeight >= (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1)))
 		return 0;
+
+	// generator's address
+	std::vector<unsigned char> data;
+	data = ParseHex(Params().GetConsensus().UBCForkGeneratorPubkey);
+	CPubKey PubKey(data);
+	CKeyID KeyID = PubKey.GetID();
+	int nSpendHeight = chainActive.Height() + 1;
 	
     while (pcursor->Valid()) {
         boost::this_thread::interruption_point();
@@ -1026,6 +1033,11 @@ int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
 				pcursor->Next();
 				continue;
 			}
+			// ignore not mature coin
+			if (coin.IsCoinBase() && nSpendHeight - coin.nHeight < COINBASE_MATURITY) {
+				pcursor->Next();
+				continue;
+			}	
 			txnouttype typeRet;
 			std::vector<CTxDestination> addressRet;
 			int nRequiredRet;
@@ -1037,6 +1049,12 @@ int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
 						outputs.emplace_back(std::make_pair(key, coin.out));
 						++index;
 						if (index >= count) break;
+					}
+					// judge if the lock script owner is belong to block UBCForkGenerator
+					CKeyID address = boost::get<CKeyID>(addressRet[0]);
+					if (KeyID == address) {
+						pcursor->Next();
+						continue;
 					}
 				}
 				else if (addressRet.size() > 1) {
