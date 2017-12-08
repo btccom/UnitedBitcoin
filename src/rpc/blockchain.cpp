@@ -1042,8 +1042,9 @@ int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
 			std::vector<CTxDestination> addressRet;
 			int nRequiredRet;
 			bool ret = ExtractDestinations(coin.out.scriptPubKey, typeRet, addressRet, nRequiredRet);
-			if (ret) {
+			if (ret) {				
 				if (addressRet.size() == 1){
+					std::string addrStr = EncodeDestination(addressRet[0])
 					// judge if the lock script owner is in the whitelist
 					if (whitelist.find(addressRet[0]) == whitelist.end()) {
 						outputs.emplace_back(std::make_pair(key, coin.out));
@@ -1051,8 +1052,8 @@ int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
 						if (index >= count) break;
 					}
 					// judge if the lock script is belong to block UBCForkGenerator
-					CKeyID address = boost::get<CKeyID>(&addressRet[0]);
-					if (KeyID == address) {
+					std::string KeyIDStr = EncodeDestination(KeyID);
+					if (KeyIDStr == addrStr) {
 						pcursor->Next();
 						continue;
 					}
