@@ -910,14 +910,15 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
 		    {
                         if (!(flags & SCRIPT_ENABLE_SIGHASH_FORKID) ||
                             !(vchSig[vchSig.size() - 1] & SIGHASH_FORKID)) {
-                            scriptCode.FindAndDelete(CScript(vchSig));
+                            //scriptCode.FindAndDelete(CScript(vchSig));
+                             return set_error(serror, SCRIPT_ERR_CHECKSIGVERIFY);
                         }
                     }
 
 		    if(chainActive.Height() < Params().GetConsensus().UBCHeight)
 		    {
                         if (vchSig[vchSig.size() - 1] & SIGHASH_FORKID) {
-                            scriptCode.FindAndDelete(CScript(vchSig));
+                            return set_error(serror, SCRIPT_ERR_CHECKSIGVERIFY);
                         }
                     }
                     // Drop the signature in pre-segwit scripts but not segwit scripts
@@ -986,7 +987,8 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
 			if(chainActive.Height() >= Params().GetConsensus().UBCHeight)
 		        {
                             if (!(flags & SCRIPT_ENABLE_SIGHASH_FORKID) ||!(vchSig[vchSig.size() - 1] & SIGHASH_FORKID)) {
-                                scriptCode.FindAndDelete(CScript(vchSig));
+                                //scriptCode.FindAndDelete(CScript(vchSig));
+                                 return set_error(serror, SCRIPT_ERR_CHECKSIGVERIFY);
                             }
 						}
                         if (sigversion == SIGVERSION_BASE) {
@@ -995,7 +997,8 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
 			if(chainActive.Height() < Params().GetConsensus().UBCHeight)
     		        {
                             if (vchSig[vchSig.size() - 1] & SIGHASH_FORKID) {
-                                scriptCode.FindAndDelete(CScript(vchSig));
+                                //scriptCode.FindAndDelete(CScript(vchSig));
+                                 return set_error(serror, SCRIPT_ERR_CHECKSIGVERIFY);
                             }
                         }
                     }
