@@ -907,10 +907,18 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     CScript scriptCode(pbegincodehash, pend);
                     // Drop the signature in scripts when SIGHASH_FORKID is not used.
                     if(chainActive.Height() >= Params().GetConsensus().UBCHeight)
-		    		{
+		    {
                         if (!(flags & SCRIPT_ENABLE_SIGHASH_FORKID) ||
                             !(vchSig[vchSig.size() - 1] & SIGHASH_FORKID)) {
-                            scriptCode.FindAndDelete(CScript(vchSig));
+                            //scriptCode.FindAndDelete(CScript(vchSig));
+                             return set_error(serror, SCRIPT_ERR_CHECKSIGVERIFY);
+                        }
+                    }
+
+		    if(chainActive.Height() < Params().GetConsensus().UBCHeight)
+		    {
+                        if (vchSig[vchSig.size() - 1] & SIGHASH_FORKID) {
+                            return set_error(serror, SCRIPT_ERR_CHECKSIGVERIFY);
                         }
                     }
                     // Drop the signature in pre-segwit scripts but not segwit scripts
@@ -976,14 +984,22 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     for (int k = 0; k < nSigsCount; k++)
                     {
                         valtype& vchSig = stacktop(-isig-k);
-						if(chainActive.Height() >= Params().GetConsensus().UBCHeight)
-		        		{
+			if(chainActive.Height() >= Params().GetConsensus().UBCHeight)
+		        {
                             if (!(flags & SCRIPT_ENABLE_SIGHASH_FORKID) ||!(vchSig[vchSig.size() - 1] & SIGHASH_FORKID)) {
-                                scriptCode.FindAndDelete(CScript(vchSig));
+                                //scriptCode.FindAndDelete(CScript(vchSig));
+                                 return set_error(serror, SCRIPT_ERR_CHECKSIGVERIFY);
                             }
 						}
                         if (sigversion == SIGVERSION_BASE) {
                             scriptCode.FindAndDelete(CScript(vchSig));
+                        }
+			if(chainActive.Height() < Params().GetConsensus().UBCHeight)
+    		        {
+                            if (vchSig[vchSig.size() - 1] & SIGHASH_FORKID) {
+                                //scriptCode.FindAndDelete(CScript(vchSig));
+                                 return set_error(serror, SCRIPT_ERR_CHECKSIGVERIFY);
+                            }
                         }
                     }
 
