@@ -3,7 +3,7 @@ UnitedBitcoin
 
 [![Build Status](https://travis-ci.org/bitcoin/bitcoin.svg?branch=master)](https://travis-ci.org/bitcoin/bitcoin)
 
-http://u.ub.com
+http://www.ub.com
 
 What is UnitedBitcoin?
 ----------------
