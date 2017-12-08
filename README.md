@@ -5,7 +5,7 @@ UnitedBitcoin
 
 http://u.ub.com
 
-What is UnionBitcoin?
+What is UnitedBitcoin?
 ----------------
 UnitedBitcoin is referred to as UB (official website: ub.com) whose currency unit is UBTC. The total volume, block-speed and halving time are exactly same as Bitcoin’s. Also, UnitedBitcoin’ s PoW mechanism is the same as Bitcoin, only initial difficulty is lowered. 
 
@@ -17,12 +17,6 @@ UnitedBitcoin’ s smart contract system is a newly developed technology showcas
 
 Having said that, Bitcoin has the advantages of being globally recognized for their stable monetary system, and having the first mover advantage, a position which a fork cannot easily overturn. However, looking at its business model, UnitedBitcoin has a chance to make a difference.
 
-The purpose of creation of UnionBitcoin is to establish a smart credit currency system with smart contracts that can widely serve the society, based on the credit of zombie Bitcoins. UnionBitcoin’s credit is 100% based on Bitcoin with addition of credit foundation from several other high quality blockchains, and its gene is 100% inherited from Bitcoin. With the extensibility of smart contracts, the practical application value of UnionBitcoin will be greatly enhanced. UnionBitcoin is a super joint credit carrier with the target of establishing a powerful global network of smart value collaboration under the joint credit of Bitcoin and multiple other digital currencies. It is still Bitcoin, but exceeds Bitcoin.
-
-
-For more information, as well as an immediately useable, binary version of
-the Bitcoin Core software, see http://u.ub.com/en/download, or read the
-[original whitepaper](https://bitcoincore.org/bitcoin.pdf).
 
 License
 -------
