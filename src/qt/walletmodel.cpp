@@ -234,7 +234,7 @@ WalletModel::SendCoinsReturn WalletModel::prepareTransaction(WalletModelTransact
             total += subtotal;
         }
         else
-        {   // User-entered UB address / amount:
+        {   // User-entered UBTC address / amount:
             if(!validateAddress(rcp.address))
             {
                 return InvalidAddress;
