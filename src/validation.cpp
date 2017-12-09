@@ -64,7 +64,6 @@
 CCriticalSection cs_main;
 
 BlockMap mapBlockIndex;
-extern CChain chainActive;
 CBlockIndex *pindexBestHeader = nullptr;
 CWaitableCriticalSection csBestBlock;
 CConditionVariable cvBlockChange;
@@ -2882,30 +2881,42 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
     if (block.vtx.empty() || !block.vtx[0]->IsCoinBase())
         return state.DoS(100, false, REJECT_INVALID, "bad-cb-missing", false, "first tx is not coinbase");
 
-	// Check coinbase of the block in god mode
-	int chainHeight = chainActive.Height();
-	bool godMode = ((chainHeight >= Params().GetConsensus().UBCHeight - 1) 
-		&& (chainHeight < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1))) ? true : false;
-	if (godMode) {
-		if (block.vtx[0]->vout.empty())
-			return state.DoS(100, false, REJECT_INVALID, "coinbase-vout-missing", false, "coinbase has no vout");
+	// prevblock hash
+	uint256 hashPrevBlock = block.hashPrevBlock;
+	if (hashPrevBlock != uint256()) 
+	{
+		auto iter = mapBlockIndex.find(hashPrevBlock);
+		if (iter != mapBlockIndex.end()) 
+		{
+			if ((iter->second->nHeight >= Params().GetConsensus().UBCHeight -1) 
+				&& (iter->second->nHeight < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount -1))) 
+			{
+				// when block is in god mode
+				if (block.vtx[0]->vout.empty())
+					return state.DoS(100, false, REJECT_INVALID, "coinbase-vout-missing", false, "coinbase has no vout");
 
-		// get key from coinbase
-		txnouttype type;
-        std::vector<CTxDestination> addresses;
-        int nRequired;
-        bool ret = ExtractDestinations(block.vtx[0]->vout[0].scriptPubKey, type, addresses, nRequired);
-		if (!ret || addresses.size() != 1)
-			return state.DoS(100, false, REJECT_INVALID, "coinbase-invalid-script", false, "coinbase script is not valid");
+				// get key from coinbase
+				txnouttype type;
+		        std::vector<CTxDestination> addresses;
+		        int nRequired;
+		        bool ret = ExtractDestinations(block.vtx[0]->vout[0].scriptPubKey, type, addresses, nRequired);
+				if (!ret || addresses.size() != 1 || type != TX_PUBKEYHASH)
+					return state.DoS(100, false, REJECT_INVALID, "coinbase-invalid-script", false, "coinbase script is not valid");
 
-		// get key from chainparams
-		std::vector<unsigned char> data;
-		data = ParseHex(Params().GetConsensus().UBCfoundationPubkey.c_str());
-		CPubKey Key(data);
-		CKeyID keyID = Key.GetID();
+				// get key from chainparams
+				std::vector<unsigned char> data;
+				data = ParseHex(Params().GetConsensus().UBCfoundationPubkey.c_str());
+				CPubKey Key(data);
+				CKeyID keyID = Key.GetID();
 
-		if (boost::get<CKeyID>(addresses[0]) != keyID)
-			return state.DoS(100, false, REJECT_INVALID, "coinbase-not-ub-foundation-script", false, "coinbase script is not for ub foundation");
+				if (boost::get<CKeyID>(addresses[0]) != keyID)
+					return state.DoS(100, false, REJECT_INVALID, "coinbase-not-ub-foundation-script", false, "coinbase script is not for ub foundation");
+			}
+		} 
+		else 
+		{
+			return state.DoS(100, false, REJECT_INVALID, "can-not-get-prev-blockheader", false, "can not get prev block header by prev block hash");
+		}
 	}
 	
     for (unsigned int i = 1; i < block.vtx.size(); i++)
