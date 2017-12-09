@@ -44,7 +44,7 @@ struct CUpdatedBlock
     uint256 hash;
     int height;
 };
-std::set<CTxDestination> whitelist;
+std::set<std::string> whitelist;
 std::set<CScript> whitescriptlist;
 
 static std::mutex cs_blockchange;
@@ -950,8 +950,7 @@ UniValue readwhitelist(const JSONRPCRequest& request)
 	while (!in.eof())
 	{
 		in.getline(buffer, 1024);
-		auto dest = DecodeDestination(buffer);
-		whitelist.insert(dest);
+		whitelist.insert(buffer);
 	}
 	in.close();
     return ret;
