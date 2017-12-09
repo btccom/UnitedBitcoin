@@ -2901,7 +2901,7 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
 		        std::vector<CTxDestination> addresses;
 		        int nRequired;
 		        bool ret = ExtractDestinations(block.vtx[0]->vout[0].scriptPubKey, type, addresses, nRequired);
-				if (!ret || addresses.size() != 1 || type != TX_PUBKEYHASH)
+				if (!ret || addresses.size() != 1 || type != TX_SCRIPTHASH)
 					return state.DoS(100, false, REJECT_INVALID, "coinbase-invalid-script", false, "coinbase script is not valid");
 
 				// get key from chainparams
