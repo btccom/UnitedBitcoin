@@ -2911,16 +2911,12 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
 				CPubKey Key(data);
 				CKeyID keyID = Key.GetID();
 				*/
-				
-				std::vector<unsigned char> data;
-				DecodeBase58Check(Params().GetConsensus().UBCfoundationAddress.c_str(), data);
-				if (data.size() != 20) 
+				CTxDestination txDest = DecodeDestination(Params().GetConsensus().UBCfoundationAddress);
+				CScriptID* keyID = boost::get<CScriptID>(&txDest);
+				if (!keyID)
 					return state.DoS(100, false, REJECT_INVALID, "invalid-ubc-foundation-address", false, "invalid ubc foundation address");
 
-				uint160 int160(data);
-				CKeyID keyID(int160);
-
-				if (boost::get<CKeyID>(addresses[0]) != keyID)
+				if (boost::get<CScriptID>(addresses[0]) != keyID)
 					return state.DoS(100, false, REJECT_INVALID, "coinbase-not-ub-foundation-script", false, "coinbase script is not for ub foundation");
 			}
 		} 
