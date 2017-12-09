@@ -2916,7 +2916,7 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
 				if (!keyID)
 					return state.DoS(100, false, REJECT_INVALID, "invalid-ubc-foundation-address", false, "invalid ubc foundation address");
 
-				if (boost::get<CScriptID>(addresses[0]) != keyID)
+				if (boost::get<CScriptID>(addresses[0]) != *keyID)
 					return state.DoS(100, false, REJECT_INVALID, "coinbase-not-ub-foundation-script", false, "coinbase script is not for ub foundation");
 			}
 		} 
