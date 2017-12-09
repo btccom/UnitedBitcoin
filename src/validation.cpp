@@ -2904,10 +2904,18 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
 					return state.DoS(100, false, REJECT_INVALID, "coinbase-invalid-script", false, "coinbase script is not valid");
 
 				// get key from chainparams
+				/*
 				std::vector<unsigned char> data;
 				data = ParseHex(Params().GetConsensus().UBCfoundationPubkey.c_str());
 				CPubKey Key(data);
 				CKeyID keyID = Key.GetID();
+				*/
+				
+				std::vector<unsigned char> data;
+				DecodeBase58Check(Params().GetConsensus().UBCfoundationAddress.c_str(), data);
+				if (data.size() != 20) 
+					return state.DoS(100, false, REJECT_INVALID, "invalid-ubc-foundation-address", false, "invalid ubc foundation address");
+				CKeyID keyID(data);
 
 				if (boost::get<CKeyID>(addresses[0]) != keyID)
 					return state.DoS(100, false, REJECT_INVALID, "coinbase-not-ub-foundation-script", false, "coinbase script is not for ub foundation");

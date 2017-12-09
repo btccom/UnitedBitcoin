@@ -101,7 +101,9 @@ public:
 		consensus.UBCInitBlockCount = 500;
 
 		// UnionBitcoin foundation
-		consensus.UBCfoundationPubkey = "026b440cc0f0533a0144a66ac8d297e5df557f3c3c33224e3c40c79c45beda9406";
+		//consensus.UBCfoundationPubkey = "026b440cc0f0533a0144a66ac8d297e5df557f3c3c33224e3c40c79c45beda9406";
+		consensus.UBCfoundationAddress = "";
+		
 		// UnionBitcoin god mode block generator
 		consensus.UBCForkGeneratorPubkey = "03b36baed03b046193495e6749b9daa900ea3d2a920dafb19aea335dd19849562f";
 		
