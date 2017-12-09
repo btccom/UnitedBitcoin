@@ -42,6 +42,7 @@
 #include <versionbits.h>
 #include <warnings.h>
 #include <pubkey.h>
+#include <base58.h>
 
 #include <atomic>
 #include <sstream>
@@ -2915,7 +2916,9 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
 				DecodeBase58Check(Params().GetConsensus().UBCfoundationAddress.c_str(), data);
 				if (data.size() != 20) 
 					return state.DoS(100, false, REJECT_INVALID, "invalid-ubc-foundation-address", false, "invalid ubc foundation address");
-				CKeyID keyID(data);
+
+				uint160 int160(data);
+				CKeyID keyID(int160);
 
 				if (boost::get<CKeyID>(addresses[0]) != keyID)
 					return state.DoS(100, false, REJECT_INVALID, "coinbase-not-ub-foundation-script", false, "coinbase script is not for ub foundation");
