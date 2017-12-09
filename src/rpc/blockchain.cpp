@@ -1045,7 +1045,7 @@ int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
 				if (addressRet.size() == 1){
 					std::string addrStr = EncodeDestination(addressRet[0]);
 					// judge if the lock script owner is in the whitelist
-					if (whitelist.find(addressRet[0]) == whitelist.end()) {
+					if (whitelist.find(addrStr) == whitelist.end()) {
 						outputs.emplace_back(std::make_pair(key, coin.out));
 						++index;
 						if (index >= count) break;
