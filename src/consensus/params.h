@@ -68,6 +68,7 @@ struct Params {
     std::vector<uint8_t> antiReplayOpReturnCommitment;
 
 	std::string UBCfoundationPubkey;
+	std::string UBCfoundationAddress;
 	std::string UBCForkGeneratorPubkey;
 	
     /**

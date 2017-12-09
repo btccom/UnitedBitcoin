@@ -3394,12 +3394,14 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
 
 	
 	// judge whether param address is UnionBitcion foundation's official address
+	/*
 	std::vector<unsigned char> data;
 	data = ParseHex(Params().GetConsensus().UBCfoundationPubkey.c_str());
 	CPubKey Key(data);
 	CKeyID keyID = Key.GetID();
-	std::string address = EncodeDestination(keyID);
-	if (request.params[1].get_str() != address) {
+	*/
+	
+	if (request.params[1].get_str() != Params().GetConsensus().UBCfoundationAddress) {
 		throw JSONRPCError(RPC_NOT_FOUNDATION_ADDRESS, "Error: Not the UBC foundation address");
 	}
 
