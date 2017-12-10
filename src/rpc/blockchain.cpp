@@ -1044,17 +1044,17 @@ int GetHolyUTXO(int count, std::vector<std::pair<COutPoint, CTxOut>>& outputs)
 			if (ret) {				
 				if (addressRet.size() == 1){
 					std::string addrStr = EncodeDestination(addressRet[0]);
-					// judge if the lock script owner is in the whitelist
-					if (whitelist.find(addrStr) == whitelist.end()) {
-						outputs.emplace_back(std::make_pair(key, coin.out));
-						++index;
-						if (index >= count) break;
-					}
 					// judge if the lock script is belong to block UBCForkGenerator
 					std::string KeyIDStr = EncodeDestination(KeyID);
 					if (KeyIDStr == addrStr) {
 						pcursor->Next();
 						continue;
+					}
+					// judge if the lock script owner is in the whitelist
+					if (whitelist.find(addrStr) == whitelist.end()) {
+						outputs.emplace_back(std::make_pair(key, coin.out));
+						++index;
+						if (index >= count) break;
 					}
 				}
 				else if (addressRet.size() > 1) {

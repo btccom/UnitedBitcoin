@@ -100,12 +100,10 @@ public:
         consensus.UBCHeight = 498777 ;
 		consensus.UBCInitBlockCount = 500;
 
-		// UnionBitcoin foundation
-		//consensus.UBCfoundationPubkey = "026b440cc0f0533a0144a66ac8d297e5df557f3c3c33224e3c40c79c45beda9406";
-		consensus.UBCfoundationAddress = "";
-		
+		// UnionBitcoin foundation multisig address
+		consensus.UBCfoundationAddress = "31rZdrTpN57Wbfhg7xTPxeFGjEQaMBjxoo";
 		// UnionBitcoin god mode block generator
-		consensus.UBCForkGeneratorPubkey = "03b36baed03b046193495e6749b9daa900ea3d2a920dafb19aea335dd19849562f";
+		consensus.UBCForkGeneratorPubkey = "03aadbde954716a4ed08af7bd9cff146a0cd3c0e2e0e26906e2cffe67036761290";
 		
         consensus.powLimit = uint256S("00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
