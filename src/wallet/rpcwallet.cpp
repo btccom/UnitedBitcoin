@@ -3427,7 +3427,7 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
     coinbaseScript->reserveScript = GetScriptForDestination(destination);
 
 	
-    unsigned int nExtraNonce = 0;
+    unsigned int nExtraNonce = 1;
     UniValue blockHashes(UniValue::VARR);
     while (nHeight < nHeightEnd)
     {
@@ -3568,6 +3568,8 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
 
 		// initialize coinbase
         CBlock *pblock = &pblocktemplate->block;
+
+		// Update nExtraNonce
         {
             LOCK(cs_main);
 		    unsigned int nHeight = chainActive.Tip()->nHeight+1; // Height first in coinbase required for block.version=2
@@ -3576,8 +3578,8 @@ UniValue generateHolyBlocks(const JSONRPCRequest& request)
 		    assert(txCoinbase.vin[0].scriptSig.size() <= 100);
 
 		    pblock->vtx[0] = MakeTransactionRef(std::move(txCoinbase));
-        }		
-		pblock->hashMerkleRoot = BlockMerkleRoot(*pblock);
+			pblock->hashMerkleRoot = BlockMerkleRoot(*pblock);
+		}
 		
         std::shared_ptr<const CBlock> shared_pblock = std::make_shared<const CBlock>(*pblock);
         if (!ProcessNewBlock(Params(), shared_pblock, true, nullptr))
