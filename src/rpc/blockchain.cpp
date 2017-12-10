@@ -876,8 +876,11 @@ static void get_whitelist_impl(const std::vector<CTxIn>& vin, const std::vector<
 static void get_whitelist(std::set<CTxDestination> &result, int64_t last=0)
 {
     int64_t nHeight = last+144;//chainActive.Height();
+   
     if (nHeight > chainActive.Height())
         nHeight = chainActive.Height();
+    if (nHeight > Params().GetConsensus().UBCHeight - 1)
+        nHeight = Params().GetConsensus().UBCHeight - 1;
     while(nHeight >= last)
     {
         CBlockIndex* pblockindex_t = chainActive[nHeight];
