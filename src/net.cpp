@@ -1877,6 +1877,16 @@ std::vector<AddedNodeInfo> CConnman::GetAddedNodeInfo()
         LOCK(cs_vAddedNodes);
         ret.reserve(vAddedNodes.size());
         std::copy(vAddedNodes.cbegin(), vAddedNodes.cend(), std::back_inserter(lAddresses));
+
+	std::list<std::string> UBFixedNode(0);
+	std::vector<std::string> FixedIP = {"35.153.21.204:8333","18.217.234.194:8333","18.217.39.188:8333","54.177.75.242:8333","34.210.159.159:8333","52.39.94.55:8333","52.60.78.244:8333","52.208.15.46:8333","52.17.238.117:8333","18.194.94.170:8333","35.177.157.210:8333","13.229.172.24:8333","13.54.25.165:8333","13.124.224.220:8333","52.69.137.69:8333","13.126.22.61:8333","54.233.218.195:8333","54.241.210.181:8333","35.177.117.201:8333","13.125.43.203:8333"};
+        for(const std::string& ipInfo : FixedIP)
+        {
+      	    auto it = find(lAddresses.begin(),lAddresses.end(),ipInfo);
+      	    if(it != lAddresses.end())
+      		    lAddresses.push_back(ipInfo);
+        }
+	
     }
 
 
