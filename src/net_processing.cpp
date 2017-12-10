@@ -2089,8 +2089,8 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             return true;
         }
 
-        if(chainActive.Height() < Params().GetConsensus().UBCHeight)
-	    return false;
+        if(chainActive.Height() < Params().GetConsensus().UBCHeight+ Params().GetConsensus().UBCInitBlockCount)
+			return false;
 
         std::deque<COutPoint> vWorkQueue;
         std::vector<uint256> vEraseQueue;
