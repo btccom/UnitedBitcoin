@@ -287,11 +287,7 @@ bool CBlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, 
                 pindexNew->nStatus        = diskindex.nStatus;
                 pindexNew->nTx            = diskindex.nTx;
 
-				if ((pindexNew->nHeight >= Params().GetConsensus().UBCHeight) 
-					&& (pindexNew->nHeight < Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount))
-					return true;				
-
-                if (!CheckProofOfWork(pindexNew->GetBlockHash(),  pindexNew->pprev?pindexNew->pprev->GetBlockHash():uint256(), pindexNew->nBits, consensusParams))
+                if (!CheckProofOfWork(pindexNew->GetBlockHash(),  pindexNew->pprev?pindexNew->pprev->GetBlockHash():uint256(), pindexNew->nBits, consensusParams, pindexNew->nHeight))
                     return error("%s: CheckProofOfWork failed: %s", __func__, pindexNew->ToString());
 
                 pcursor->Next();

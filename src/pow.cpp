@@ -90,11 +90,17 @@ unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nF
     return bnNew.GetCompact();
 }
 
-bool CheckProofOfWork(uint256 hash, uint256 prevHash, unsigned int nBits, const Consensus::Params& params)
+bool CheckProofOfWork(uint256 hash, uint256 prevHash, unsigned int nBits, const Consensus::Params& params, int blockHeight)
 {
     bool fNegative;
     bool fOverflow;
     arith_uint256 bnTarget;
+
+	if (blockHeight != -1) {
+		if ((blockHeight >= Params().GetConsensus().UBCHeight) 
+			&& (blockHeight < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount)))
+			return true;
+	}
 
 	auto iter = mapBlockIndex.find(prevHash);
 	if (iter != mapBlockIndex.end()) {

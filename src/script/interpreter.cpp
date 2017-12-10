@@ -984,8 +984,8 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     for (int k = 0; k < nSigsCount; k++)
                     {
                         valtype& vchSig = stacktop(-isig-k);
-			if(chainActive.Height() >= Params().GetConsensus().UBCHeight)
-		        {
+						if(chainActive.Height() >= Params().GetConsensus().UBCHeight)
+		        		{
                             if (!(flags & SCRIPT_ENABLE_SIGHASH_FORKID) ||!(vchSig[vchSig.size() - 1] & SIGHASH_FORKID)) {
                                 //scriptCode.FindAndDelete(CScript(vchSig));
                                  return set_error(serror, SCRIPT_ERR_CHECKSIGVERIFY);
@@ -994,8 +994,8 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                         if (sigversion == SIGVERSION_BASE) {
                             scriptCode.FindAndDelete(CScript(vchSig));
                         }
-			if(chainActive.Height() < Params().GetConsensus().UBCHeight)
-    		        {
+						if(chainActive.Height() < Params().GetConsensus().UBCHeight)
+    		        	{
                             if (vchSig[vchSig.size() - 1] & SIGHASH_FORKID) {
                                 //scriptCode.FindAndDelete(CScript(vchSig));
                                  return set_error(serror, SCRIPT_ERR_CHECKSIGVERIFY);
@@ -1566,7 +1566,7 @@ bool VerifyScript(const CScript& scriptSig, const CScript& scriptPubKey, const C
         const valtype& pubKeySerialized = stack.back();
         CScript pubKey2(pubKeySerialized.begin(), pubKeySerialized.end());
         popstack(stack);
-
+	
         if (!EvalScript(stack, pubKey2, flags, checker, SIGVERSION_BASE, serror))
             // serror is set
             return false;
