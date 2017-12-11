@@ -17,7 +17,7 @@ extern CBlockIndex *pindexBestHeader;
 extern CChain chainActive;
 extern BlockMap mapBlockIndex;
 
-unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
+unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock,const Consensus::Params& params)
 {
     assert(pindexLast != nullptr);
     unsigned int nProofOfWorkLimit = UintToArith256(params.powLimit).GetCompact();
@@ -33,7 +33,15 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
         
         return bnNew.GetCompact();
     }
-
+    Consensus::Params * temp_params = (Consensus::Params *)&params;
+    if((pindexLast->nHeight+1) >= Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount)
+    {
+    	temp_params->UpdateDifficultyAdjustmentInterval();
+    }
+    else
+    {
+	temp_params->UpdateOldDifficultyAdjustmentInterval();
+    }
     // Only change once per difficulty adjustment interval
     if ((pindexLast->nHeight+1) % params.DifficultyAdjustmentInterval() != 0)
     {
