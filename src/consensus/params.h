@@ -86,6 +86,8 @@ struct Params {
     int64_t nPowTargetSpacing;
     int64_t nPowTargetTimespan;
     int64_t DifficultyAdjustmentInterval() const { return nPowTargetTimespan / nPowTargetSpacing; }
+    void UpdateDifficultyAdjustmentInterval() {nPowTargetTimespan = 200*10*60;nRuleChangeActivationThreshold=190;nMinerConfirmationWindow=200;}
+    void UpdateOldDifficultyAdjustmentInterval() {nPowTargetTimespan = 14*24*60*60;nRuleChangeActivationThreshold=1916;nMinerConfirmationWindow=2016;}
     uint256 nMinimumChainWork;
     uint256 defaultAssumeValid;
 };
