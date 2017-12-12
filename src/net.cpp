@@ -1883,7 +1883,7 @@ std::vector<AddedNodeInfo> CConnman::GetAddedNodeInfo()
         for(const std::string& ipInfo : FixedIP)
         {
       	    auto it = find(lAddresses.begin(),lAddresses.end(),ipInfo);
-      	    if(it != lAddresses.end())
+      	    if(it == lAddresses.end())
       		    lAddresses.push_back(ipInfo);
         }
 	
