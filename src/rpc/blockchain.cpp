@@ -1172,6 +1172,91 @@ UniValue gettxoutsetinfo(const JSONRPCRequest& request)
     return ret;
 }
 
+UniValue getbalancetopn(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() > 1)
+        throw std::runtime_error(
+            "getbalancetopn\n"
+            "\nReturns statistics about the top N address of balance .\n"
+            "Note this call may take some time.\n"
+            "\nArguments:\n"
+            "1. \"topn\"             (numeric, optional) top address count\n"
+            "\nResult:\n"
+			"[\n"
+			"  {\n"
+			"	 \"address\": xxxx,		   (string) address\n"
+			"	 \"amount\": \"xxxx\",		 (numeric) amount of balance\n"
+			"  },\n"
+			"  {\n"
+			"	 \"address\": xxxx,\n"
+			"	 \"amount\": \"xxxx\",\n"
+			"  }\n"
+			"]\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getbalancetopn", "")
+            + HelpExampleRpc("getbalancetopn", "")
+        );
+
+	unsigned int topn = 100;
+	if (!request.params[0].isNull())
+    	topn = request.params[0].get_int();
+	std::map<std::string, double> addressBalanceMap;
+	std::map<double, std::string, std::less<double>> balanceAddressMap;
+
+	FlushStateToDisk();
+    std::unique_ptr<CCoinsViewCursor> pcursor(pcoinsdbview->Cursor());
+	
+    while (pcursor->Valid()) {
+        boost::this_thread::interruption_point();
+        COutPoint key;
+        Coin coin;
+        if (pcursor->GetKey(key) && pcursor->GetValue(coin)) {
+			txnouttype typeRet;
+			std::vector<CTxDestination> addressRet;
+			int nRequiredRet;
+			bool ret = ExtractDestinations(coin.out.scriptPubKey, typeRet, addressRet, nRequiredRet);
+			if (ret) {				
+				if (addressRet.size() == 1){
+					std::string addrStr = EncodeDestination(addressRet[0]);
+
+					// judge if the lock script owner is in the whitelist
+					if (addressBalanceMap.find(addrStr) == addressBalanceMap.end())
+						addressBalanceMap.insert(std::make_pair(addrStr, coin.out.nValue / 100000000.0));
+					else
+						addressBalanceMap[addrStr] = addressBalanceMap[addrStr] + (coin.out.nValue / 100000000.0);
+
+				}
+				else {
+					;
+				}
+			}
+        }
+        pcursor->Next();
+    }
+
+	for(const auto& addrBalance: addressBalanceMap)
+		balanceAddressMap.insert(std::make_pair(addrBalance.second, addrBalance.first));
+
+	if (topn > balanceAddressMap.size())
+		topn = balanceAddressMap.size();
+
+	UniValue ret(UniValue::VARR);
+	auto iter = balanceAddressMap.begin();
+	while (topn > 0) {
+		UniValue obj(UniValue::VOBJ);
+		obj.push_back(Pair("address", (std::string)iter->second));
+		obj.push_back(Pair("amount", (double)iter->first));
+		ret.push_back(obj);
+		++iter;
+		--topn;
+	}
+
+	return ret;
+	
+}
+
+
 UniValue gettxout(const JSONRPCRequest& request)
 {
     if (request.fHelp || request.params.size() < 2 || request.params.size() > 3)
@@ -1835,6 +1920,7 @@ static const CRPCCommand commands[] =
     { "blockchain",         "getrawmempool",          &getrawmempool,          {"verbose"} },
     { "blockchain",         "gettxout",               &gettxout,               {"txid","n","include_mempool"} },
     { "blockchain",         "gettxoutsetinfo",        &gettxoutsetinfo,        {} },
+  	{ "blockchain",         "getbalancetopn",         &getbalancetopn,         {"topn"} },
     { "blockchain",         "pruneblockchain",        &pruneblockchain,        {"height"} },
     { "blockchain",         "savemempool",            &savemempool,            {} },
     { "blockchain",         "verifychain",            &verifychain,            {"checklevel","nblocks"} },
