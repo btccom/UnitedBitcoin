@@ -181,6 +181,13 @@ enum opcodetype
     OP_NOP9 = 0xb8,
     OP_NOP10 = 0xb9,
 
+    // Execute EXT byte code.
+    OP_CREATE = 0xc1,
+    OP_UPGRADE = 0Xc2,
+    OP_DESTROY = 0Xc3,
+    OP_CALL = 0xc4,
+    OP_SPEND = 0xc5,
+    OP_DEPOSIT_TO_CONTRACT = 0xc6,
 
     // template matching params
     OP_SMALLINTEGER = 0xfa,
@@ -661,6 +668,18 @@ public:
     {
         return (size() > 0 && *begin() == OP_RETURN) || (size() > MAX_SCRIPT_SIZE);
     }
+
+    // contract op check
+    bool HasContractOp() const
+    {
+        return Find(OP_CREATE) == 1 || Find(OP_UPGRADE) == 1 || Find(OP_DESTROY) == 1
+               || Find(OP_CALL) == 1 || Find(OP_DEPOSIT_TO_CONTRACT) == 1;
+    }
+    bool HasOpSpend() const
+    {
+        return size()==1 && *begin() == OP_SPEND;
+    }
+    // end contract op check
 
     void clear()
     {

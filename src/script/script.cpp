@@ -139,6 +139,14 @@ const char* GetOpName(opcodetype opcode)
     case OP_NOP9                   : return "OP_NOP9";
     case OP_NOP10                  : return "OP_NOP10";
 
+    // contract execute ext
+    case OP_CREATE: return "OP_CREATE";
+    case OP_UPGRADE: return "OP_UPGRADE";
+    case OP_DESTROY: return "OP_DESTROY";
+    case OP_CALL: return "OP_CALL";
+    case OP_SPEND: return "OP_SPEND";
+    case OP_DEPOSIT_TO_CONTRACT: return "OP_DEPOSIT_TO_CONTRACT";
+
     case OP_INVALIDOPCODE          : return "OP_INVALIDOPCODE";
 
     // Note:

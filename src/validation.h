@@ -18,6 +18,7 @@
 #include <script/script_error.h>
 #include <sync.h>
 #include <versionbits.h>
+#include <contract_engine/contract_engine_builder.hpp>
 
 #include <algorithm>
 #include <exception>

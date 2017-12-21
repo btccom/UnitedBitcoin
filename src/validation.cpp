@@ -2882,7 +2882,11 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
     if (block.vtx.empty() || !block.vtx[0]->IsCoinBase())
         return state.DoS(100, false, REJECT_INVALID, "bad-cb-missing", false, "first tx is not coinbase");
 
-	// prevblock hash
+    // disable contract opcodes in coinbase
+    if(block.vtx[0]->HasContractOp())
+        return state.DoS(100, false, REJECT_INVALID, "coinbase-with-contract-op-not-allowed", false, "coinbase tx can't contains contract op");
+
+    // prevblock hash
 	uint256 hashPrevBlock = block.hashPrevBlock;
 	if (hashPrevBlock != uint256()) 
 	{
