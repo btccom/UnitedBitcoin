@@ -511,4 +511,43 @@ bool DumpMempool();
 /** Load the mempool from disk. */
 bool LoadMempool();
 
+// start contract code
+using valtype = std::vector<unsigned char>;
+
+struct ContractTransactionParams {
+    uint64_t gasLimit = 0;
+    uint64_t gasPrice = 0;
+    valtype code;
+    std::string caller;
+    std::string caller_address;
+    std::string contract_address;
+    std::string api_name;
+    std::string api_arg;
+    uint64_t deposit_amount = 0;
+};
+
+struct ContractInfo {
+    std::string address;
+    std::vector<std::string> apis;
+    std::vector<std::string> offline_apis;
+    valtype code;
+};
+
+struct ContractTransaction {
+    opcodetype opcode; // bitcoin script opcode(contract op)
+    ContractTransactionParams params;
+};
+
+struct ContractExecResult {
+    uint64_t usedGas = 0;
+    std::vector<CTxOut> refundOutputs;
+    std::vector<CTransaction> valueTransfers;
+    int32_t exit_code;
+    std::string error_message;
+
+    // TODO: asset transfers, storage changes
+};
+
+// end contract code
+
 #endif // BITCOIN_VALIDATION_H
