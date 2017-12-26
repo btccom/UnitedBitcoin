@@ -39,41 +39,41 @@ namespace uvm {
 
 			// function type fields
 			std::vector<std::string> arg_names;
-			// 如果这里会出现循环引用，或者嵌套函数，考虑用object类型，或者在GluaTypeChecker中记录所有类型信息的对象，然后使用GluaTypeInfo *
+			// 循茫嵌缀object停GluaTypeChecker屑录息亩然使GluaTypeInfo *
 			std::vector<GluaTypeInfoP> arg_types;
 			std::vector<GluaTypeInfoP> ret_types;
 			bool is_offline;
 			bool declared;
 			bool is_any_function;
-			bool is_any_contract; // 作为合约使用，但是其他属性类似table
-			bool is_stream_type; // 是否是二进制流类型，也是内置类型之一
+			bool is_any_contract; // 为约使茫table
+			bool is_stream_type; // 欠嵌停也之一
 
-			bool is_literal_token_value; // 是否是单token字面量值
-			GluaParserToken literal_value_token; // 如果是单token表达式，这里存储字面值的token
+			bool is_literal_token_value; // 欠堑token值
+			GluaParserToken literal_value_token; // 堑token式值token
 
 			// end function type fields
 
-			// record类型的各属性
+			// record偷母
 			std::unordered_map<std::string, GluaTypeInfoP> record_props;
-			std::unordered_map<std::string, std::string> record_default_values; // record属性的默认值
-			std::string record_name; // record类型名称，如果用了typedef，这里就是新名称
-			std::string record_origin_name; // record原始名称，如果用到泛型，那这就是泛型完全展开的类型名称，比如G1<G2<Person, string>, string, int>
-			std::vector<GluaTypeInfoP> record_generics; // record类型中用到的泛型
-			std::vector<GluaTypeInfoP> record_all_generics; // record类型创建时的所有泛型参数
-			std::vector<GluaTypeInfoP> record_applied_generics; // record类型创建后被实例化的所有泛型参数
+			std::unordered_map<std::string, std::string> record_default_values; // record缘默值
+			std::string record_name; // record疲typedef
+			std::string record_origin_name; // record原始疲玫停欠全展疲G1<G2<Person, string>, string, int>
+			std::vector<GluaTypeInfoP> record_generics; // record玫姆
+			std::vector<GluaTypeInfoP> record_all_generics; // record痛时蟹筒
+			std::vector<GluaTypeInfoP> record_applied_generics; // record痛实蟹筒
 
-			// 泛型类型的属性
-			std::string generic_name; // 泛型名称
+			// 偷
+			std::string generic_name; // 
 
-			// 列表类型的属性
-			GluaTypeInfoP array_item_type; // 列表类型中的每一项的类型
+			// 斜偷
+			GluaTypeInfoP array_item_type; // 斜械每一
 
-			// Map类型的属性
-			GluaTypeInfoP map_item_type; // Map类型中的值类型
-			bool is_literal_empty_table; // 是否空的字面量Array/Map类型
+			// Map偷
+			GluaTypeInfoP map_item_type; // Map械值
+			bool is_literal_empty_table; // 欠盏Array/Map
 
-			// literal type的属性
-			std::vector<GluaParserToken> literal_type_options; // literal type的可选的值
+			// literal type
+			std::vector<GluaParserToken> literal_type_options; // literal type目选值
 
 			std::unordered_set<GluaTypeInfoP> union_types; // may be any one of these types, not supported nested full info function now
 
@@ -91,10 +91,10 @@ namespace uvm {
 
 			bool is_string() const;
 
-			// 是literal type中的可以包含的每一项的类型
+			// literal type械目园每一
 			bool is_literal_item_type() const;
 
-			// TODO: 非__call的其他__开头的其他二参数的元方法，在使用在操作符上时要用重载函数来判断类型
+			// TODO: __call__头元使诓时要睾卸
 
 			bool has_call_prop() const;
 
@@ -114,42 +114,42 @@ namespace uvm {
 				
 			bool is_table() const;
 
-			// 狭义的table类型，etype是LTI_TABLE类型
+			// table停etypeLTI_TABLE
 			bool is_narrow_table() const;
 
-			// 表现起来像table的类型，包括table, record, Map, Array
+			// table停table, record, Map, Array
 			bool is_like_table() const;
 				
 			bool is_generic() const;
 
 			bool is_literal_type() const;
 
-			// 判断函数中是否有...参数（是否参数不定长度)
+			// 卸虾欠...欠)
 			bool has_var_args() const;
 
-			// 有元表函数(__开头的成员方法，会自动放入record类型的metatable中)
+			// 元(__头某员远record偷metatable)
 			bool has_meta_method() const;
 
 			bool is_same_record(GluaTypeInfoP other) const;
 
 			size_t min_args_count_require() const;
 
-			// 检查literal type的类型是否匹配右值的类型
+			// literal type欠匹值
 			bool match_literal_type(GluaTypeInfoP value_type) const;
-			// 如果literal type的右值是单token的字面量，检查是否匹配
+			// literal type值堑token欠匹
 			bool match_literal_value(GluaParserToken value_token) const;
 
-			// 检查literal type中是否有某个项是value_type类型
+			// literal type欠某value_type
 			bool contains_literal_item_type(GluaTypeInfoP value_type) const;
 
-			// @param show_record_details 是否显示record类型的明细，这是为了避免递归死循环
+			// @param show_record_details 欠示record偷细为吮莨循
 			std::string str(const bool show_record_details = false) const;
 
-			// 把合约的storage类型信息放入uvm模块流中
+			// 押约storage息uvm模
 			// @throws LuaException
 			bool put_contract_storage_type_to_module_stream(GluaModuleByteStreamP stream);
 
-			// 把合约的storage的APIs参数信息放入uvm模块流中
+			// 押约storageAPIs息uvm模
 			// @throws LuaException
 			bool put_contract_apis_info_to_module_stream(GluaModuleByteStreamP stream);
 

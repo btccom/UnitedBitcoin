@@ -408,7 +408,7 @@ static const char *searchpath(lua_State *L, const char *name,
     luaL_buffinit(L, &msg);
     if (*sep != '\0')  /* non-empty separator? */
         name = luaL_gsub(L, name, sep, dirsep);  /* replace it by 'dirsep' */
-    while ((path = pushnexttemplate(L, path)) != nullptr) { // 这步好像改变了lua_real_execute_contract_api函数中的api_name的内容
+    while ((path = pushnexttemplate(L, path)) != nullptr) { // lua_real_execute_contract_apiapi_name
         const char *filename = luaL_gsub(L, lua_tostring(L, -1),
             LUA_PATH_MARK, name);
         lua_remove(L, -2);  /* remove path template */
@@ -745,7 +745,7 @@ static const luaL_Reg ll_funcs[] = {
 
 static void createsearcherstable(lua_State *L) {
     static const lua_CFunction searchers[] =
-    { searcher_preload, searcher_uvm, nullptr }; // searcher_Lua 在searcher_preload后
+    { searcher_preload, searcher_uvm, nullptr }; // searcher_Lua searcher_preload
 
     static const lua_CFunction uvm_searchers[] =
     { searcher_preload, searcher_uvm };

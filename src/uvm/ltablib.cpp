@@ -102,7 +102,7 @@ static int tinsert(lua_State *L) {
 }
 
 /**
- * 在table的数组部分的末尾加入值
+ * table值末尾值
  */
 static int tappend(lua_State *L) {
 	lua_Integer e = aux_getn(L, 1, TAB_RW) + 1;  /* first empty element */

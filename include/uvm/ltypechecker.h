@@ -53,7 +53,7 @@ namespace uvm {
             std::unordered_map<std::string, GluaTypeInfoP> localvars;
             std::unordered_map<std::string, bool> localvars_changable;
             std::unordered_map<std::string, bool> localvars_inited;
-			std::unordered_map<std::string, GluaTypeInfoP> local_types; // 当前作用域下的类型列表
+			std::unordered_map<std::string, GluaTypeInfoP> local_types; // 
 
 			std::vector<GluaNameTypePair> for_namelist;
 			MatchResult *condition_mr;
@@ -110,7 +110,7 @@ namespace uvm {
 			CONTRACT_API_WRONG_ARGS = 19
         };
 
-		// 外部注入的附加函数调用/类函数的关键字的检查函数，用来在type check时做附加检查
+		// /，type check
 		typedef std::function<bool(GluaTypeInfoP, std::vector<GluaTypeInfoP>)> LuaFunctionCallExternalChecker;
 
 		
@@ -122,16 +122,16 @@ namespace uvm {
             LuaProtoSTreeP _proto;
             std::string _error;
             std::vector<std::pair<int, std::string>> _errors;
-            std::vector<LuaProtoSTreeP> _current_checking_proto_stack; // 当前正在检查的proto的栈,自顶向下递归检查
-			std::shared_ptr<uvm::lua::core::LuaDebugFileInfo> ldf; // 调试信息文件信息
-			size_t _middle_inserted_code_lines; // 中间生成的代码+头部库代码的行数，通过这个来得到源文件和中间lua源文件的行号映射关系
-			// std::vector<LuaFunctionCallExternalChecker> _functioncall_external_checkers; // 附加函数类型检查处理
-			std::vector<std::string> _emit_events; // emit关键字抛出的event名称列表
-			std::map<std::string, size_t> _created_global_variables; // 代码中新创建的全局变量列表(合约模式下未预先定义的全局变量不允许新建)
+            std::vector<LuaProtoSTreeP> _current_checking_proto_stack; // proto,
+			std::shared_ptr<uvm::lua::core::LuaDebugFileInfo> ldf; // 
+			size_t _middle_inserted_code_lines; // +，lua
+			// std::vector<LuaFunctionCallExternalChecker> _functioncall_external_checkers; // 
+			std::vector<std::string> _emit_events; // emitevent
+			std::map<std::string, size_t> _created_global_variables; // ()
 			bool _in_repl;
-			std::vector<GluaTypeInfoP> _created_lua_type_info_pointers; // GluaTypeInfo类型的指针列表，内存池，析构时释放
-			std::map<std::string, size_t> _imported_contracts; // 代码中import_contract的其他合约的合约名
-			bool _open_record_call_syntax; // 是否开启__call语法
+			std::vector<GluaTypeInfoP> _created_lua_type_info_pointers; // GluaTypeInfo，，
+			std::map<std::string, size_t> _imported_contracts; // import_contract
+			bool _open_record_call_syntax; // __call
 			bool is_checking_contract;
 		public:
             GluaTypeChecker(ParserContext *ctx);
@@ -154,12 +154,12 @@ namespace uvm {
             {
                 return _errors.size() > 0;
             }
-            // 从类型检查结果中反向生成源代码（类型检查过程中可能会对语法树做出修改）
+            // （）
             std::string dump() const;
 
 			void dump_ldf_to_file(FILE *file) const;
 
-            //  输出proto结构中的变量类型图
+            //  proto
             std::string sprint_root_proto_var_type_infos() const;
 
 			std::vector<std::string> get_emit_event_types() const;
@@ -173,7 +173,7 @@ namespace uvm {
             LuaProtoSTreeP top_checking_proto() const;
             LuaProtoSTreeP first_checking_proto_has_var(std::string varname) const;
 
-			// 报错没有开启record类型变量当成函数来使用的语法
+			// record
 			void set_error_of_not_support_record_call(MatchResult *mr);
 
 			void add_created_global_variable(std::string varname, size_t linenumber);
@@ -191,15 +191,15 @@ namespace uvm {
 
 			bool can_access_prop_of_type(MatchResult *mr, GluaTypeInfoP type_info, std::string prop_name, GluaTypeInfoEnum prop_name_type);
 
-			// 根据类型信息的字符串表示，number, string, number (object), object (...) 等格式
-			// 转为结构化信息，格式无法识别的，作为object类型
+			// ，number, string, number (object), object (...) 
+			// ，，object
 			GluaTypeInfoP of_type_str(std::string typestr, GluaExtraBindingsTypeP extra=nullptr);
 
 			void init_global_variables_to_proto(LuaProtoSTreeP proto);
 
 			GluaTypeInfoP create_lua_type_info(GluaTypeInfoEnum type = GluaTypeInfoEnum::LTI_OBJECT);
 
-			// 构造函数proto的内容结构
+			// proto
 			LuaProtoSTreeP make_proto_tree(LuaProtoSTreeP tree, MatchResult *full_mr,
 				MatchResult *funcname_mr, MatchResult *funcbody_mr, bool include_children_protos);
 			LuaProtoSTreeP make_proto_tree_from_lambda(LuaProtoSTreeP tree, MatchResult *full_mr,
@@ -224,14 +224,14 @@ namespace uvm {
 			void set_ldf_mapping(MatchResult *mr);
 
 
-			// 获取本类型的祖先类型列表,按从最低级开始排列
+			// ,
 			std::vector<GluaTypeInfoP> parent_types(GluaTypeInfoP type_info);
 
-			// 获取能作为item_type1和item_type2中所有类型的最小declarative type(本身或者作为item_type的父类型)
+			// item_type1item_type2declarative type(item_type)
 			GluaTypeInfoP min_sharing_declarative_type(GluaTypeInfoP item_type1, GluaTypeInfoP item_type2);
                 
-			GluaTypeInfoP guess_exp_type(MatchResult *mr); // 猜测表达式类型
-            // 检查表达式中的语法错误
+			GluaTypeInfoP guess_exp_type(MatchResult *mr); // 
+            // 
             bool check_expr_error(MatchResult *mr,
                 GluaTypeInfoP result_type = nullptr, GluaTypeInfoP ret_type = nullptr, MatchResult *parent_mr=nullptr);
 			bool check_bin_expr_error(MatchResult *mr, GluaTypeInfoP result_type, GluaTypeInfoP ret_type);
@@ -263,59 +263,59 @@ namespace uvm {
 			GluaTypeInfoP match_functioncall_exp_type(MatchResult *mr, GluaTypeInfoP func_type_info,
 				bool is_constructor, GluaTypeInfoP constructor_ret_type, std::vector<GluaTypeInfoP> *pre_args=nullptr);
 
-			// 每次用到Array<T>的时候，获取具体的T类型应用到Array<T>后的类型签名，没有就创建这个函数类型签名并返回
+			// Array<T>，TArray<T>，
 			GluaTypeInfoP get_or_create_array_type_constructor_info(MatchResult *mr, GluaTypeInfoP array_type);
 
-            // 在本级以及上级作用域或者全局作用域中根据函数名称查找函数
+            // 
             GluaTypeInfoP find_function_by_name(MatchResult *mr, std::string name,
 				std::vector<GluaTypeInfoP> const &args_types, GluaExtraBindingsTypeP extra_bindings = nullptr, bool only_inited = true);
-			// 查找操作符对应的函数签名。操作符可能函数重载，同一个操作符的函数签名可能因为参数类型不同而不同
+			// 。，
 			GluaTypeInfoP find_operator_func_by_name(MatchResult *mr, std::string operator_name,
 				std::vector<GluaTypeInfoP> const &args_types, GluaExtraBindingsTypeP extra_bindings = nullptr, bool only_inited = true);
-            // 从上下文和全局变量中查找变量信息
+            // 
             GluaTypeInfoP find_info_by_varname(MatchResult *mr, std::string name,
 				GluaExtraBindingsTypeP extra_bindings = nullptr, bool only_inited = true);
-            // 从上下文类型和全局类型中查找类型
+            // 
 			GluaTypeInfoP find_type_by_name(MatchResult *mr, std::string name,
 				GluaExtraBindingsTypeP extra_bindings=nullptr);
-			// 检查变量是否已经初始化过值了
+			// 
             bool check_var_inited(std::string name);
-            // 在当前检查的proto中定义变量,如果已经存在并且类型不同，就并入union类型
+            // proto,，union
             bool define_localvar_in_current_check_proto(MatchResult *mr, std::string name,
 				GluaTypeInfoP type_info, bool is_new = false, bool changable = true, bool replace = false,
 				bool inited = true, bool is_new_global_var=false);
 
-			// 在当前检查的proto中定义类型，cover表示是否覆盖上层中已经存在的同名类型（如果存在的话）
+			// proto，cover（）
 			bool define_local_type_in_current_check_proto(MatchResult *mr, std::string name, GluaTypeInfoP type_info,
 				bool cover = false);
 
-            // 把proto反向转成源代码对应的tokens
+            // prototokens
             std::vector<GluaParserToken> dump_proto_tokens(LuaProtoSTree* tree) const;
             std::vector<GluaParserToken> dump_mr_tokens(MatchResult *mr) const;
-            // 检查函数声明是否和函数调用时参数类型匹配
+            // 
             bool match_function_args(GluaTypeInfoP declare_func_type, std::vector<MatchResult*> args_mrs);
-            // 从mr中获取到namelist节点的内容
+            // mrnamelist
             std::vector<GluaNameTypePair> get_namelist_info_from_mr(MatchResult *mr, MatchResult *parlist_mr = nullptr, bool default_type_is_object=true);
             std::vector<GluaTypeInfoP> get_explist_from_mr(MatchResult *mr, bool *has_error =nullptr);
-			std::vector<MatchResult *> get_varlist_from_mr(MatchResult *mr); // TODO: 给var_p定义一个类，包装var_p的信息
+			std::vector<MatchResult *> get_varlist_from_mr(MatchResult *mr); // TODO: var_p，var_p
             std::vector<std::string> get_generic_list_from_mr(MatchResult *mr);
             std::vector<GluaTypeInfoP> get_generic_instances_from_mr(MatchResult *mr,
 				GluaExtraBindingsTypeP extra_bindings = nullptr);
 
-			// 检查是否是完整可用的类型（排除空类型，不完整的类型，没完全应用的泛型等）
+			// （，，）
 			bool check_is_correct_type_to_use(MatchResult *mr, GluaTypeInfoP type_info, std::string type_name);
 
-			// 从mr中获取到类型信息，extra_bindings附加命名空间
+			// mr，extra_bindings
             GluaTypeInfoP get_type_from_mr(MatchResult *mr, GluaExtraBindingsTypeP extra_bindings = nullptr);
-            // 进入静态分析类型信息的下一层proto进行分析
+            // proto
             void enter_proto_to_checking_type(MatchResult *mr, LuaProtoSTreeP proto);
-			// 结束对当前proto的检查
+			// proto
 			bool finish_check_current_checking_type(MatchResult *mr);
-            // 泛型类型用具体类型实例化
+            // 
             void replace_generic_by_instance(GluaTypeInfoP dest, std::vector<GluaTypeInfoP> generic_instances,
 				GluaExtraBindingsTypeP extra_bindings = nullptr);
 
-            // 自动产生自定义record类型的构造函数并注入语法树中
+            // record
             void generate_record_constructor_code(MatchResult *mr, GluaTypeInfoP record, MatchResult *parent_mr=nullptr);
 
             std::pair<int, std::string> error_in_functioncall(MatchResult *mr, GluaTypeInfoP func_type_info, std::vector<GluaTypeInfoP> *real_args = nullptr) const;

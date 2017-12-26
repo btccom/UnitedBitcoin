@@ -170,7 +170,7 @@ static void DumpFunction(const Proto *f, TString *psource, DumpState *D) {
 	{
 		// auto source = getstr(f->source);
 		// DumpString(f->source, D);
-		DumpString(nullptr, D); // 不把文件名存入字节码
+		DumpString(nullptr, D); // 
 	}
     DumpInt(f->linedefined, D);
     DumpInt(f->lastlinedefined, D);

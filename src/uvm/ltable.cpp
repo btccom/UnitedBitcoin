@@ -81,7 +81,7 @@
 
 #define isdummy(n)		((n) == dummynode)
 
-// 这是一个全局的只读的空table
+// 一全值只目table
 static const Node dummynode_ = {
     { NILCONSTANT },  /* value */
     { { NILCONSTANT, 0 } }  /* key */
@@ -160,7 +160,7 @@ static unsigned int arrayindex(const TValue *key) {
 
 
 /*
-** TODO： 按key排序，然后再遍历
+** TODO key然俦
 ** returns the index of a 'key' for table traversals. First goes all
 ** elements in the array part, then elements in the hash part. The
 ** beginning of a traversal is signaled by 0.
@@ -209,7 +209,7 @@ static std::string lua_value_to_str(const TValue *key)
 		return "";
 }
 
-// 取lua的Table*中的哈希表部分中的key=>index的映射，index从0开始
+// 取luaTable*械墓希械key=>index映洌琲ndex0始
 static std::map<std::string, int, lua_table_less> lua_table_hash_part_and_index_part(lua_State *L, Table *t)
 {
 	std::map<std::string, int, lua_table_less> keys;
@@ -230,7 +230,7 @@ static unsigned int findindex_of_sorted_table(lua_State *L, Table *t, StkId key)
 		return i;  /* yes; that's the index */
 	else {
 		int nx;
-		Node *n = mainposition(t, key); // TODO: 第一次要从第0个hash-part的key开始
+		Node *n = mainposition(t, key); // TODO: 一要拥0hash-partkey始
 		//auto keystr = lua_value_to_str(key);
 		//auto table_map = lua_table_hash_part_and_index_part(L, t);
 		for (;;) {  /* check whether 'key' is somewhere in the chain */
@@ -251,7 +251,7 @@ static unsigned int findindex_of_sorted_table(lua_State *L, Table *t, StkId key)
 					++kp;
 				}
 				i = cast_int(kp);
-				// TODO: 怎么判断结束
+				// TODO: 么卸辖
 				*/
 				return (i + 1) + t->sizearray;
 			}
@@ -259,7 +259,7 @@ static unsigned int findindex_of_sorted_table(lua_State *L, Table *t, StkId key)
 			
 			//if (nx == 0)
 			//	return 10086;
-			// FIXME: 这里对于a=[]; a[2]=123;这样的情况，lua_next似乎有问题
+			// FIXME: a=[]; a[2]=123;lua_next坪
 			if (nx == 0)
 			 	luaG_runerror(L, "invalid key to 'next'");  /* key not found */
 			else n += nx;
@@ -282,9 +282,9 @@ int luaH_next(lua_State *L, Table *t, StkId key) {
         }
     }
 
-	// TODO： 按key排序，然后再遍历
+	// TODO key然俦
 	/*
-	// i在每次luaH_next的时候,findindex的结果都会加1，只用这个来作为递归到第几个，实际返回的i还是使用排序后对应的i
+	// i每luaH_next时,findindex慕1只为莨诩实史氐i使应i
 	std::map<std::string, int, lua_table_less> keys;
 	auto old_i = i;
 	for (i -= t->sizearray; cast_int(i) < sizenode(t); i++) {  // hash part

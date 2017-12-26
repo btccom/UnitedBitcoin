@@ -149,7 +149,7 @@ static bool response_headers_traverser(lua_State *L, void *ud, size_t len, std::
 	return true;
 }
 
-// 发起http请求, http.request(method, url, body, headers)
+// http, http.request(method, url, body, headers)
 static int lualib_http_request(lua_State *L)
 {
 	auto method = luaL_checkstring(L, 1);
@@ -209,7 +209,7 @@ static int lualib_http_request(lua_State *L)
 	auto *ctx = new HttpContext();
 	ctx->socket = socket;
 	ctx->res = new HttpResponse();
-	size_t body_len_from_header = 0; // 从header中读取到的body长度
+	size_t body_len_from_header = 0; // headerbody
 	do
 	{
 		result_count = lualib_net_read_until_string_impl(L, socket, "\r\n");
@@ -341,7 +341,7 @@ static int lualib_http_on_request_data(lua_State *L)
 	auto *socket = (TcpSocket*) lua_touserdata(L, 1);
 	lua_pushvalue(L, 2);
 	lua_setglobal(L, "http_on_request_data");
-	std::vector<char> buf(4096); // TODO: 把buffer放入TcpSocket或者HttpRequest里
+	std::vector<char> buf(4096); // TODO: bufferTcpSocketHttpRequest
 	boost::system::error_code ignored_error;
 	boost::asio::async_read(*socket, boost::asio::buffer(buf),
 		boost::bind(&process_http_request_async_read_data, L, socket, ignored_error));
@@ -364,7 +364,7 @@ static int lualib_http_accept(lua_State *L)
 	ctx->socket = socket;
 	ctx->req = new HttpRequest();
 	ctx->res = new HttpResponse();
-	size_t body_len_from_header = 0; // 从header中读取到的body长度
+	size_t body_len_from_header = 0; // headerbody
 	do
 	{
 		int result_count = lualib_net_read_until_string_impl(L, socket, "\r\n");
@@ -422,7 +422,7 @@ static int lualib_http_accept(lua_State *L)
 		if (header_name == "Content-Length")
 			body_len_from_header = std::stoi(header_value);
 	} while (true);
-	// TODO: 处理stream的情况
+	// TODO: stream
 	if(body_len_from_header)
 	{
 		int result_len = lualib_net_read_impl(L, socket, body_len_from_header);
@@ -591,7 +591,7 @@ static int lualib_http_finish_res(lua_State *L)
 		lualib_net_write_string_impl(L, socket, header.first + ":" + header.second + "\r\n");
 	}
 	lualib_net_write_string_impl(L, socket, "\r\n");
-	// TODO: 如果是Transfer-Encoding是chunked，则用chunked的方式返回
+	// TODO: Transfer-Encodingchunked，chunked
 	lualib_net_write_impl(L, socket, ctx->res->body);
 	lualib_net_close_socket_impl(L, socket);
 	return 0;

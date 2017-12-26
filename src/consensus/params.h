@@ -70,6 +70,8 @@ struct Params {
 	std::string UBCfoundationPubkey;
 	std::string UBCfoundationAddress;
 	std::string UBCForkGeneratorPubkey;
+
+    int UBCONTRACT_Height;
 	
     /**
      * Minimum blocks including miner confirmation of the total of 2016 blocks in a retargeting period,

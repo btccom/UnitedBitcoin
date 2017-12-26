@@ -131,7 +131,7 @@ namespace uvm {
 
 		GluaTypeInfoP GluaTypeChecker::get_index_by_number_type(GluaTypeInfoP type_info)
         {
-			// 获得t[number]的结果类型
+			// t[number]
 			if (type_info->etype == GluaTypeInfoEnum::LTI_OBJECT)
 				return create_lua_type_info();
 			else if (type_info->etype == GluaTypeInfoEnum::LTI_ARRAY)
@@ -178,8 +178,8 @@ namespace uvm {
 
 		bool GluaTypeChecker::can_visit_index_by_number(GluaTypeInfoP type_info)
         {
-			// 判断是否能用类似t[number]的方式访问（也就是当成数组来访问）
-			// 判断是否是object或array或record但是有__index属性且类型为(int)=>any, 或union但是某个union_type满足条件
+			// t[number]（）
+			// objectarrayrecord__index(int)=>any, unionunion_type
 			auto t = get_index_by_number_type(type_info);
 			return !t->is_nil() && !t->is_undefined();
         }
@@ -334,7 +334,7 @@ namespace uvm {
 					bool exist = false;
 					for(const auto &item1 : new_type_info->literal_type_options)
 					{
-						// TODO: 如果是数字，考虑数字的不同表示法
+						// TODO: ，
 						if(item1.type == item.type && item1.token == item.token)
 						{
 							exist = true;
@@ -372,12 +372,12 @@ namespace uvm {
 			}
 		}
 
-        // @param type_up 是否允许real_type是declare_type父类型的时候类型验证通过
+        // @param type_up real_typedeclare_type
         static bool match_declare_type(GluaTypeInfoP declare_type, GluaTypeInfoP real_type, bool type_up = true)
         {
             if (declare_type == real_type)
                 return true;
-			if (real_type->is_nil()) // FIXME: 改成只有declare_type是允许nil的类型(union,nil,optional)等才能赋值, Map<T>[key]返回类型应该是T | nil
+			if (real_type->is_nil()) // FIXME: declare_typenil(union,nil,optional), Map<T>[key]T | nil
 				return true;
             if (declare_type->etype != GluaTypeInfoEnum::LTI_OBJECT)
             {
@@ -396,8 +396,8 @@ namespace uvm {
                 }
 
 				/*
-				table, record, Map, Array之间的类型关系如表(两边类型完全一样肯定接受):
-				左值类型              |    右值类型                               |   是否接受
+				table, record, Map, Array():
+				              |                                   |   
 				---------------------------------------------------------------
 				table                          record                                true
 				table                          Map<T>                                true
@@ -405,15 +405,15 @@ namespace uvm {
 				record                        table                                  true
 				record                         Map<T>                                true
 				record                         Array<T>                              false
-				record						   其他类型的record						 false
+				record						   record						 false
 				Map<T1>                   table                                      true
 				Map<T1>                   record                                     false
-				Map<T1>                   空Map<object>                              true
+				Map<T1>                   Map<object>                              true
 				Map<T1>                   Map<T2 where T2 extends T1>                true
 				Map<T1>                   Map<T2 where T1 extends T2>                false
 				Map<T1>                   Array<?>                                   false
 				Array<T1>                   table                                    true
-				Array<T1>                     空Array<object>                        true
+				Array<T1>                     Array<object>                        true
 				Array<T1>                   record                                   false
 				Array<T1>                   Array<T2 where T2 extends T1>            true
 				Array<T1>                   Array<T2 where T1 extends T2>            false
@@ -467,7 +467,7 @@ namespace uvm {
 					}
 				}
 
-				// 编译期严格区分数组和哈希表
+				// 
                 if ((declare_type->etype == GluaTypeInfoEnum::LTI_TABLE 
 					|| declare_type->etype == GluaTypeInfoEnum::LTI_MAP)
                     && (real_type->etype == GluaTypeInfoEnum::LTI_RECORD
@@ -476,7 +476,7 @@ namespace uvm {
                 {
                     return true;
                 }
-                // table和record可以互相转换，但是2个record如果具体的类型不一样，不能互相转换
+                // tablerecord，2record，
                 if ((declare_type->etype == GluaTypeInfoEnum::LTI_RECORD
                     || real_type->etype == GluaTypeInfoEnum::LTI_ARRAY
 					|| real_type->etype == GluaTypeInfoEnum::LTI_MAP)
@@ -524,23 +524,23 @@ namespace uvm {
 				{
 					if (declare_type->match_literal_type(real_type))
 						return true;
-					// 如果是单token值，match literal token
+					// token，match literal token
 					if (real_type->is_literal_token_value
 						&& (real_type->is_literal_item_type()))
 					{
 						return declare_type->match_literal_value(real_type->literal_value_token);
 					}
 					else
-						return false; // TODO: union的情况
+						return false; // TODO: union
 				}
 				if (real_type->is_literal_type())
 				{
-					// 声明类型不是literal type，而值类型是literal type的情况
+					// literal type，literal type
 					if (declare_type->is_literal_item_type())
 					{
 						return real_type->contains_literal_item_type(declare_type);
 					}
-					return false; // TODO: union的情况
+					return false; // TODO: union
 				}
 
 
@@ -558,7 +558,7 @@ namespace uvm {
                 }
                 if (declare_type->etype == GluaTypeInfoEnum::LTI_RECORD)
                 {
-                    // 2个不同的record类型，不能匹配
+                    // 2record，
 					if (!declare_type->is_same_record(real_type))
 						return false;
                     for (const auto & p : declare_type->record_props)
@@ -574,7 +574,7 @@ namespace uvm {
                 }
                 if (declare_type->etype == GluaTypeInfoEnum::LTI_ARRAY)
                 {
-                    // 允许父子类型转换
+                    // 
                     if (match_declare_type(declare_type->array_item_type, real_type->array_item_type, true))
                         return true;
                     else
@@ -582,7 +582,7 @@ namespace uvm {
                 }
 				if (declare_type->etype == GluaTypeInfoEnum::LTI_MAP)
 				{
-					// 允许父子类型转换
+					// 
 					if (match_declare_type(declare_type->map_item_type, real_type->map_item_type, true))
 						return true;
 					else
@@ -653,12 +653,12 @@ namespace uvm {
 				if(prop_name_type == GluaTypeInfoEnum::LTI_INT
 					|| prop_name_type == GluaTypeInfoEnum::LTI_NUMBER)
 				{
-					// 判断是否有__index且参数类型是int/number
+					// __indexint/number
 					return can_visit_index_by_number(type_info);
 				}
                 if (prop_name_type != GluaTypeInfoEnum::LTI_STRING
                     && prop_name_type != GluaTypeInfoEnum::LTI_OBJECT)
-                    return false; // 字符串或者object外其他类型作为访问record的属性都应该报错
+                    return false; // objectrecord
                 for (const auto &it : type_info->record_props)
                 {
                     if (it.first == prop_name)
@@ -677,7 +677,7 @@ namespace uvm {
         void GluaTypeChecker::enter_proto_to_checking_type(MatchResult *mr, LuaProtoSTreeP proto)
         {
             _current_checking_proto_stack.push_back(proto);
-            // 进入新proto时，要把局部变量放入进去
+            // proto，
             if (proto->type_info)
             {
                 size_t i = 0;
@@ -716,8 +716,8 @@ namespace uvm {
 
         void GluaTypeChecker::generate_record_constructor_code(MatchResult *mr, GluaTypeInfoP record, MatchResult *parent_mr)
         {
-            // 生成record对应的构造函数
-            // local function <record_name> (props) if(props) 依次检测record字段,没有设置值的用属性默认值  end  end
+            // record
+            // local function <record_name> (props) if(props) record,  end  end
 
             if (record->is_record())
             {
@@ -738,7 +738,7 @@ namespace uvm {
 				// set metatable
 				if (use_metatable)
 				{
-					// FIXME: a={};a.__index=a;setmetatable(a,a); print(a.b)会loop执行然后报错，可能占用过多的执行时间和资源
+					// FIXME: a={};a.__index=a;setmetatable(a,a); print(a.b)loop，
 					ss << "    setmetatable(props, props)\n";
 					_middle_inserted_code_lines += 1;
 				}
@@ -757,7 +757,7 @@ namespace uvm {
 				if (ldf)
 					ldf->add_proto_name(constructor_func_name);
 
-				// TODO: _middle_inserted_code_lines 要减去隐藏的mr导致的行数
+				// TODO: _middle_inserted_code_lines mr
 				auto lines_need_to_remove = mr->linenumber_after_end(parent_mr);
 				_middle_inserted_code_lines -= lines_need_to_remove;
             }
@@ -778,7 +778,7 @@ namespace uvm {
 						auto exp1_type = guess_exp_type(exp1);
 						auto exp2_type = guess_exp_type(exp2);
 						std::vector<GluaTypeInfoP> args_types = { exp1_type , exp2_type };
-						// 从proto中查找中缀函数来检查
+						// proto
 						auto found_op_func = find_operator_func_by_name(mr, op->head_token().token, args_types);
 						if (found_op_func->is_function())
 						{
@@ -826,7 +826,7 @@ namespace uvm {
 						auto *exp1 = cmr->get_item(1);
 						auto exp1_type = guess_exp_type(exp1);
 						std::vector<GluaTypeInfoP> args_types = { exp1_type };
-						// 从proto中查找前缀函数来检查
+						// proto
 						auto found_op_func = find_function_by_name(mr, op->head_token().token, args_types);
 						if (found_op_func->is_function())
 						{
@@ -903,7 +903,7 @@ namespace uvm {
 							set_error(error_in_match_result(namelist_mr, std::string("Can't find type ") + declared_type_info->str()));
 							return false;
 						}
-						// 未声明类型(undefined)的，用推导类型
+						// (undefined)，
 						if (!value_type_info->is_undefined() && exprlist_mr && !declared_type_info->is_undefined() && !match_declare_type(declared_type_info, value_type_info, true))
 						{
 							set_error(error_in_match_result(namelist_mr,
@@ -915,7 +915,7 @@ namespace uvm {
 						{
 							value_type_info = create_lua_type_info(GluaTypeInfoEnum::LTI_OBJECT);
 						}
-						// 这里应该根据是否显式声明类型来判断变量是根据值类型还是声明类型来判断类型,但是根据是否是object声明也行
+						// ,object
 						define_localvar_in_current_check_proto(namelist_mr, name, 
 							declared_type_info->is_undefined() ? value_type_info : declared_type_info, true, !is_let, false, inited);
 						++namelist_it;
@@ -941,7 +941,7 @@ namespace uvm {
 					enter_proto_to_checking_type(mr, proto_tree);
 				}
                 bool result = true;
-                // TODO: 检查in后面的类型，从而推导namelist应该的类型
+                // TODO: in，namelist
                 auto in_explist = cmr->get_item(3);
 
                 printf("");
@@ -950,7 +950,7 @@ namespace uvm {
                 {
                   return false;
                 }
-                // TODO: 如果in后面跟着的是pairs(a)或ipairs(a)，则namelist的类型可以进行约束
+                // TODO: inpairs(a)ipairs(a)，namelist
                 auto first_value_type_info = create_lua_type_info(GluaTypeInfoEnum::LTI_UNDEFINED);
                 auto second_value_type_info = create_lua_type_info(GluaTypeInfoEnum::LTI_UNDEFINED);
                 if (in_explist->is_complex() && in_explist->as_complex()->size()>0)
@@ -967,7 +967,7 @@ namespace uvm {
                       if (iterator_func_name == "pairs" || iterator_func_name == "ipairs")
                       {
                         auto is_ipairs = iterator_func_name == "ipairs";
-                        // 分析iterator函数的参数的类型，从而推导for key, value in iterator(collection)的value的类型
+                        // iterator，for key, value in iterator(collection)value
                         auto iterator_arg_type_info = guess_exp_type(first_in_exp_cmr->get_item(1));
                         if (iterator_arg_type_info->is_array())
                         {
@@ -987,7 +987,7 @@ namespace uvm {
 				for(size_t i=0;i < proto_tree->for_namelist.size();i++)
 				{
                     const auto &name_type_pair = proto_tree->for_namelist[i];
-					// 如果变量已经定义，延续类型
+					// ，
 					auto existed_var_info = find_info_by_varname(mr, name_type_pair.name, nullptr, false);
 					auto range_var_info = name_type_pair.type_info;
 					if(!existed_var_info->is_nil() && !existed_var_info->is_undefined())
@@ -1012,7 +1012,7 @@ namespace uvm {
                     }
                     if (value_type_info && value_type_info->etype != GluaTypeInfoEnum::LTI_OBJECT)
                     {
-                      // 能推导出in后的迭代器的每一项的类型，则要检查in前变量的类型
+                      // in，in
                       if (!match_declare_type(range_var_info, value_type_info, true))
                       {
                         result = false;
@@ -1186,12 +1186,12 @@ namespace uvm {
 			bool result = true;
 			for (const auto &condition_info : ast_node->condition_mrs())
 			{
-				result = check_expr_error(condition_info.first, nullptr, nullptr, ast_node) && result; // 条件表达式
-				result = check_expr_error(condition_info.second, result_type, ret_type, ast_node) && result; // 条件分支的代码块
+				result = check_expr_error(condition_info.first, nullptr, nullptr, ast_node) && result; // 
+				result = check_expr_error(condition_info.second, result_type, ret_type, ast_node) && result; // 
 			}
 			if (ast_node->else_block_mr())
 			{
-				result = check_expr_error(ast_node->else_block_mr(), result_type, ret_type, ast_node) && result; // else分支的代码块
+				result = check_expr_error(ast_node->else_block_mr(), result_type, ret_type, ast_node) && result; // else
 			}
 			if (result && proto_tree)
 			{
@@ -1218,7 +1218,7 @@ namespace uvm {
 				}
 				for (const auto &name_type_pair : proto_tree->for_namelist)
 				{
-					// 如果变量已经定义，延续类型
+					// ，
 					auto existed_var_info = find_info_by_varname(mr, name_type_pair.name, nullptr, false);
 					auto range_var_info = name_type_pair.type_info;
 					if (!existed_var_info->is_nil() && !existed_var_info->is_undefined())
@@ -1388,7 +1388,7 @@ namespace uvm {
 				std::string varname;
 				if (proto_tree)
 				{
-					// 如果function a.b(...) ... end中a是record类型，则不允许function a.b定义成员方法，只能function a:b
+					// function a.b(...) ... endarecord，function a.b，function a:b
 					auto *funcname_mr = mr->as_complex()->get_item(1);
 					if (funcname_mr->node_name() == "funcname")
 					{
@@ -1535,10 +1535,10 @@ namespace uvm {
         {
 			if (mr->node_name() == "tableconstructor")
 			{
-				// 把[...]换成{...}
-				// 把{a: ...}换成{a=...}
-				// 把{'a': ... } 换成{['a']=...}
-				// 对于错误的字面量table语法要报错，[]中有非数组内容也要报错
+				// [...]{...}
+				// {a: ...}{a=...}
+				// {'a': ... } {['a']=...}
+				// table，[]
 				auto cmr = mr->as_complex();
 				bool is_pure_array = cmr->get_item(0)->as_final()->token.token == "[";
 				if(is_pure_array)
@@ -1550,9 +1550,9 @@ namespace uvm {
 				}
 
 				bool result = true;
-				// TODO: 对于[1, 2.5, 3]这类字面量，推导类型要推导为Array<number>，元素值类型要按最小共同父类型
+				// TODO: [1, 2.5, 3]，Array<number>，
 				auto table_item_type_info = create_lua_type_info(GluaTypeInfoEnum::LTI_UNDEFINED);
-				std::vector<GluaTypeInfoP> value_item_types; // 各项的值类型，用来计算最小共同父类型
+				std::vector<GluaTypeInfoP> value_item_types; // ，
 				bool is_empty = true;
 				for (size_t i = 1;i<cmr->size()-1;++i)
 				{
@@ -1641,12 +1641,12 @@ namespace uvm {
 								if(table_item_type_info->etype != field_value_type->etype
 									&& table_item_type_info->etype != GluaTypeInfoEnum::LTI_OBJECT)
 								{
-									// 用最小共同父类型作为table_item_type_info
+									// table_item_type_info
 									table_item_type_info = min_sharing_declarative_type(table_item_type_info, field_value_type);
 								}
 							}
 						}
-						// 检查是否数组和哈希表部分混用了
+						// 
 						if(has_hashmap_part && has_array_part)
 						{
 							set_error(error_in_match_result(mr, std::string("Can't put array and hashmap items in one table together")));
@@ -1712,7 +1712,7 @@ namespace uvm {
         {
 			if (mr->node_name() == "suffixedexp_visit_prop" || mr->node_name() == "var")
 			{
-				// 检查属性访问，判断符号类型是否可以访问对应属性
+				// ，
 				bool result = true;
 				if (mr->is_complex())
 				{
@@ -1736,9 +1736,9 @@ namespace uvm {
 						|| prop_mr->as_final()->token.type == TOKEN_RESERVED::LTK_INT
 						|| prop_mr->as_final()->token.type == TOKEN_RESERVED::LTK_NAME))
 					{
-						// 如果用字符串类型prop，而obj是数组，要报错
-						// 如果obj是数组，索引不是int或int型name，要报错
-						// 对于非数组的obj，要考虑对索引不是name和string的支持
+						// prop，obj，
+						// obj，intintname，
+						// obj，namestring
 						auto prop_token = prop_mr->head_token();
 						auto prop_name = prop_token.type == TOKEN_RESERVED::LTK_NAME ? prop_token.token : prop_token.token;
 						GluaTypeInfoEnum prop_name_type;
@@ -1775,8 +1775,8 @@ namespace uvm {
 							|| obj_type_info->is_array()
 							|| obj_type_info->is_map()))
 						{
-							// 如果是访问record的属性，那这里类型可以访问
-							// 需要考虑a.b.c这种情况的类型推导
+							// record，
+							// a.b.c
 							auto value_type = obj_type_info;
 							auto *cur_cmr = cmr;
 							std::string cur_prop_name = prop_name;
@@ -1881,7 +1881,7 @@ namespace uvm {
 					if (ret_type)
 					{
 						auto copied = create_lua_type_info();
-						copy_lua_type_info(copied, ret_type); // 拷贝一份再merge是为了避免嵌套类型时修改了自身
+						copy_lua_type_info(copied, ret_type); // merge
 						auto merge_result = merge_union_types(copied, ret_exp_type_info);
 						copy_lua_type_info(ret_type, merge_result);
 					}
@@ -1889,7 +1889,7 @@ namespace uvm {
 					{
 						copy_lua_type_info(result_type, ret_exp_type_info);
 					}
-					// TODO: 标记当前scope已经return过了，不能重复return(要考虑if, for, while等控制结构的情况下可能多个return，所以控制结构语句要有独立scope)
+					// TODO: scopereturn，return(if, for, whilereturn，scope)
 				}
 				else
 				{
@@ -1931,7 +1931,7 @@ namespace uvm {
 					if (var_mr->is_final())
 					{
 						auto varname = var_mr->as_final()->token.token;
-						// 检查varname是否declare过了（可能declare了但是没有赋值），从而判断是否是新建全局变量
+						// varnamedeclare（declare），
 						auto exist_var_type = find_info_by_varname(var_mr, varname, nullptr, false);
 						auto is_new_global_var = exist_var_type->is_undefined() || exist_var_type->is_nil();
 						define_localvar_in_current_check_proto(mr, varname, explist.at(i), is_new_global_var, true, false, true, is_new_global_var);
@@ -1942,7 +1942,7 @@ namespace uvm {
 					}
 					else
 					{
-						// 如果是a.b[.c] = d 这样形式，并且左侧是访问record的字段，则要做类型检查
+						// a.b[.c] = d ，record，
 						auto left_type = guess_exp_type(var_mr);
 						if (!match_declare_type(left_type, explist.at(i), true))
 						{
@@ -1953,12 +1953,12 @@ namespace uvm {
 						auto *var_cmr = var_mr->as_complex();
 						if(var_cmr->size()==3 || (var_cmr->size()==4 && var_cmr->get_item(3)->is_final()))
 						{
-							// 如果是a.b或a['b']这样的形式
+							// a.ba['b']
 							auto first_var_token = var_cmr->get_item(0)->head_token();
 							auto first_var_type = find_info_by_varname(var_cmr, first_var_token.token);
 							if(first_var_type->is_contract_type() && is_checking_contract)
 							{
-								// 如果修改的是合约的id/name/storage属性，报错
+								// id/name/storage，
 								const auto &prop_token_to_change = var_cmr->get_item(2)->head_token();
 								std::string prop_name_to_change;
 								if(prop_token_to_change.type == TOKEN_RESERVED::LTK_NAME)
@@ -1992,13 +1992,13 @@ namespace uvm {
 					{
 						auto record_name = cmr->get_item(1)->head_token().token;
 						MatchResult *namelist_mr = cmr->size() == 6 ? cmr->get_item(4) : nullptr;
-						// 从namelist_mr中获取各字段类型，并放入record类型中
-						// 考虑到可能record中属性递归属于本record类型，所以解析record内容时，要先定义record，这里要注意可能的循环引用导致内存泄露
+						// namelist_mr，record
+						// recordrecord，record，record，
 						auto record = create_lua_type_info(GluaTypeInfoEnum::LTI_RECORD);
 						record->record_name = record_name;
 						record->record_origin_name = record_name;
 						define_localvar_in_current_check_proto(mr, std::string(GLUA_TYPE_NAMESPACE_PREFIX) + record_name, record);
-						define_localvar_in_current_check_proto(mr, record_name, record); // 产生同名构造函数
+						define_localvar_in_current_check_proto(mr, record_name, record); // 
 						define_local_type_in_current_check_proto(mr, record_name, record);
 						auto *cur_namelist_mr = namelist_mr;
 						while(cur_namelist_mr) {
@@ -2046,7 +2046,7 @@ namespace uvm {
 								if (name_mr->node_name() == "name_in_record_with_type_declare" && name_mr->as_complex()->size() >= 5)
 								{
 									auto *item5 = name_mr->as_complex()->get_item(4);
-									// record字段的默认值
+									// record
 									auto item_type = create_lua_type_info();
 									check_expr_error(item5, item_type, nullptr);
 									if (!match_declare_type(prop_type_info, item_type, true))
@@ -2056,7 +2056,7 @@ namespace uvm {
 									}
 									else
 									{
-										// TODO: 如果默认值是函数，则自动给加入self参数，并且语法分析时也要按照有self的函数来处理
+										// TODO: ，self，self
 										std::string default_value_code = "nil";
 										auto token_parser = std::make_shared<GluaTokenParser>((lua_State *) nullptr);
 										auto tokens = dump_mr_tokens(item5);
@@ -2097,8 +2097,8 @@ namespace uvm {
 						auto generic_list_mr = cmr->get_item(3)->as_complex();
 						auto generic_names = get_generic_list_from_mr(generic_list_mr);
 						MatchResult *namelist_mr = cmr->size() == 9 ? cmr->get_item(7) : nullptr;
-						// 从namelist_mr中获取各字段类型，并放入record类型中
-						// 考虑到可能record中属性递归属于本record类型，所以解析record内容时，要先定义record，这里要注意可能的循环引用导致内存泄露
+						// namelist_mr，record
+						// recordrecord，record，record，
 						auto record = create_lua_type_info(GluaTypeInfoEnum::LTI_RECORD);
 						record->record_name = record_name;
 						record->record_origin_name = record_name;
@@ -2113,7 +2113,7 @@ namespace uvm {
 						}
 						record->record_all_generics = record->record_generics;
 						define_localvar_in_current_check_proto(mr, std::string(GLUA_TYPE_NAMESPACE_PREFIX) + record_name, record);
-						define_localvar_in_current_check_proto(mr, record_name, record); // 产生同名构造函数
+						define_localvar_in_current_check_proto(mr, record_name, record); // 
 						define_local_type_in_current_check_proto(mr, record_name, record);
 						auto *cur_namelist_mr = namelist_mr;
 						while(cur_namelist_mr) {
@@ -2148,7 +2148,7 @@ namespace uvm {
 								if (name_mr->as_complex()->size() >= 5)
 								{
 									auto *item5 = name_mr->as_complex()->get_item(4);
-									// record字段的默认值
+									// record
 									auto item_type = create_lua_type_info();
 									check_expr_error(item5, item_type, nullptr);
 									if (!match_declare_type(prop_type_info, item_type, true))
@@ -2158,7 +2158,7 @@ namespace uvm {
 									}
 									else
 									{
-										// TODO: 如果默认值是函数，则自动给加入self参数，并且语法分析时也要按照有self的函数来处理
+										// TODO: ，self，self
 										std::string default_value_code = "nil";
 										auto token_parser = std::make_shared<GluaTokenParser>((lua_State *) nullptr);
 										auto tokens = dump_mr_tokens(item5);
@@ -2177,8 +2177,8 @@ namespace uvm {
 								break;
 						}
 
-						// 生成record对应的构造函数
-						// local function <record_name> (props) if(props) 依次检测record字段,没有设置值的用属性默认值  end  end
+						// record
+						// local function <record_name> (props) if(props) record,  end  end
 
 						generate_record_constructor_code(mr, record, parent_mr);
 					}
@@ -2218,7 +2218,7 @@ namespace uvm {
 							extra_bindings->set_type(generic_name, generic_type);
 						}
 						define_localvar_in_current_check_proto(mr, std::string(GLUA_TYPE_NAMESPACE_PREFIX) + record_name, record);
-						define_localvar_in_current_check_proto(mr, record_name, record); // 产生同名构造函数
+						define_localvar_in_current_check_proto(mr, record_name, record); // 
 						define_local_type_in_current_check_proto(mr, record_name, record);
 						auto type_info = get_type_from_mr(old_type_mr, extra_bindings);
 						copy_lua_type_info(record, type_info);
@@ -2230,7 +2230,7 @@ namespace uvm {
 						record_name = new_type_mr->as_final()->token.token;
 						record = create_lua_type_info(GluaTypeInfoEnum::LTI_RECORD);
 						define_localvar_in_current_check_proto(mr, std::string(GLUA_TYPE_NAMESPACE_PREFIX) + record_name, record);
-						define_localvar_in_current_check_proto(mr, record_name, record); // 产生同名构造函数
+						define_localvar_in_current_check_proto(mr, record_name, record); // 
 						define_local_type_in_current_check_proto(mr, record_name, record);
 						auto old_type = get_type_from_mr(old_type_mr);
 						copy_lua_type_info(record, old_type);
@@ -2269,7 +2269,7 @@ namespace uvm {
 				auto emit_keyword_str = emit_mr->head_token().token;
 				auto info = find_info_by_varname(mr, emit_keyword_str);
 				std::string event_type_str(event_type_mr->head_token().token);
-				// TODO: arg的类型要求是string类型，不能是其他类型比如number
+				// TODO: argstring，number
 				if(!info->is_undefined() && !info->is_nil())
 				{
 					set_error(error_in_match_result(mr, "Can't define variable emit, emit is a keyword"));
@@ -2304,7 +2304,7 @@ namespace uvm {
 			// args => exp
 			auto *cmr = mr->as_complex();
 			auto *args_mr = cmr->get_item(0);
-			// 转成functiondef的mr，然后当成functiondef处理
+			// functiondefmr，functiondef
 			auto *functiondef_mr = _ctx->create_complex_match_result(mr->next_input());
 			auto *prefix_function_symbol_mr = _ctx->create_final_match_result(cmr->next_input());
 			prefix_function_symbol_mr->token.token = "function";
@@ -2348,7 +2348,7 @@ namespace uvm {
 			// args => do block end
 			auto *cmr = mr->as_complex();
 			auto *args_mr = cmr->get_item(0);
-			// 转成functiondef的mr，然后当成functiondef处理
+			// functiondefmr，functiondef
 			auto *functiondef_mr = _ctx->create_complex_match_result(mr->next_input());
 			auto *prefix_function_symbol_mr = _ctx->create_final_match_result(cmr->next_input());
 			prefix_function_symbol_mr->token.token = "function";
@@ -2416,7 +2416,7 @@ namespace uvm {
 			{
 				//if (mr->is_final())
 				//{
-				// TODO: 这里有BUG, 映射关系不对
+				// TODO: BUG, 
 				auto token = mr->head_token();
 				if (token.linenumber < 100000 && token.linenumber>=7)
 				{
@@ -2485,7 +2485,7 @@ namespace uvm {
             }
             else if (mr->node_name() == "suffixedexp_visit_prop" || mr->node_name() == "var")
             {
-				// TODO: 这里和suffixedexp_visit_prop的模式一样，考虑把repeat模式处理函数封装
+				// TODO: suffixedexp_visit_prop，repeat
 				return check_suffixedexp_visit_prop_expr_error(mr, result_typ, ret_type);
             }
             else if (mr->node_name() == "retstat")
@@ -2575,7 +2575,7 @@ namespace uvm {
 
 
 		/**
-		 * 这只是将简易的类型签名的字符串转换成类型信息，不支持太复杂的类型签名，比如深度嵌套等，和本编程语言本身语法不一样
+		 * ，，，
 		 */
         GluaTypeInfoP GluaTypeChecker::of_type_str(std::string typestr, GluaExtraBindingsTypeP extra)
         {
@@ -2632,7 +2632,7 @@ namespace uvm {
             }
 			else if(uvm::util::starts_with(typestr, "("))
 			{
-				// 函数签名类型 (args...) => ret_type, 不支持嵌套括号
+				//  (args...) => ret_type, 
 				auto args_str = typestr.substr(1, typestr.find_first_of(")")-1);
 				auto ret_type_str = typestr.substr(typestr.find_last_of("=>") + 1);
 				auto arg_type_strs = uvm::util::string_split(args_str, ',');
@@ -2649,7 +2649,7 @@ namespace uvm {
 				}
 				return type_info;
 			}
-			// record类型的识别, record{propName: typeName;...} 其中属性的typeName最多支持一层()，不支持嵌套record
+			// record, record{propName: typeName;...} typeName()，record
 			else if(uvm::util::starts_with(typestr, "record"))
 			{
 				auto type_info = create_lua_type_info(GluaTypeInfoEnum::LTI_RECORD);
@@ -2672,7 +2672,7 @@ namespace uvm {
 			}
             else
             {
-                // TODO: 识别出union类型，比如 `string | integer|bool|function`
+                // TODO: union， `string | integer|bool|function`
                 auto left_xkh_idx = typestr.find_first_of('(');
                 if (left_xkh_idx > 0 && left_xkh_idx < typestr.length() - 1)
                 {
@@ -2714,7 +2714,7 @@ namespace uvm {
                 auto typestr = i->second;
                 auto type_info = of_type_str(typestr, extra);
                 proto->localvars[varname] = type_info;
-                proto->localvars_changable[varname] = true; // 默认全局变量不能修改
+                proto->localvars_changable[varname] = true; // 
 				if(varname.length() > strlen(GLUA_TYPE_NAMESPACE_PREFIX) && varname.substr(0, strlen(GLUA_TYPE_NAMESPACE_PREFIX)) == GLUA_TYPE_NAMESPACE_PREFIX)
 				{
 					auto type_name = varname.substr(strlen(GLUA_TYPE_NAMESPACE_PREFIX));
@@ -2731,7 +2731,7 @@ namespace uvm {
 				}
             }
 			/*
-			添加Map的类型信息
+			Map
 			type Map<V> = {
 				__index: (string) => V
 			}
@@ -2756,14 +2756,14 @@ namespace uvm {
 			auto ret_type = create_lua_type_info(GluaTypeInfoEnum::LTI_UNDEFINED);
 			if (!check_syntax_tree_type(mr, ret_type))
 				return false;
-			// 确保返回类型是合约类型
+			// 
 			if(!ret_type->is_record() || ret_type->record_props.find("storage")==ret_type->record_props.end())
 			{
 				set_error(GluaTypeCheckerErrors::CONTRACT_NOT_RETURN_CONTRACT_TYPE,
 					std::string("contract must return contract type, but get ") + ret_type->str());
 				return false;
 			}
-			// 确保storage的类型是record类型
+			// storagerecord
 			auto contract_storage_type = ret_type->record_props["storage"];
 			if(!contract_storage_type->is_record())
 			{
@@ -2772,7 +2772,7 @@ namespace uvm {
 				return false;
 			}
 			
-			// TODO: 要把合约的storage类型返回
+			// TODO: storage
 			if(ret_contract_storage_type_out)
 			{
 				*ret_contract_storage_type_out = contract_storage_type;
@@ -2783,7 +2783,7 @@ namespace uvm {
 				for(const auto &item : contract_storage_type->record_props)
 				{
 					auto storage_prop_type = item.second;
-					// contract的storage的类型的属性的类型，只能是int|number|string|bool|table|record|Array|Map
+					// contractstorage，int|number|string|bool|table|record|Array|Map
 					if(storage_prop_type->etype != GluaTypeInfoEnum::LTI_INT
 						&& storage_prop_type->etype != GluaTypeInfoEnum::LTI_NUMBER
 						&& storage_prop_type->etype != GluaTypeInfoEnum::LTI_STRING
@@ -2832,7 +2832,7 @@ namespace uvm {
 				}
 				else
 				{
-					// TODO: 改成调用合约API时自动参数类型转换
+					// TODO: API
 					if(api_type.second->arg_types.size() == 2 && !api_type.second->arg_types[1]->is_string())
 					{
 						set_error(GluaTypeCheckerErrors::CONTRACT_API_WRONG_ARGS,
@@ -2880,7 +2880,7 @@ namespace uvm {
             this->_proto = std::make_shared<LuaProtoSTree>();
             _current_checking_proto_stack.clear();
             auto global_proto = std::make_shared<LuaProtoSTree>();
-            // 把全局变量和函数的类型信息放入顶层proto
+            // proto
             init_global_variables_to_proto(global_proto);
             global_proto->sub_protos.push_back(_proto);
             _current_checking_proto_stack.push_back(global_proto);
@@ -2888,8 +2888,8 @@ namespace uvm {
             if (!build_proto(this->_proto, mr))
                 return false;
 			ldf->set_source_line_mapping(0, 0 + _middle_inserted_code_lines);
-            // 递归检查，每次碰到一个stat，如果是增加修改var，放入当前proto中，如果是使用，检查类型，如果失败就报错
-            // 当stat是包含proto时，递归进入这个proto，把proto压栈，并继续检查
+            // ，stat，var，proto，，，
+            // statproto，proto，proto，
 			try {
 				if (!check_expr_error(this->_proto->mr, nullptr, ret_type))
 					return false;
@@ -3247,7 +3247,7 @@ namespace uvm {
 			bool anonymous = !funcname_mr;
 			if (!anonymous)
 			{
-				bool wrong_funcname_type = false; // 是否用错误token(比如关键字，其他符合等)作为函数名
+				bool wrong_funcname_type = false; // token(，)
 				if (funcname_mr->is_complex() && funcname_mr->as_complex()->size() > 2)
 				{
 					// table:funcname or table.funcname
@@ -3298,12 +3298,12 @@ namespace uvm {
 						table_type_info = find_info_by_varname(funcname_mr, assign_to_table_name);
 						if (table_type_info->etype == GluaTypeInfoEnum::LTI_RECORD)
 						{
-							// 直接修改table对应的record类型，因为record类型目前只对当前代码文件其效果
+							// tablerecord，record
 							table_type_info->record_props[funcname] = tree->type_info;
 						}
 						else if (table_type_info->etype == GluaTypeInfoEnum::LTI_TABLE)
 						{
-							// 如果是table类型，可以考虑自动创建一个新table类型然后修改这个table类型的record_props，方便之后类型分析
+							// table，tabletablerecord_props，
 							auto new_table_type_info = create_lua_type_info(GluaTypeInfoEnum::LTI_TABLE);
 							copy_lua_type_info(new_table_type_info, table_type_info);
 							new_table_type_info->record_props[funcname] = tree->type_info;
@@ -3664,10 +3664,10 @@ namespace uvm {
                 }
                 return result;
             }
-			// TODO: literal type | literal type | ... 还没处理
+			// TODO: literal type | literal type | ... 
 			else if(mr->node_name() == "literal_type")
 			{
-				// 不产生实际的运行时类型和构造函数，不能作为构造函数使用
+				// ，
 				auto *cmr = mr->as_complex();
 				assert(cmr->size()>=3);
 				auto type_info = create_lua_type_info(GluaTypeInfoEnum::LTI_LITERIAL_TYPE);
@@ -3713,7 +3713,7 @@ namespace uvm {
 				}
                 auto instance_type = create_lua_type_info(GluaTypeInfoEnum::LTI_RECORD);
                 copy_lua_type_info(instance_type, record_info);
-                // 把record泛型中用到泛型的地方都用实例类替换,除了keeping_generic_names中的部分
+                // record,keeping_generic_names
                 std::vector<GluaTypeInfoP> keeping_generic_types;
                 for (size_t i = 0; i < instance_type->record_generics.size(); ++i)
                 {
@@ -3736,7 +3736,7 @@ namespace uvm {
 					}
                     for (auto &p : instance_type->record_props)
                     {
-                        // 如果属性值是函数类型，则要递归替换
+                        // ，
                         if (p.second->is_function() || p.second->is_union())
                         {
                             auto new_type = create_lua_type_info();
@@ -3747,7 +3747,7 @@ namespace uvm {
 								extra_bindings->copy_to(extra_bindings_for_sub);
                             }
 							extra_bindings_for_sub->set_type(declare_generic->generic_name, real_type);
-                            replace_generic_by_instance(new_type, generic_instances, extra_bindings_for_sub); // FIXME: 函数中泛型替换有BUG
+                            replace_generic_by_instance(new_type, generic_instances, extra_bindings_for_sub); // FIXME: BUG
                             p.second = new_type;
                             continue;
                         }
@@ -3757,14 +3757,14 @@ namespace uvm {
                         }
                     }
                 }
-                // 替换新实例类的record_name
+                // record_name
                 if (instance_type->record_generics.size() > 0)
                 {
                     std::stringstream ss;
                     if (instance_type->record_name.find('<') != std::string::npos)
                     {
-                        // TODO: 如果旧的类名称类似G1<int, T1, string>，实例化后应该变成类似G1<int, string, string>这样的
-                        // TODO: 泛型类创建时应该一开始就记录下一共有哪些泛型参数，每次实例化时记录实例化了哪些部分
+                        // TODO: G1<int, T1, string>，G1<int, string, string>
+                        // TODO: ，
                         // printf("");
                     }
                     ss << instance_type->record_name; // FIXME .substr(0, instance_type->record_name.find_first_of('<'));
@@ -3873,7 +3873,7 @@ namespace uvm {
         {
 			auto *cmr = mr->as_complex();
 			auto *last_item = cmr->get_item(cmr->size() - 1);
-			// 如果不是function，但是有__call的元函数，也可以调用
+			// function，__call，
 			// check type
 			if (!func_type_info->may_be_callable())
 			{
@@ -3887,7 +3887,7 @@ namespace uvm {
 			if (func_type_info->arg_types.size() == 0 ||
 				(func_type_info->arg_types.at(0)->etype != GluaTypeInfoEnum::LTI_OBJECT)) // FIXME
 			{
-				// <any> (object) 类型的函数，参数可能是不定参数，不检查
+				// <any> (object) ，，
 				if (last_item->is_complex())
 				{
 					auto *clast_item = last_item->as_complex();
@@ -3944,14 +3944,14 @@ namespace uvm {
 						}
 						else if (args_count < func_type_info->min_args_count_require())
 						{
-							// 如果实参数量等于形参数量-1并且函数有不定长参数(...)，那么也接受这样类型
+							// -1(...)，
 							set_error(error_in_functioncall(mr, func_type_info, &explist));
 							return create_lua_type_info();
 						}
 						else if (args_count > func_type_info->arg_types.size()
 							&& !func_type_info->has_var_args())
 						{
-							// 实参数量超过形参数量时，要检查函数形参最后一个是否是...，如果不是...，类型检查要报错
+							// ，...，...，
 							set_error(error_in_functioncall(mr, func_type_info, &explist));
 							return create_lua_type_info();
 						}
@@ -4004,13 +4004,13 @@ namespace uvm {
 
         GluaTypeInfoP GluaTypeChecker::guess_exp_type(MatchResult *mr)
         {
-            // 在当前和上层还有全局词法作用域中查找symbol对应的所有定义处，然后猜测类型
+            // symbol，
             if (is_simpleexp_node(mr))
             {
                 if (mr->is_final())
                 {
-                    // 判断类型
-                    // 如果是varname，从上下文（包括全局变量）中查询类型
+                    // 
+                    // varname，（）
                     auto *fmr = mr->as_final();
                     auto token = fmr->token;
 					GluaTypeInfoP type_info = nullptr;
@@ -4101,13 +4101,13 @@ namespace uvm {
                 if (mr->is_complex())
                 {
                     auto *cmr = mr->as_complex();
-					// TODO: 重载函数的函数签名会随参数类型而不同
+					// TODO: 
                     if (cmr->size() >= 2)
                     {
                         auto *item2 = cmr->get_item(1);
 						auto *last_item = cmr->get_item(cmr->size() - 1);
 						bool add_self_arg = false;
-						// TODO: 处理a.b.c:d args的情况
+						// TODO: a.b.c:d args
                         if (item2->node_name() == "args" || item2->node_name() == "tableconstructor")
                         {
                             // prefixexp args
@@ -4116,7 +4116,7 @@ namespace uvm {
 
                             auto *item1 = cmr->get_item(0);
                             auto func_type_info = create_lua_type_info();
-							auto constructor_ret_type = create_lua_type_info(); // 构造函数的返回类型
+							auto constructor_ret_type = create_lua_type_info(); // 
 							bool is_function = false;
 							bool is_constructor = false;
 
@@ -4124,7 +4124,7 @@ namespace uvm {
 								is_function = true;
 							else if(item1->node_name()=="simple_type" || item1->node_name() == "array_type")
 							{
-								is_function = true; // 这里是调用构造函数
+								is_function = true; // 
 								is_constructor = true;
 								check_expr_error(item1);
 								constructor_ret_type = get_type_from_mr(item1);
@@ -4158,10 +4158,10 @@ namespace uvm {
 										return create_lua_type_info();
 									}
 
-									// 优先考虑构造函数
+									// 
 									if(func_type_info->is_record() && (funcname_token.token == func_type_info->record_name || funcname_token.token == func_type_info->record_origin_name))
 									{
-										is_function = true; // 这里是调用构造函数
+										is_function = true; // 
 										is_constructor = true;
 										check_expr_error(item1);
 										constructor_ret_type = get_type_from_mr(item1);
@@ -4199,7 +4199,7 @@ namespace uvm {
 												_imported_contracts[item2->head_token().token] = mr->head_token().linenumber - _ctx->inner_lib_code_lines() + 2;
 											}
 										}
-										// 返回一个满足任何api调用的特殊Contract类型
+										// apiContract
 										auto type_info = create_lua_type_info(GluaTypeInfoEnum::LTI_OBJECT);
 										type_info->is_any_contract = true;
 										return type_info;
@@ -4210,7 +4210,7 @@ namespace uvm {
 								}
                                 if (func_type_info->is_record())
                                 {
-                                    // 用构造函数的声明替换
+                                    // 
                                     func_type_info = find_info_by_varname(item1, funcname_token.token + ":new");
                                     if (!func_type_info->may_be_callable())
                                     {
@@ -4356,7 +4356,7 @@ namespace uvm {
                         }
                     }
                 }
-                type_info->ret_types.push_back(create_lua_type_info(GluaTypeInfoEnum::LTI_OBJECT));	// TODO: 根据return分支来判断返回类型
+                type_info->ret_types.push_back(create_lua_type_info(GluaTypeInfoEnum::LTI_OBJECT));	// TODO: return
                 /*
                 if (!check_expr_error(mr, &type_info))
                 {
@@ -4422,7 +4422,7 @@ namespace uvm {
 		GluaTypeInfoP GluaTypeChecker::find_function_by_name(MatchResult *mr, std::string name,
 			std::vector<GluaTypeInfoP> const &args_types, GluaExtraBindingsTypeP extra_bindings, bool only_inited)
 		{
-			// 函数重载特化的函数名
+			// 
 			std::stringstream spec_func_name_ss;
 			spec_func_name_ss << name;
 			for (const auto &arg_type : args_types)
@@ -4433,14 +4433,14 @@ namespace uvm {
 			auto spec_func = find_info_by_varname(mr, spec_func_name, extra_bindings, only_inited);
 			if (spec_func->is_function())
 				return spec_func;
-			auto not_spec_func_name = name; // 没有特化的函数名
+			auto not_spec_func_name = name; // 
 			return find_info_by_varname(mr, not_spec_func_name);
 		}
 
 		GluaTypeInfoP GluaTypeChecker::find_operator_func_by_name(MatchResult *mr, std::string operator_name,
 			std::vector<GluaTypeInfoP> const &args_types, GluaExtraBindingsTypeP extra_bindings, bool only_inited)
         {
-			// 函数重载特化的函数名
+			// 
 			std::stringstream spec_func_name_ss;
 			spec_func_name_ss << "(" << operator_name;
 			for(const auto &arg_type : args_types)
@@ -4452,7 +4452,7 @@ namespace uvm {
 			auto spec_func = find_info_by_varname(mr, spec_func_name, extra_bindings, only_inited);
 			if (spec_func->is_function())
 				return spec_func;
-			auto not_spec_func_name = std::string("(") + operator_name + ")"; // 没有特化的函数名
+			auto not_spec_func_name = std::string("(") + operator_name + ")"; // 
 			return find_info_by_varname(mr, not_spec_func_name);
         }
 
@@ -4491,8 +4491,8 @@ namespace uvm {
         bool GluaTypeChecker::define_localvar_in_current_check_proto(MatchResult *mr, std::string name,
 			GluaTypeInfoP type_info, bool is_new, bool changable, bool replace, bool inited, bool is_new_global_var)
         {
-            // 本级和祖先级protos中查找变量
-            // 如果已经存在并且类型不同，就并入union类型，如果是全局变量，不能改动
+            // protos
+            // ，union，，
             if (name.length() < 1)
                 return true;
 			if(uvm::util::vector_contains(exclude_function_names, name))
@@ -4568,7 +4568,7 @@ namespace uvm {
 						}
 						else
 						{
-							// 很多情况下，比如var a: int = 1; a=a+1，不应该改变a的类型 
+							// ，var a: int = 1; a=a+1，a 
 							proto->localvars[name] = old_type;
 							proto->localvars_inited[name] = proto->localvars_inited[name] || inited;
 							return true;
@@ -4601,7 +4601,7 @@ namespace uvm {
 			}
 			else
 			{
-				// 这里也作为一个新局部类型
+				// 
 				if (!cover)
 				{
 					auto current_proto = current_checking_proto();
@@ -4612,17 +4612,17 @@ namespace uvm {
 				}
 				else
 				{
-					// 覆盖
+					// 
 					proto->local_types[name] = type_info;
 				}
 			}
 			return true;
         }
 
-		// TODO: 生成lua代码，要同时生成一个.ldb文件，记录源文件和目标文件的各行的映射关系还有不同proto下不同符号的类型信息
+		// TODO: lua，.ldb，proto
         std::string GluaTypeChecker::dump() const
         {
-			// TODO: 把ldb存到文件中
+			// TODO: ldb
             auto dump_token_parser = std::make_shared<GluaTokenParser>((lua_State*) nullptr);
             auto tokens = dump_proto_tokens(_proto.get());
             std::vector<GluaParserToken> token_list(tokens.begin(), tokens.end());
@@ -4663,7 +4663,7 @@ namespace uvm {
 							}
                             continue;
                         }
-                        // 排除function部分，而用dump_proto_tokens来得出proto部分的tokens
+                        // function，dump_proto_tokensprototokens
                         std::vector<GluaParserToken> sub_tokens;
                         if (item->binding_type() == MatchResultBindingTypeEnum::FUNCTION
                             && nullptr != item->binding())
@@ -4692,7 +4692,7 @@ namespace uvm {
         std::vector<GluaParserToken> GluaTypeChecker::dump_proto_tokens(LuaProtoSTree *tree) const
         {
             std::vector<GluaParserToken> tokens;
-            // 因为proto的mr只包含了funcbody部分，所以使用记录整体部分的full_mr
+            // protomrfuncbody，full_mr
             if (nullptr != tree->full_mr)
             {
                 tokens = dump_mr_tokens(tree->full_mr);
@@ -4785,10 +4785,10 @@ namespace uvm {
                             p.second = real_type;
                             continue;
                         }
-                        // TODO: 如果属性值是函数类型，则要递归替换
+                        // TODO: ，
                         if (p.second->is_function())
                         {
-                            // TODO: 泛型中的函数类型签名，如果函数类型签名里也有泛型参数, extra_bindings可能要变
+                            // TODO: ，, extra_bindings
                             auto new_type = create_lua_type_info();
                             copy_lua_type_info(new_type, p.second);
                             replace_generic_by_instance(new_type, generic_instances, extra_bindings);
@@ -4799,7 +4799,7 @@ namespace uvm {
             }
             else if (dest->etype == GluaTypeInfoEnum::LTI_UNION)
             {
-                // 暂时不支持直接union字面量，所以暂时没有这个问题
+                // union，
 				bool changed = false;
 				std::unordered_set<GluaTypeInfoP> new_union_types;
 				for(const auto &declare_type : dest->union_types)
@@ -4810,7 +4810,7 @@ namespace uvm {
 						if (!found_of_real_type)
 							continue;
 						auto real_type = found_of_real_type;
-						// FIXME: 要先判断是否已经存在
+						// FIXME: 
 						changed = true;
 						new_union_types.insert(real_type);
 					}
@@ -4819,7 +4819,7 @@ namespace uvm {
 						auto new_type = create_lua_type_info();
 						copy_lua_type_info(new_type, declare_type);
 						replace_generic_by_instance(new_type, generic_instances, extra_bindings);
-						// FIXME: 要先判断是否已经存在
+						// FIXME: 
 						changed = true; // FIXME
 						new_union_types.insert(new_type);
 					}

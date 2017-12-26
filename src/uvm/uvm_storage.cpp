@@ -61,7 +61,7 @@ static struct GluaStorageValue get_last_storage_changed_value(lua_State *L, cons
 	{
 		auto value = global_uvm_chain_api->get_storage_value_from_uvm_by_address(L, contract_id, key);
 		post_when_read_table(value);
-		// 如果是第一次读取，要把这个读取结果缓存住，避免重复从区块链上读取数据
+		// 堑一味取要取住馗隙取
 
 		if (!list) {
 			list = (GluaStorageChangeList*)malloc(sizeof(GluaStorageChangeList));
@@ -100,7 +100,7 @@ static std::string global_key_for_storage_prop(std::string contract_id, std::str
 }
 
 bool lua_push_storage_value(lua_State *L, const GluaStorageValue &value);
-#define max_support_array_size 10000000  // 目前最大支持的array size
+#define max_support_array_size 10000000  // 目前支值array size
 static bool lua_push_storage_table_value(lua_State *L, GluaTableMap *map, int type)
 {
 	if (nullptr == L || nullptr == map)
@@ -170,7 +170,7 @@ static GluaStorageChangeItem diff_storage_change_if_is_table(lua_State *L, GluaS
 		return change_item;
 	if (!lua_storage_is_table(change_item.before.type) || !lua_storage_is_table(change_item.after.type))
 		return change_item;
-	// FIXME: 考虑这里用malloc再手动placement new是否有问题
+	// FIXME: malloc侄placement new欠
 	auto new_before = (GluaTableMapP)malloc(sizeof(GluaTableMap));
 	new (new_before)GluaTableMap();
 	auto new_after = (GluaTableMapP)malloc(sizeof(GluaTableMap));
@@ -255,9 +255,9 @@ bool luaL_commit_storage_changes(lua_State *L)
 				if (lua_istable(L, -1))
 				{
 					auto after_value = lua_type_to_storage_value_type(L, -1, 0);
-					// 检查changelist是否有这个属性的改变项，有的话不用readvalue
+					// changelist欠缘母谋睿的籸eadvalue
 					change_item.after = after_value;
-					// FIXME: a= {}, storage.a = a, a['name'] = 123, storage.a = {}的情况下怎么处理? 考虑把storage还是做成一个table来处理
+					// FIXME: a= {}, storage.a = a, a['name'] = 123, storage.a = {}么? 前storage一table
 					//if (!has_property_changed_in_changelist(list, change_item.contract_id, change_item.key))
 					// {
 					if (!change_item.before.equals(change_item.after))
@@ -299,7 +299,7 @@ bool luaL_commit_storage_changes(lua_State *L)
 	{
 		return false;
 	}
-	// 如果是调用合约初始化init函数，并且storage不为空，而changes为空，报错
+	// 堑煤约始initstorage为眨changes为眨
 	if (uvm::lua::lib::is_calling_contract_init_api(L)
 		&& changes.size() == 0)
 	{
@@ -319,14 +319,14 @@ bool luaL_commit_storage_changes(lua_State *L)
 			global_uvm_chain_api->throw_exception(L, UVM_API_SIMPLE_ERROR, "Can't get contract info by contract address %s", it->first.c_str());
 			return false;
 		}
-		// 如果是调用init API，并且storage所处的合约地址和初始调用的合约地址一样，则要检查storage的after类型是否能和编译期时的storage类型匹配
+		// 堑init APIstorage暮约址统始玫暮约址一要storageafter欠芎捅时storage匹
 		bool is_in_starting_contract_init = false;
 		if (uvm::lua::lib::is_calling_contract_init_api(L))
 		{
 			auto starting_contract_address = uvm::lua::lib::get_starting_contract_address(L);
 			if (it->first == starting_contract_address)
 			{
-				// 检查storage的after类型是否能和编译期时的storage类型匹配
+				// storageafter欠芎捅时storage匹
 				is_in_starting_contract_init = true;
 				const auto &storage_properties_in_chain = stream->contract_storage_properties;
 				if (it->second->size() != storage_properties_in_chain.size())
@@ -347,7 +347,7 @@ bool luaL_commit_storage_changes(lua_State *L)
 					if (uvm::blockchain::is_any_table_storage_value_type(p1.second.after.type)
 						|| uvm::blockchain::is_any_array_storage_value_type(p1.second.after.type))
 					{
-						// 运行时[]也会变现为{}
+						// 时[]也为{}
 						if (!uvm::blockchain::is_any_table_storage_value_type(storage_info_in_chain)
 							&& !uvm::blockchain::is_any_array_storage_value_type(storage_info_in_chain))
 						{
@@ -367,7 +367,7 @@ bool luaL_commit_storage_changes(lua_State *L)
 								return false;
 							}
 						}
-						// 检查after值类型和链上值类型是否匹配
+						// after值秃值欠匹
 						if (p1.second.after.type == uvm::blockchain::storage_value_unknown_table
 							|| p1.second.after.type == uvm::blockchain::storage_value_unknown_array)
 						{
@@ -394,8 +394,8 @@ bool luaL_commit_storage_changes(lua_State *L)
 		{
 			if (lua_storage_is_table(it2->second.after.type))
 			{
-				// 如果before是空table，after是array时
-				// 如果before是array, after是空table时
+				// before强tableafterarray时
+				// beforearray, after强table时
 				if (lua_storage_is_array(it2->second.before.type) && it2->second.after.value.table_value->size() == 0)
 					it2->second.after.type = it2->second.before.type;
 				else if (lua_storage_is_table(it2->second.before.type) && it2->second.before.value.table_value->size()>0)
@@ -403,7 +403,7 @@ bool luaL_commit_storage_changes(lua_State *L)
 				// just save table diff
 				it2->second = diff_storage_change_if_is_table(L, it2->second);
 			}
-			// storage的变化要检查对应合约的编译期类型，并适当修改commit的类型
+			// storage谋要应约谋停实薷commit
 			if (!is_in_starting_contract_init)
 			{
 				const auto &storage_properties_in_chain = stream->contract_storage_properties;
@@ -414,7 +414,7 @@ bool luaL_commit_storage_changes(lua_State *L)
 					if (uvm::blockchain::is_any_table_storage_value_type(it2->second.after.type)
 						|| uvm::blockchain::is_any_array_storage_value_type(it2->second.after.type))
 					{
-						// 运行时[]也会变现为{}
+						// 时[]也为{}
 						if (!uvm::blockchain::is_any_table_storage_value_type(storage_info_in_chain)
 							&& !uvm::blockchain::is_any_array_storage_value_type(storage_info_in_chain))
 						{
@@ -434,7 +434,7 @@ bool luaL_commit_storage_changes(lua_State *L)
 								return false;
 							}
 						}
-						// 检查after值类型和链上值类型是否匹配
+						// after值秃值欠匹
 						if (it2->second.after.type == uvm::blockchain::storage_value_unknown_table
 							|| it2->second.after.type == uvm::blockchain::storage_value_unknown_array)
 						{
@@ -455,7 +455,7 @@ bool luaL_commit_storage_changes(lua_State *L)
 					}
 				}
 			}
-			// map/array的值类型要是一致的并且是基本类型
+			// map/array值要一碌牟腔
 			if (lua_storage_is_table(it2->second.after.type))
 			{
 				uvm::blockchain::StorageValueTypes item_value_type;
@@ -623,13 +623,13 @@ namespace uvm {
 
 			// uvm::lua::lib::add_maybe_storage_changed_contract_id(L, contract_id);
 
-			// FIXME: 这里如果是table，每次创建新对象，占用内存太大了，而且读取也太慢了
-			// FIXME: 考虑commit的时候再去读取storage的变化，不要每次都改
+			// FIXME: table每未露占诖太耍叶取也太
+			// FIXME: commit时去取storage谋要每味
 			const auto &arg2 = lua_type_to_storage_value_type(L, value_index, 0);
 
 			if (lua_istable(L, value_index))
 			{
-				// 如果是table，要加入read_list，因为可能直接修改它
+				// table要read_list为直薷
 				lua_pushvalue(L, value_index);
 				lua_setglobal(L, global_key_for_storage_prop(contract_id, name).c_str());
 				auto *table_read_list = get_or_init_storage_table_read_list(L);
@@ -651,7 +651,7 @@ namespace uvm {
 						change_item.key = name;
 						change_item.before = arg2;
 						change_item.after = arg2;
-						// TODO: 为了避免arg2太多占用内存，合并历史，释放多余对象
+						// TODO: 为吮arg2太占诖喜史头哦
 						table_read_list->push_back(change_item);
 					}
 				}
@@ -809,7 +809,7 @@ namespace uvm {
 			change_item.contract_id = contract_id;
 			change_item.after = after;
 			change_item.before = before;
-			// TODO: 为了避免arg2太多占用内存，合并历史，释放多余对象
+			// TODO: 为吮arg2太占诖喜史头哦
 			list->push_back(change_item);
 
 			return 0;

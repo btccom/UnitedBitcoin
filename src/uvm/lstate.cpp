@@ -255,7 +255,7 @@ static void close_state(lua_State *L) {
 }
 
 
-// TODO: lua_State中的新字段没有设置，不过暂时没用到协程
+// TODO: lua_State，
 LUA_API lua_State *lua_newthread(lua_State *L) {
     global_State *g = G(L);
     lua_State *L1;
@@ -371,7 +371,7 @@ static size_t align8(size_t s) {
 };
 
 // FIXME: use memory page, and use best fit malloc strategy
-// TODO: 改成根据需要分阶梯申请内存池，不一开始就申请最大内存池（分成多个阶梯式大小的内存池）
+// TODO: ，（）
 void *lua_malloc(lua_State *L, size_t size)
 {
     size = align8(size);

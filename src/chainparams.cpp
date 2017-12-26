@@ -319,6 +319,7 @@ public:
 
         // hard fork
         consensus.UBCHeight = 492000;
+        consensus.UBCONTRACT_Height = 0;// FIXME
 		
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks

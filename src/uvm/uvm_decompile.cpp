@@ -2206,19 +2206,19 @@ std::string ProcessCode(GluaDecompileContextP ctx, Proto* f, int indent, int fun
 
 				F->pc = pc;
 
-				// pop 所有 endpc < pc 的
+				// pop  endpc < pc 
 				while (RvarTop > 0 && f->locvars[Rvar[RvarTop - 1]].endpc < pc + 1) {
 					RvarTop--;
 					Rvar[RvarTop] = -1;
 				}
-				// push 所有 startpc <= pc 的，移到下一个未使用的变量
+				// push  startpc <= pc ，
 				while (currLocVar < f->sizelocvars && f->locvars[currLocVar].startpc <= pc + 1) {
 					Rvar[RvarTop] = currLocVar;
 					RvarTop++;
 					currLocVar++;
 					TestLocVarIndex(RvarTop - 1, pc);
 				}
-				// 那么此时 vars[r] 即对应 reg[r] 的变量
+				//  vars[r]  reg[r] 
 
 				if (pc > F->loop_ptr->end) {
 					next_child = F->loop_ptr->next;
@@ -3368,7 +3368,7 @@ std::string ProcessCode(GluaDecompileContextP ctx, Proto* f, int indent, int fun
 			}
 
 			std::string luaU_decompile(GluaDecompileContextP ctx, Proto* f, int dflag) {
-				// TODO: 语法尽量做成类似uvm的语法
+				// TODO: uvm
 				// char* code;
 				ctx->debug = dflag;
 				ctx->functionnum = 0;

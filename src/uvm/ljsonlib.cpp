@@ -121,7 +121,7 @@ static GluaStorageValue tokens_to_lua_value(lua_State *L, GluaTokenParser *token
             GluaStorageValue value;
             value.type = uvm::blockchain::StorageValueTypes::storage_value_string;
             auto token_str = token.token;
-			// FIXME: 要unescape
+			// FIXME: unescape
 			token_str = uvm::util::unescape_string(token_str);
             value.value.string_value = uvm::lua::lib::malloc_managed_string(L, token_str.length() + 1);
             memset(value.value.string_value, 0x0, token_str.length() + 1);
@@ -163,7 +163,7 @@ static GluaStorageValue tokens_to_lua_value(lua_State *L, GluaTokenParser *token
             return value;
         }
         GluaStorageValue table_value;
-        table_value.type = uvm::blockchain::StorageValueTypes::storage_value_unknown_table; // FIXME: 根据子项类型修改
+        table_value.type = uvm::blockchain::StorageValueTypes::storage_value_unknown_table; // FIXME: 
         table_value.value.table_value = uvm::lua::lib::create_managed_lua_table_map(L);
         assert(nullptr != table_value.value.table_value);
         do
@@ -269,7 +269,7 @@ static GluaStorageValue tokens_to_lua_value(lua_State *L, GluaTokenParser *token
             return value;
         }
         GluaStorageValue table_value;
-        table_value.type = uvm::blockchain::StorageValueTypes::storage_value_unknown_array; // FIXME: 根据子项类型修改
+        table_value.type = uvm::blockchain::StorageValueTypes::storage_value_unknown_array; // FIXME: 
         table_value.value.table_value = uvm::lua::lib::create_managed_lua_table_map(L);
         assert(nullptr != table_value.value.table_value);
         size_t count = 0;

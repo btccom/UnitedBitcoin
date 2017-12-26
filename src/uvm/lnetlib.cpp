@@ -182,7 +182,7 @@ int lualib_net_accept(lua_State *L)
 
 static void process_async_connection(lua_State *L, NetServerInfo *server, TcpSocket *socket)
 {
-	// FIXME: 这里用全局变量暂存的方式，对于闭包处理得不好，如果callback函数里使用了非全局变量的upval，可能会出问题
+	// FIXME: ，，callbackupval，
 	lua_getglobal(L, "net_async_handler");
 	if(!lua_isfunction(L, -1))
 	{

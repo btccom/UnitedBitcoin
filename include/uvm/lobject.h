@@ -498,10 +498,10 @@ typedef struct Node {
 typedef struct Table {
     CommonHeader;
     lu_byte flags;  /* 1<<p means tagmethod(p) is not present */
-    lu_byte lsizenode;  // log2 of size of 'node' array，哈希表部分的大小是2^lsizenode
-    unsigned int sizearray;  // size of 'array' array，数组部分的大小
-    TValue *array;  // 数组部分
-    Node *node; // 哈希表部分
+    lu_byte lsizenode;  // log2 of size of 'node' array希值拇小2^lsizenode
+    unsigned int sizearray;  // size of 'array' array值拇小
+    TValue *array;  // 
+    Node *node; // 希
     Node *lastfree;  /* any free position is before this position */
     struct Table *metatable;
     GCObject *gclist;

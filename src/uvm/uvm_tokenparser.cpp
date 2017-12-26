@@ -718,7 +718,7 @@ namespace uvm
                   int c = _current_char(code);
                   if (c < 0)
                   {
-                    // FIXME: 单独出现的特殊字符暂时忽略，之后要忽略不可见字符但是对于中文字符要输出
+                    // FIXME: ，
                     ++_parsing_pos;
                     continue;
                   }
@@ -784,7 +784,7 @@ namespace uvm
 
         std::string GluaTokenParser::dump() const
         {
-			// TODO: 把生成ldf文件的处理放到这里来
+			// TODO: ldf
             std::stringstream ss;
             size_t lastline = 1;
 			size_t lasttoken_lines_count = 0;

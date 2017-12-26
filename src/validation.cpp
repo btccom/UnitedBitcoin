@@ -1835,6 +1835,9 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                              REJECT_INVALID, "bad-blk-sigops");
 
         txdata.emplace_back(tx);
+
+
+
         if (!tx.IsCoinBase())
         {
             std::vector<CScriptCheck> vChecks;

@@ -253,7 +253,7 @@ namespace uvm {
 		IndexType MakeIndex(GluaDecompileContextP ctx, Function* F, std::stringstream &str, std::string rstr, IndexType type);
 		int isIdentifier(std::string src);
 
-		// @param lfag: 是否显示调试信息
+		// @param lfag: 
 		std::string luaU_decompile(GluaDecompileContextP ctx, Proto* f, int lflag);
 		void luaU_decompileSubFunction(GluaDecompileContextP ctx, Proto* f, int dflag, std::string funcnumstr);
 

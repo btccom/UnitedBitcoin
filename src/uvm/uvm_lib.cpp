@@ -57,7 +57,7 @@ namespace uvm
 
 #define LUA_REPL_RUNNING_STATE_KEY "lua_repl_running"
 #define LUA_IN_SANDBOX_STATE_KEY "lua_in_sandbox"
-            // 一次操作中可能改动了storage的contract id集合的state key
+            // storagecontract idstate key
 #define LUA_MAYBE_CHANGE_STORAGE_CONTRACT_IDS_STATE_KEY "maybe_change_storage_contract_ids_state"
 
             static const char *globalvar_whitelist[] = {
@@ -76,7 +76,7 @@ namespace uvm
                 "setmetatable"
             };
 
-            // 这里用ordered_map而不是unordered_map是为了保持顺序，比如Stream type要在Stream构造函数前面
+            // ordered_mapunordered_map，Stream typeStream
 			static const std::map<std::string, std::string> globalvar_type_infos =
 			{
 				// inner types
@@ -96,8 +96,8 @@ namespace uvm
 			{ "(-)", "(number, number) => number" },
 			{ "(*)", "(number, number) => number" },
 
-			// (函数名/操作符名$参数类型$参数类型...)表示具体的重载函数签名，比如(+$int#int)，找不到特化重载函数签名，用非特化版本函数签名
-			// 如果是非中缀函数/操作符，则重载函数签名的名称是函数名/操作符名$参数类型$参数类型...，比如 func$int$int$int
+			// (/$$...)，(+$int#int)，，
+			// /，/$$...， func$int$int$int
 			{ "(+$int$int)", "(int, int) => int" },
 			{ "(-$int$int)", "(int, int) => int" },
 			{ "(*$int$int)", "(int, int) => int" },
@@ -241,7 +241,7 @@ get_status_message: (object) => string;
 get_res_body: (object) => string;
 finish_res: (object) => void
 })END" },
-// FIXME: 下面这个Stream record的成员函数，第一个参数应该是self
+// FIXME: Stream record，self
 { GLUA_TYPE_NAMESPACE_PREFIX_WRAP(Stream), R"END(record {
 size: (table) => int;
 pos: (table) => int;
@@ -268,7 +268,7 @@ next: (table) => bool
                 { "exit_debugger", "() => void" },
                 { "caller", "string" },
                 { "caller_address", "string" },
-				// 脚本模式下的全局变量
+				// 
 				{ "param", "string" },
 				{ "truncated", "bool" },
 				{ "contract_id", "string" },
@@ -352,7 +352,7 @@ next: (table) => bool
                     return it->second;
             }
 
-			// 从当前合约总转账到
+			// 
 			static int transfer_from_contract_to_public_account(lua_State *L)
             {
 				if (lua_gettop(L) < 3)
@@ -616,7 +616,7 @@ next: (table) => bool
             }
 
             /************************************************************************/
-            /* 获取某个块（可以是未来块，也可能是过去块）上某个哈希数据产生的伪随机数               */
+            /* （，）               */
             /************************************************************************/
             static int get_waited_block_random(lua_State *L)
             {
@@ -794,9 +794,9 @@ next: (table) => bool
 				}
 			}
 
-			// Stream类型的构造函数,为了避免tostring到处出问题，使用lightuserdata
-			// 不用userdata来托管内存到uvm gc中是考虑到指针可能是new class出来的
-			// 调用函数的时候
+			// Stream,tostring，lightuserdata
+			// userdatauvm gcnew class
+			// 
 			static int uvm_core_lib_Stream(lua_State *L)
             {
 				auto stream = new GluaByteStream();
@@ -921,7 +921,7 @@ next: (table) => bool
 				}
 			}
 
-            // 对storage的访问操作会访问这个方法
+            // storage
 			// storage::__index: function(s, key)
 			//    if type(key) ~= 'string' then
 			//    uvm.error('only string can be storage key')
@@ -961,7 +961,7 @@ next: (table) => bool
 				}
             }
 
-            // 对storage的写入操作会调用此API
+            // storageAPI
 			// storage::__newindex: function(s, key, val)
 			// if type(key) ~= 'string' then
 			//	uvm.error('only string can be storage key')
@@ -1007,7 +1007,7 @@ next: (table) => bool
 				lua_pop(L, 1);
 				if (exist)
 					return 0; 
-				// pairsByKeys的排序方式是先数字key部分遍历，然后哈希表字符串key部分按key字符串长度和key字符序从小到大遍历
+				// pairsByKeyskey，keykeykey
 				const char *code = R"END(
 function __real_pairs_by_keys_func(t)
 	local hashes = {}  
@@ -1066,7 +1066,7 @@ end
 				add_global_c_function(L, "debugger", &enter_lua_debugger);
 				add_global_c_function(L, "exit_debugger", &exit_lua_debugger);
 				lua_createtable(L, 0, 0);
-				lua_setglobal(L, "last_return"); // 函数的最后返回值记录到这个全局变量
+				lua_setglobal(L, "last_return"); // 
 				add_global_c_function(L, "Array", &uvm_core_lib_Array);
 				add_global_c_function(L, "Map", &uvm_core_lib_Hashmap);
 
@@ -1640,7 +1640,7 @@ end
 				}
 				else
 				{
-					// TODO: 如果用lua语法的话，也要抽取出emit(EventName, EventArg)中的eventName列表
+					// TODO: lua，emit(EventName, EventArg)eventName
 				}
 
 
@@ -2035,7 +2035,7 @@ end
 					if(is_importing_contract)
 					{
 						is_importing_contract = false;
-						// 检查接下来是否是LOADK常量字符串且这个合约名存在
+						// LOADK
 						if(getOpMode(o) == UOP_LOADK)
 						{
 							int idx = MYK(INDEXK(bx));
@@ -2054,7 +2054,7 @@ end
 					else if(is_importing_contract_address)
 					{
 						is_importing_contract_address = false;
-						// 检查接下来是否是LOADK常量字符串且这个合约地址存在
+						// LOADK
 						if (getOpMode(o) == UOP_LOADK)
 						{
 							int idx = MYK(INDEXK(bx));
@@ -2301,7 +2301,7 @@ end
                 lcompile_error_get(L, error);
 				for(size_t i=0;i<stream->contract_apis.size();++i)
 				{
-					// FIXME: 把id/name/storage这些属性统一用个函数管理起来，不要到处都重复写
+					// FIXME: id/name/storage，
 					if(stream->contract_apis[i] == "id"
 						|| stream->contract_apis[i] == "name"
 						|| stream->contract_apis[i] == "storage")
@@ -2591,7 +2591,7 @@ end
 
             bool start_repl(lua_State *L)
             {
-				// TODO: 把这里的REPL换成main.cpp中的新REPL
+				// TODO: REPLmain.cppREPL
                 luaL_doREPL(L);
                 return true;
             }

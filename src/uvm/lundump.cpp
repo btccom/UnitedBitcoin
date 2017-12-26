@@ -313,7 +313,7 @@ LClosure *luaU_undump(lua_State *L, ZIO *Z, const char *name) {
         S.name = name;
     S.L = L;
     S.Z = Z;
-    checkHeader(&S); // FIXME: release模式下这里好像有问题会报错
+    checkHeader(&S); // FIXME: release
     cl = luaF_newLclosure(L, LoadByte(&S));
     setclLvalue(L, L->top, cl);
     luaD_inctop(L);
