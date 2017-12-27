@@ -4694,3 +4694,23 @@ public:
         mapBlockIndex.clear();
     }
 } instance_of_cmaincleanup;
+
+namespace contract_utils {
+    std::string storage_to_json_string(const StorageValue &storage_value)
+    {
+        return jsondiff::json_dumps(storage_value);
+    }
+    ContractDataValue vch_to_contract_data(const valtype &vch_value)
+    {
+        const auto &vch_str = ValtypeUtils::vch_to_string(vch_value);
+        return jsondiff::json_loads(vch_str);
+    }
+    valtype contract_data_to_vch(const ContractDataValue &value)
+    {
+        auto str = jsondiff::json_dumps(value);
+        std::vector<unsigned char> data(str.size() + 1);
+        memcpy(data.data(), str.c_str(), str.size());
+        data[str.size()] = '\0';
+        return data;
+    }
+}

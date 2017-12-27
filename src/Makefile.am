@@ -292,6 +292,10 @@ libbitcoin_server_a_SOURCES = \
   contract_engine/contract_engine.cpp \
     contract_engine/contract_engine_builder.cpp \
     contract_engine/uvm_contract_engine.cpp \
+    jsondiff/diff_result.cpp \
+    jsondiff/helper.cpp \
+    jsondiff/json_value_types.cpp \
+    jsondiff/jsondiff.cpp \
   $(BITCOIN_CORE_H)
 
 if ENABLE_ZMQ
@@ -467,7 +471,7 @@ ubcd_LDADD = \
   $(LIBMEMENV) \
   $(LIBSECP256K1)
 
-ubcd_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS)
+ubcd_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS) -lfc
 
 # bitcoin-cli binary #
 ubc_cli_SOURCES = bitcoin-cli.cpp

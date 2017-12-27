@@ -19,6 +19,7 @@
 #include <sync.h>
 #include <versionbits.h>
 #include <contract_engine/contract_engine_builder.hpp>
+#include <jsondiff/jsondiff.h>
 
 #include <algorithm>
 #include <exception>
@@ -28,6 +29,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <memory>
 
 #include <atomic>
 
@@ -538,6 +540,10 @@ struct ContractTransaction {
     ContractTransactionParams params;
 };
 
+typedef jsondiff::JsonValue StorageValue;
+typedef jsondiff::JsonValue ContractDataValue; // data in contract vm's value type
+typedef jsondiff::DiffResultP StorageChanges;
+
 struct ContractExecResult {
     uint64_t usedGas = 0;
     std::vector<CTxOut> refundOutputs;
@@ -545,8 +551,14 @@ struct ContractExecResult {
     int32_t exit_code;
     std::string error_message;
 
-    // TODO: asset transfers, storage changes
+    std::vector<std::pair<std::string, StorageChanges>> contract_storage_changes;
 };
+
+namespace contract_utils {
+    std::string storage_to_json_string(const StorageValue &storage_value);
+    ContractDataValue vch_to_contract_data(const valtype &vch_value);
+    valtype contract_data_to_vch(const ContractDataValue &value);
+}
 
 // end contract code
 
