@@ -44,6 +44,8 @@
 #include <pubkey.h>
 #include <base58.h>
 
+#include <uvm/btc_uvm_api.h>
+
 #include <atomic>
 #include <sstream>
 
@@ -1646,7 +1648,84 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex* pindex, const Consens
     return flags;
 }
 
+using uvm::lua::api::global_uvm_chain_api;
 
+bool ContractExec::performByteCode()
+{
+    if(!global_uvm_chain_api)
+    {
+        global_uvm_chain_api = new uvm::lua::api::BtcUvmChainApi();
+    }
+    for(ContractTransaction &tx : txs)
+    {
+        blockchain::contract_engine::ContractEngineBuilder engine_builder;
+        const auto &params = tx.params;
+        const auto &caller = params.caller;
+        const auto &caller_address = params.caller_address;
+        engine_builder.set_caller(caller, caller_address);
+        auto engine = engine_builder.build();
+        engine->set_gas_limit(params.gasLimit);
+        std::string api_result_json_string;
+        if(tx.opcode == OP_CREATE) {
+            // save bytecode in pendingState
+            ContractInfo contract_info;
+            contract_info.address = params.contract_address;
+            pending_contracts_to_create[contract_info.address] = contract_info;
+            std::cout << "got OP_CREATE op" << std::endl;
+            try {
+                // TODO: create or receive pending state
+                engine->set_state_pointer_value("pending_state", this);
+                // TODO: get apis and offline_apis from contract bytecode
+                engine->execute_contract_init_by_address(params.contract_address, params.api_arg, &api_result_json_string);
+            }
+            catch(uvm::core::GluaException &e)
+            {
+                pending_contract_exec_result.exit_code = 1;
+                pending_contract_exec_result.error_message = e.what();
+                return false;
+            }
+        } else if(tx.opcode == OP_CALL) {
+            if(params.api_name.empty()) {
+                pending_contract_exec_result.exit_code = 1;
+                pending_contract_exec_result.error_message = "contract api name to be called can't be empty";
+                return false;
+            }
+            try {
+                engine->execute_contract_api_by_address(params.contract_address, params.api_name, params.api_arg, &api_result_json_string);
+            }
+            catch(uvm::core::GluaException &e)
+            {
+                pending_contract_exec_result.exit_code = 1;
+                pending_contract_exec_result.error_message = e.what();
+                return false;
+            }
+        } else if(tx.opcode == OP_DEPOSIT_TO_CONTRACT) {
+            std::string deposit_arg = "0"; // FIXME: change to deposit amount
+            try {
+                engine->execute_contract_api_by_address(params.contract_address, "on_deposit", deposit_arg, &api_result_json_string);
+            }
+            catch(uvm::core::GluaException &e)
+            {
+                pending_contract_exec_result.exit_code = 1;
+                pending_contract_exec_result.error_message = e.what();
+                return false;
+            }
+        } else {
+            pending_contract_exec_result.exit_code = 1;
+            pending_contract_exec_result.error_message = std::string("not supported contract opcode ") + std::to_string(tx.opcode);
+            return false;
+        }
+    }
+    // TODO: commit to pending state
+    return true;
+}
+
+bool ContractExec::processingResults(ContractExecResult &result)
+{
+    // put result of transfers and valueTransfers, storage changes to contract exec result
+    result = pending_contract_exec_result;
+    return true;
+}
 
 static int64_t nTimeCheck = 0;
 static int64_t nTimeForks = 0;

@@ -289,7 +289,8 @@ libbitcoin_server_a_SOURCES = \
     uvm/lutf8lib.cpp \
     uvm/lvm.cpp \
     uvm/lzio.cpp \
-  contract_engine/contract_engine.cpp \
+    uvm/btc_uvm_api.cpp \
+    contract_engine/contract_engine.cpp \
     contract_engine/contract_engine_builder.cpp \
     contract_engine/uvm_contract_engine.cpp \
     jsondiff/diff_result.cpp \

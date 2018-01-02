@@ -544,14 +544,50 @@ typedef jsondiff::JsonValue StorageValue;
 typedef jsondiff::JsonValue ContractDataValue; // data in contract vm's value type
 typedef jsondiff::DiffResultP StorageChanges;
 
+struct ContractResultTransferInfo {
+    std::string from_address;
+    std::string to_address;
+    uint64_t amount;
+};
+
+// contract execute result for uvm
+struct ResultExecute {
+    uint64_t usedGas = 0;
+    int32_t exit_code;
+    std::string error_message;
+    std::vector<ContractResultTransferInfo> balance_changes;
+    std::vector<std::pair<std::string, StorageChanges>> contract_storage_changes; // contract_id => changes
+};
+
+// contract result for bitcoin
 struct ContractExecResult {
     uint64_t usedGas = 0;
     std::vector<CTxOut> refundOutputs;
-    std::vector<CTransaction> valueTransfers;
+//    std::vector<CTransaction> valueTransfers;
     int32_t exit_code;
     std::string error_message;
 
-    std::vector<std::pair<std::string, StorageChanges>> contract_storage_changes;
+    std::vector<std::pair<std::string, StorageChanges>> contract_storage_changes; // contract_id => changes
+};
+
+class ContractExec {
+public:
+    ContractExec(const CBlock& _block, std::vector<ContractTransaction> _txs, const uint64_t _blockGasLimit)
+            : block(_block), txs(_txs), blockGasLimit(_blockGasLimit)
+    {}
+    bool performByteCode();
+    bool processingResults(ContractExecResult &result);
+    std::vector<ResultExecute>& getResult() {return result;}
+private:
+    // TODO: build contract execute environment
+private:
+    std::vector<ContractTransaction> txs;
+    std::vector<ResultExecute> result;
+    const CBlock &block;
+    const uint64_t blockGasLimit;
+    // contract changes not committed
+    std::unordered_map<std::string, ContractInfo> pending_contracts_to_create;
+    ContractExecResult pending_contract_exec_result; // pending contract exec changes not committed
 };
 
 namespace contract_utils {
