@@ -1727,6 +1727,144 @@ bool ContractExec::processingResults(ContractExecResult &result)
     return true;
 }
 
+bool ContractTxConverter::extractionContractTransactions(ExtractContractTX& contractTx) {
+    std::vector<ContractTransaction> resultTX;
+    std::vector<ContractTransactionParams> resultETP;
+    for(size_t i = 0; i < txBitcoin.vout.size(); i++) {
+        if(txBitcoin.vout[i].scriptPubKey.HasContractOp()){
+            if(receiveStack(txBitcoin.vout[i].scriptPubKey)){
+                ContractTransactionParams params;
+                if(parseContractTXParams(params)){
+                    resultTX.push_back(createContractTX(params, i));
+                    resultETP.push_back(params);
+                }else{
+                    return false;
+                }
+            }else{
+                return false;
+            }
+        }
+    }
+    contractTx = std::make_pair(resultTX, resultETP);
+    return true;
+}
+
+bool ContractTxConverter::receiveStack(const CScript& scriptPubKey) {
+    EvalScript(stack, scriptPubKey, SCRIPT_EXEC_BYTE_CODE, BaseSignatureChecker(), SIGVERSION_BASE, nullptr);
+    if (stack.empty())
+        return false;
+    CScript scriptRest(stack.back().begin(), stack.back().end());
+    stack.pop_back();
+    opcode = (opcodetype)(*scriptRest.begin());
+    // FIXME: check contract opcode and operands format
+    if((opcode == OP_CREATE && stack.size() < 4) || (opcode == OP_CALL && stack.size() < 5)
+       || (opcode == OP_UPGRADE && stack.size() < 2)
+       || (opcode == OP_DESTROY && stack.size() < 2)
+       || (opcode == OP_DEPOSIT_TO_CONTRACT && stack.size() < 3)){
+        stack.clear();
+        return false;
+    }
+    return true;
+}
+bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& params) {
+    try{
+        uint64_t gasLimit;
+        valtype apiArg;
+        valtype api_name;
+        valtype caller_address;
+        valtype bytecode;
+        valtype contract_address;
+        uint64_t deposit_amount;
+        // TODO: get contract args from stack
+        switch (opcode) {
+            case OP_CREATE: {
+                gasLimit = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                bytecode = stack.back();
+                stack.pop_back();
+                caller_address = stack.back();
+                stack.pop_back();
+                // TODO: check caller in vin addresses
+            } break;
+            case OP_CALL: {
+                gasLimit = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                apiArg = stack.back();
+                stack.pop_back();
+                api_name = stack.back();
+                stack.pop_back();
+                contract_address = stack.back();
+                stack.pop_back();
+                caller_address = stack.back();
+                stack.pop_back();
+                // TODO: check caller in vin addresses
+            } break;
+            case OP_DEPOSIT_TO_CONTRACT: {
+                gasLimit = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                deposit_amount = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                contract_address = stack.back();
+                stack.pop_back();
+                caller_address = stack.back();
+                stack.pop_back();
+                // TODO: check caller in vin addresses
+            } break;
+            case OP_SPEND: {
+                // to_address = stack.back();
+                // TODO
+                stack.pop_back();
+            }
+            default: {
+                // TODO: set error
+                return false;
+            }
+        }
+        if(stack.back().size() > 4) { // FIXME
+            return false;
+        }
+        params.gasLimit = gasLimit;
+        params.caller_address = ValtypeUtils::vch_to_string(caller_address);
+        // TODO: set caller
+        params.contract_address = ValtypeUtils::vch_to_string(contract_address);
+        params.api_name = ValtypeUtils::vch_to_string(api_name);
+        params.api_arg = ValtypeUtils::vch_to_string(apiArg);
+        params.deposit_amount = deposit_amount;
+        params.code = bytecode;
+        return true;
+    }
+    catch(const scriptnum_error& err){
+        LogPrintf("Incorrect parameters to VM.");
+        return false;
+    }
+}
+ContractTransaction ContractTxConverter::createContractTX(const ContractTransactionParams& etp, const uint32_t nOut) {
+    ContractTransaction txContract;
+    auto &params = txContract.params;
+    params.contract_address = etp.contract_address;
+    params.api_name = etp.api_name;
+    params.api_arg = etp.api_arg;
+    params.caller_address = etp.caller_address;
+    params.caller = etp.caller;
+    // params.to_address = etp.to_address;
+    params.deposit_amount = etp.deposit_amount;
+    params.gasLimit = etp.gasLimit;
+    params.code = etp.code;
+    txContract.opcode = opcode;
+    // TODO: check etp by different opcode value, eg. OP_CREATE can't contains
+    if (etp.contract_address == "" && opcode != OP_CALL){
+//        txContract = ContractTransaction(txBitcoin.vout[nOut].nValue, etp.gasPrice, etp.gasLimit, etp.code, 0);
+    }
+    else{
+//        txContract = ContractTransaction(txBitcoin.vout[nOut].nValue, etp.gasPrice, etp.gasLimit, etp.contract_address, etp.code, 0);
+    }
+    // FIXME: dev::Address sender(GetSenderAddress(txBit, view, blockTransactions));
+    // txContract.forceSender(sender);
+//    txContract.setHashWith(uintToh256(txBitcoin.GetHash()));
+//    txContract.setNVout(nOut);
+    return txContract;
+}
+
 static int64_t nTimeCheck = 0;
 static int64_t nTimeForks = 0;
 static int64_t nTimeVerify = 0;
@@ -1915,7 +2053,8 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
 
         txdata.emplace_back(tx);
 
-
+        // TODO: check BIP of contract feature
+        auto hasOpSpend = tx.HasOpSpend();
 
         if (!tx.IsCoinBase())
         {
@@ -1925,7 +2064,52 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                 return error("ConnectBlock(): CheckInputs on %s failed with %s",
                     tx.GetHash().ToString(), FormatStateMessage(state));
             control.Add(vChecks);
+
+            // OP_SPEND can only spend from contract address
+            for(const CTxIn& j : tx.vin){
+                if(!j.scriptSig.HasOpSpend()){
+                    const CTxOut& prevout = view.AccessCoin(j.prevout).out;
+                    if((prevout.scriptPubKey.HasContractOp())){
+                        return state.DoS(100, error("ConnectBlock(): Contract spend without OP_SPEND in scriptSig"),
+                                         REJECT_INVALID, "bad-txns-invalid-contract-spend");
+                    }
+                }
+            }
         }
+
+        // TODO: if tx has OP_SPEND or is contract tx, eval sender bitcoin script first
+        // TODO: then convert bitcoin script to AAL-tx, run the contract code, etc.
+        // TODO: check gas, result status, result. and make result tx
+        if(!tx.HasOpSpend()) {
+            // checkBlock.vtx.push_back(block.vtx[i]);
+            // TODO
+        }
+        uint64_t blockGasLimit = UINT64_MAX;
+        if(tx.HasContractOp() && !hasOpSpend) {
+            // TODO
+            ContractTxConverter converter(tx, &view, &block.vtx);
+            ExtractContractTX resultConvertContractTx;
+            if(!converter.extractionContractTransactions(resultConvertContractTx)) {
+               return state.DoS(100, error("ConnectBlock(): Contract transaction of the wrong format"), REJECT_INVALID, "bad-tx-bad-contract-format");
+            }
+            // TODO: check min gas price
+            uint256 gasAllTxs = uint256();
+            ContractExec exec(block, resultConvertContractTx.first, blockGasLimit);
+            uint256 sumGas = uint256();
+            CAmount nTxFee = view.GetValueIn(tx) - tx.GetValueOut();
+            auto execRes = exec.performByteCode();
+            if(!execRes) {
+                return state.DoS(100,
+                                 error("ConnectBlock(): exec bytecode error"),
+                                 REJECT_INVALID, "bad-contract-execution");
+            }
+            for(ContractTransaction &ctx : resultConvertContractTx.first) {
+//                sumGas += ctx.gas() * ctx.gasPrice(); // FIXME
+                // TODO
+            }
+            // TODO
+        }
+
 
         CTxUndo undoDummy;
         if (i > 0) {

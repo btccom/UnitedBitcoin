@@ -544,6 +544,8 @@ typedef jsondiff::JsonValue StorageValue;
 typedef jsondiff::JsonValue ContractDataValue; // data in contract vm's value type
 typedef jsondiff::DiffResultP StorageChanges;
 
+using ExtractContractTX = std::pair<std::vector<ContractTransaction>, std::vector<ContractTransactionParams>>;
+
 struct ContractResultTransferInfo {
     std::string from_address;
     std::string to_address;
@@ -568,6 +570,27 @@ struct ContractExecResult {
     std::string error_message;
 
     std::vector<std::pair<std::string, StorageChanges>> contract_storage_changes; // contract_id => changes
+};
+
+class ContractTxConverter {
+public:
+    ContractTxConverter(CTransaction tx, CCoinsViewCache *v = nullptr, const std::vector<CTransactionRef>* blockTxs=nullptr)
+            : txBitcoin(tx), view(v), blockTransactions(blockTxs)
+    {}
+    // extract contract tx from bitcoin tx info
+    bool extractionContractTransactions(ExtractContractTX& contractTx);
+private:
+    bool receiveStack(const CScript& scriptPubKey);
+    bool parseContractTXParams(ContractTransactionParams& params);
+    ContractTransaction createContractTX(const ContractTransactionParams& etp, const uint32_t nOut);
+    // TODO: more functions
+    // TODO: build ContractTransaction
+private:
+    const CTransaction txBitcoin;
+    const CCoinsViewCache *view;
+    std::vector<valtype> stack;
+    opcodetype opcode;
+    const std::vector<CTransactionRef> *blockTransactions;
 };
 
 class ContractExec {
