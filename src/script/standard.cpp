@@ -28,6 +28,8 @@ const char* GetTxnOutputType(txnouttype t)
     case TX_SCRIPTHASH: return "scripthash";
     case TX_MULTISIG: return "multisig";
     case TX_NULL_DATA: return "nulldata";
+        case TX_CREATE: return "createcontract";
+        case TX_CALL: return "callcontract";
     case TX_WITNESS_V0_KEYHASH: return "witness_v0_keyhash";
     case TX_WITNESS_V0_SCRIPTHASH: return "witness_v0_scripthash";
     case TX_WITNESS_UNKNOWN: return "witness_unknown";
@@ -49,6 +51,12 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
 
         // Sender provides N pubkeys, receivers provides M signatures
         mTemplates.insert(std::make_pair(TX_MULTISIG, CScript() << OP_SMALLINTEGER << OP_PUBKEYS << OP_SMALLINTEGER << OP_CHECKMULTISIG));
+
+        // TODO: change the format of contract template
+        // Contract creation tx
+        mTemplates.insert(std::make_pair(TX_CREATE, CScript() << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_CREATE));
+        // Call contract tx
+        mTemplates.insert(std::make_pair(TX_CALL, CScript() << OP_DATA << OP_DATA << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_CALL));
     }
 
     vSolutionsRet.clear();
@@ -95,11 +103,16 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
         return true;
     }
 
+    if(scriptPubKey.size()>5)
+        printf("debug scriptpubkey size: %d", scriptPubKey.size()); // FIXME
+
     // Scan templates
     const CScript& script1 = scriptPubKey;
     for (const std::pair<txnouttype, CScript>& tplate : mTemplates)
     {
         const CScript& script2 = tplate.second;
+        if(script2.size()==4)
+            printf("debug"); // FIXME
         vSolutionsRet.clear();
 
         opcodetype opcode1, opcode2;
@@ -167,9 +180,34 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
                 else
                     break;
             }
+            else if(opcode2 == OP_GAS_LIMIT) {
+                try {
+                    uint64_t val = CScriptNum::vch_to_uint64(vch1);
+                }
+                catch (const scriptnum_error &err) {
+                    return false;
+                }
+            }
+            else if(opcode2 == OP_GAS_PRICE) {
+                try {
+                    uint64_t val = CScriptNum::vch_to_uint64(vch1);
+                }
+                catch (const scriptnum_error &err) {
+                    return false;
+                }
+            }
+            else if(opcode2 == OP_DATA)
+            {
+                if(0 <= opcode1 && opcode1 <= OP_PUSHDATA4)
+                {
+                    if(vch1.empty())
+                        break;
+                }
+            }
             else if (opcode1 != opcode2 || vch1 != vch2)
             {
                 // Others must match exactly
+                printf("%d %d", opcode1, opcode2); // FIXME
                 break;
             }
         }

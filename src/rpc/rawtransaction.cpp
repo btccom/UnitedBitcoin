@@ -396,6 +396,14 @@ UniValue createrawtransaction(const JSONRPCRequest& request)
 
             CTxOut out(0, CScript() << OP_RETURN << data);
             rawTx.vout.push_back(out);
+        } else if(name_ == "contract") {
+            std::vector<unsigned char> data = ParseHexV(sendTo[name_].getValStr(),"Data");
+            CScript data_script;
+            for(const auto item : data) {
+                data_script.push_back(item);
+            }
+            CTxOut out(0, data_script); // FIXME: CScript() << data will insert 3 opcodes before
+            rawTx.vout.push_back(out);
         } else {
             CTxDestination destination = DecodeDestination(name_);
             if (!IsValidDestination(destination)) {

@@ -1769,6 +1769,7 @@ bool ContractTxConverter::receiveStack(const CScript& scriptPubKey) {
 bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& params) {
     try{
         uint64_t gasLimit;
+        uint64_t gasPrice;
         valtype apiArg;
         valtype api_name;
         valtype caller_address;
@@ -1782,11 +1783,13 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 stack.pop_back();
                 bytecode = stack.back();
                 stack.pop_back();
-                caller_address = stack.back();
+                caller_address = stack.back(); // FIXME: must be same with first input's address
                 stack.pop_back();
                 // TODO: check caller in vin addresses
             } break;
             case OP_CALL: {
+                gasPrice = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
                 apiArg = stack.back();
@@ -1795,7 +1798,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 stack.pop_back();
                 contract_address = stack.back();
                 stack.pop_back();
-                caller_address = stack.back();
+                caller_address = stack.back(); // FIXME: must be same with first input's address
                 stack.pop_back();
                 // TODO: check caller in vin addresses
             } break;

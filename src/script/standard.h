@@ -65,6 +65,10 @@ enum txnouttype
     TX_WITNESS_V0_SCRIPTHASH,
     TX_WITNESS_V0_KEYHASH,
     TX_WITNESS_UNKNOWN, //!< Only for Witness versions not already defined above
+
+    // contract tx
+    TX_CREATE,
+    TX_CALL
 };
 
 class CNoDestination {
