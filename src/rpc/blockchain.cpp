@@ -1202,7 +1202,7 @@ UniValue getbalancetopn(const JSONRPCRequest& request)
 	if (!request.params[0].isNull())
     	topn = request.params[0].get_int();
 	std::map<std::string, double> addressBalanceMap;
-	std::map<double, std::string, std::less<double>> balanceAddressMap;
+	std::map<double, std::string, std::greater<double>> balanceAddressMap;
 
 	FlushStateToDisk();
     std::unique_ptr<CCoinsViewCursor> pcursor(pcoinsdbview->Cursor());
