@@ -1244,9 +1244,12 @@ UniValue getbalancetopn(const JSONRPCRequest& request)
 	UniValue ret(UniValue::VARR);
 	auto iter = balanceAddressMap.begin();
 	while (topn > 0) {
+		char a[64];
+		char*p = a;
+		snprintf(p, 64, "%.08f", iter->first);
 		UniValue obj(UniValue::VOBJ);
 		obj.push_back(Pair("address", (std::string)iter->second));
-		obj.push_back(Pair("amount", (double)iter->first));
+		obj.push_back(Pair("amount", std::string(a)));
 		ret.push_back(obj);
 		++iter;
 		--topn;
