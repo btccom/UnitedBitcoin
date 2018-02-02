@@ -103,16 +103,11 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
         return true;
     }
 
-    if(scriptPubKey.size()>5)
-        printf("debug scriptpubkey size: %d", scriptPubKey.size()); // FIXME
-
     // Scan templates
     const CScript& script1 = scriptPubKey;
     for (const std::pair<txnouttype, CScript>& tplate : mTemplates)
     {
         const CScript& script2 = tplate.second;
-        if(script2.size()==4)
-            printf("debug"); // FIXME
         vSolutionsRet.clear();
 
         opcodetype opcode1, opcode2;
@@ -207,7 +202,6 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
             else if (opcode1 != opcode2 || vch1 != vch2)
             {
                 // Others must match exactly
-                printf("%d %d", opcode1, opcode2); // FIXME
                 break;
             }
         }

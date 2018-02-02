@@ -1750,17 +1750,17 @@ bool ContractTxConverter::extractionContractTransactions(ExtractContractTX& cont
 }
 
 bool ContractTxConverter::receiveStack(const CScript& scriptPubKey) {
-    EvalScript(stack, scriptPubKey, SCRIPT_EXEC_BYTE_CODE, BaseSignatureChecker(), SIGVERSION_BASE, nullptr);
+    EvalScript(stack, scriptPubKey, SCRIPT_EXEC_BYTE_CODE, BaseSignatureChecker(), SIGVERSION_BASE, nullptr); // maybe bug here
     if (stack.empty())
         return false;
     CScript scriptRest(stack.back().begin(), stack.back().end());
     stack.pop_back();
     opcode = (opcodetype)(*scriptRest.begin());
     // FIXME: check contract opcode and operands format
-    if((opcode == OP_CREATE && stack.size() < 4) || (opcode == OP_CALL && stack.size() < 5)
-       || (opcode == OP_UPGRADE && stack.size() < 2)
-       || (opcode == OP_DESTROY && stack.size() < 2)
-       || (opcode == OP_DEPOSIT_TO_CONTRACT && stack.size() < 3)){
+    if((opcode == OP_CREATE && stack.size() < 2) || (opcode == OP_CALL && stack.size() < 3)
+       || (opcode == OP_UPGRADE && stack.size() < 1)
+       || (opcode == OP_DESTROY && stack.size() < 1)
+       || (opcode == OP_DEPOSIT_TO_CONTRACT && stack.size() < 2)){
         stack.clear();
         return false;
     }
@@ -1823,9 +1823,9 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 return false;
             }
         }
-        if(stack.back().size() > 4) { // FIXME
-            return false;
-        }
+//        if(stack.back().size() > 4) { // FIXME
+//            return false;
+//        }
         params.gasLimit = gasLimit;
         params.caller_address = ValtypeUtils::vch_to_string(caller_address);
         // TODO: set caller
