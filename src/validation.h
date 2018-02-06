@@ -20,6 +20,11 @@
 #include <versionbits.h>
 #include <contract_engine/contract_engine_builder.hpp>
 #include <jsondiff/jsondiff.h>
+#include <fc/io/enum_type.hpp>
+#include <fc/io/varint.hpp>
+#include <fc/io/raw.hpp>
+#include <fc/exception/exception.hpp>
+#include <fc/reflect/reflect.hpp>
 
 #include <algorithm>
 #include <exception>
@@ -516,23 +521,55 @@ bool LoadMempool();
 // start contract code
 using valtype = std::vector<unsigned char>;
 
+namespace uvm {
+    namespace blockchain {
+        enum ContractApiType
+        {
+            chain = 1,
+            offline = 2,
+            event = 3
+        };
+
+        struct Code
+        {
+            std::set<std::string> abi;
+            std::set<std::string> offline_abi;
+            std::set<std::string> events;
+            std::map<std::string, fc::enum_type<fc::unsigned_int, uvm::blockchain::StorageValueTypes>> storage_properties;
+            std::vector<unsigned char> code;
+            std::string code_hash;
+            Code() {}
+            void SetApis(char* module_apis[], int count, int api_type);
+            bool valid() const;
+            std::string GetHash() const;
+
+            std::vector<char> pack() const;
+
+            static Code unpack(const std::vector<unsigned char>& data);
+            static Code unpack(const std::vector<char>& data);
+        };
+    }
+}
+
+FC_REFLECT(uvm::blockchain::Code, (abi)(offline_abi)(events)(storage_properties)(code)(code_hash));
+
+struct ContractInfo {
+    std::string address;
+    std::vector<std::string> apis;
+    std::vector<std::string> offline_apis;
+    uvm::blockchain::Code code;
+};
+
 struct ContractTransactionParams {
     uint64_t gasLimit = 0;
     uint64_t gasPrice = 0;
-    valtype code;
+    uvm::blockchain::Code code;
     std::string caller;
     std::string caller_address;
     std::string contract_address;
     std::string api_name;
     std::string api_arg;
     uint64_t deposit_amount = 0;
-};
-
-struct ContractInfo {
-    std::string address;
-    std::vector<std::string> apis;
-    std::vector<std::string> offline_apis;
-    valtype code;
 };
 
 struct ContractTransaction {
@@ -603,7 +640,7 @@ public:
     std::vector<ResultExecute>& getResult() {return result;}
 private:
     // TODO: build contract execute environment
-private:
+public:
     std::vector<ContractTransaction> txs;
     std::vector<ResultExecute> result;
     const CBlock &block;

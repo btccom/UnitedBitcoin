@@ -293,6 +293,7 @@ libbitcoin_server_a_SOURCES = \
     contract_engine/contract_engine.cpp \
     contract_engine/contract_engine_builder.cpp \
     contract_engine/uvm_contract_engine.cpp \
+    contract_engine/contract_helper.cpp \
     jsondiff/diff_result.cpp \
     jsondiff/helper.cpp \
     jsondiff/json_value_types.cpp \

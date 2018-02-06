@@ -45,6 +45,7 @@
 #include <base58.h>
 
 #include <uvm/btc_uvm_api.h>
+#include <contract_engine/contract_helper.hpp>
 
 #include <atomic>
 #include <sstream>
@@ -52,6 +53,12 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <boost/thread.hpp>
+#include <fc/array.hpp>
+#include <fc/crypto/ripemd160.hpp>
+#include <fc/crypto/elliptic.hpp>
+#include <fc/crypto/base58.hpp>
+#include <boost/uuid/sha1.hpp>
+#include <exception>
 
 #if defined(NDEBUG)
 # error "Bitcoin cannot be compiled without assertions."
@@ -1648,6 +1655,99 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex* pindex, const Consens
     return flags;
 }
 
+
+namespace uvm {
+    namespace blockchain {
+
+#define PRINTABLE_CHAR(chr) \
+if (chr >= 0 && chr <= 9)  \
+    chr = chr + '0'; \
+else \
+    chr = chr + 'a' - 10;
+
+        static std::string to_printable_hex(unsigned char chr)
+        {
+            unsigned char high = chr >> 4;
+            unsigned char low = chr & 0x0F;
+            char tmp[16];
+
+            PRINTABLE_CHAR(high);
+            PRINTABLE_CHAR(low);
+
+            snprintf(tmp, sizeof(tmp), "%c%c", high, low);
+            return std::string(tmp);
+        }
+
+        std::string Code::GetHash() const
+        {
+            std::string hashstr = "";
+            boost::uuids::detail::sha1 sha;
+            unsigned int check_digest[5];
+            sha.process_bytes(code.data(), code.size());
+            sha.get_digest(check_digest);
+            for (int i = 0; i < 5; ++i)
+            {
+                unsigned char chr1 = (check_digest[i] & 0xFF000000) >> 24;
+                unsigned char chr2 = (check_digest[i] & 0x00FF0000) >> 16;
+                unsigned char chr3 = (check_digest[i] & 0x0000FF00) >> 8;
+                unsigned char chr4 = (check_digest[i] & 0x000000FF);
+
+                hashstr = hashstr + to_printable_hex(chr1) + to_printable_hex(chr2) +
+                          to_printable_hex(chr3) + to_printable_hex(chr4);
+            }
+            return hashstr;
+        }
+
+        void Code::SetApis(char* module_apis[], int count, int api_type)
+        {
+            if (api_type == ContractApiType::chain)
+            {
+                abi.clear();
+                for (int i = 0; i < count; i++)
+                    abi.insert(module_apis[i]);
+            }
+            else if (api_type == ContractApiType::offline)
+            {
+                offline_abi.clear();
+                for (int i = 0; i < count; i++)
+                    offline_abi.insert(module_apis[i]);
+            }
+            else if (api_type == ContractApiType::event)
+            {
+                events.clear();
+                for (int i = 0; i < count; i++)
+                    events.insert(module_apis[i]);
+            }
+        }
+
+        bool Code::valid() const
+        {
+            //FC_ASSERT(0);
+            //return false;
+            return true;
+        }
+
+        std::vector<char> Code::pack() const
+        {
+            return fc::raw::pack(*this);
+        }
+
+        Code Code::unpack(const std::vector<unsigned char>& data)
+        {
+            std::vector<char> char_datas(data.size());
+            memcpy(char_datas.data(), data.data(), data.size());
+            return fc::raw::unpack<Code>(char_datas);
+        }
+
+        Code Code::unpack(const std::vector<char>& data)
+        {
+            return fc::raw::unpack<Code>(data);
+        }
+
+    }
+}
+
+
 using uvm::lua::api::global_uvm_chain_api;
 
 bool ContractExec::performByteCode()
@@ -1674,11 +1774,11 @@ bool ContractExec::performByteCode()
             std::cout << "got OP_CREATE op" << std::endl;
             try {
                 // TODO: create or receive pending state
-                engine->set_state_pointer_value("pending_state", this);
+                engine->set_state_pointer_value("evaluator", this);
                 // TODO: get apis and offline_apis from contract bytecode
-                engine->execute_contract_init_by_address(params.contract_address, params.api_arg, &api_result_json_string);
+                engine->execute_contract_init_by_address(params.contract_address, params.api_arg, &api_result_json_string); // FIXME: call api if is not "init"
             }
-            catch(uvm::core::GluaException &e)
+            catch(uvm::core::GluaException& e)
             {
                 pending_contract_exec_result.exit_code = 1;
                 pending_contract_exec_result.error_message = e.what();
@@ -1776,6 +1876,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         valtype bytecode;
         valtype contract_address;
         uint64_t deposit_amount;
+        bool is_create = false;
         // TODO: get contract args from stack
         switch (opcode) {
             case OP_CREATE: {
@@ -1786,6 +1887,8 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 caller_address = stack.back(); // FIXME: must be same with first input's address
                 stack.pop_back();
                 // TODO: check caller in vin addresses
+                // TODO: generate contract address
+                is_create = true;
             } break;
             case OP_CALL: {
                 gasPrice = CScriptNum::vch_to_uint64(stack.back());
@@ -1829,11 +1932,21 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         params.gasLimit = gasLimit;
         params.caller_address = ValtypeUtils::vch_to_string(caller_address);
         // TODO: set caller
-        params.contract_address = ValtypeUtils::vch_to_string(contract_address);
         params.api_name = ValtypeUtils::vch_to_string(api_name);
         params.api_arg = ValtypeUtils::vch_to_string(apiArg);
         params.deposit_amount = deposit_amount;
-        params.code = bytecode;
+        if(bytecode.size()>0) {
+            try {
+                params.code = ContractHelper::load_contract_from_gpc_data(bytecode);
+            } catch (uvm::core::GluaException &e) {
+                LogPrintf(e.what());
+                return false;
+            }
+        }
+        if(!is_create)
+            params.contract_address = ValtypeUtils::vch_to_string(contract_address);
+        else
+            params.contract_address = ContractHelper::generate_contract_address(params.code, params.caller_address, 0); // FIXME: use blockchain height
         return true;
     }
     catch(const scriptnum_error& err){
@@ -2104,7 +2217,7 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
             if(!execRes) {
                 return state.DoS(100,
                                  error("ConnectBlock(): exec bytecode error"),
-                                 REJECT_INVALID, "bad-contract-execution");
+                                 REJECT_INVALID, exec.pending_contract_exec_result.error_message);
             }
             for(ContractTransaction &ctx : resultConvertContractTx.first) {
 //                sumGas += ctx.gas() * ctx.gasPrice(); // FIXME
