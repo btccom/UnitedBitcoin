@@ -1764,7 +1764,7 @@ bool ContractExec::performByteCode()
         const auto &caller_address = params.caller_address;
         engine_builder.set_caller(caller, caller_address);
         auto engine = engine_builder.build();
-        engine->set_gas_limit(params.gasLimit);
+        engine->set_gas_limit(params.gasLimit * 10);  // FIXME
         std::string api_result_json_string;
         if(tx.opcode == OP_CREATE) {
             // save bytecode in pendingState

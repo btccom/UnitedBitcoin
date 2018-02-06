@@ -123,6 +123,10 @@ namespace uvm {
                             {
                                 contract_info_ret->contract_apis.push_back(api);
                             }
+                            for (const auto& api : ctx.params.code.offline_abi)
+                            {
+                                contract_info_ret->contract_apis.push_back(api);
+                            }
                             return 1;
                         }
                     }
@@ -144,6 +148,10 @@ namespace uvm {
                         if(ctx.params.contract_address == std::string(contract_id))
                         {
                             for(const auto& api : ctx.params.code.abi)
+                            {
+                                contract_info_ret->contract_apis.push_back(api);
+                            }
+                            for (const auto& api : ctx.params.code.offline_abi)
                             {
                                 contract_info_ret->contract_apis.push_back(api);
                             }
