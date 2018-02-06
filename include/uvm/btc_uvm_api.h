@@ -23,7 +23,6 @@
 namespace uvm {
     namespace lua {
         namespace api {
-            // 这里是demo实现，需要具体重新实现这里所有API
 
             class BtcUvmChainApi : public IGluaChainApi
             {

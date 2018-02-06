@@ -71,6 +71,7 @@ BlockAssembler::BlockAssembler(const CChainParams& params, const Options& option
     // Limit weight to between 4K and MaxBlockSize-4K for sanity:
     unsigned int nAbsMaxSize = MaxBlockSize(std::numeric_limits<uint64_t>::max());
     nBlockMaxWeight = std::max<size_t>(4000, std::min<size_t>(nAbsMaxSize - 4000, options.nBlockMaxWeight));
+    nBlockMaxSize = DEFAULT_BLOCK_MAX_SIZE;
 }
 
 static BlockAssembler::Options DefaultOptions(const CChainParams& params)
@@ -98,6 +99,7 @@ void BlockAssembler::resetBlock()
     inBlock.clear();
 
     // Reserve space for coinbase tx
+    nBlockSize = 1000;
     nBlockWeight = 4000;
     nBlockSigOpsCost = 400;
     fIncludeWitness = false;
@@ -168,6 +170,15 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     coinbaseTx.vout[0].nValue = nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus());
     coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
     pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
+
+    //////////////////////////////////////////////////////// contract
+    minGasPrice = DEFAULT_MIN_GAS_PRICE;
+    hardBlockGasLimit = DEFAULT_BLOCK_GAS_LIMIT;
+    softBlockGasLimit = hardBlockGasLimit;
+    softBlockGasLimit = std::min(softBlockGasLimit, hardBlockGasLimit);
+    txGasLimit = softBlockGasLimit;
+    ////////////////////////////////////////////////////////
+
     pblocktemplate->vchCoinbaseCommitment = GenerateCoinbaseCommitment(*pblock, pindexPrev, chainparams.GetConsensus());
     pblocktemplate->vTxFees[0] = -nFees;
 
@@ -229,6 +240,124 @@ bool BlockAssembler::TestPackageTransactions(const CTxMemPool::setEntries& packa
         if (!fIncludeWitness && it->GetTx().HasWitness())
             return false;
     }
+    return true;
+}
+
+bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64_t minGasPrice) {
+//    if (nTimeLimit != 0 && GetAdjustedTime() >= nTimeLimit - BYTECODE_TIME_BUFFER) { // FIXME
+//        return false;
+//    }
+    // operate on local vars first, then later apply to `this`
+    uint64_t nBlockWeight = this->nBlockWeight;
+    uint64_t nBlockSize = this->nBlockSize;
+    uint64_t nBlockSigOpsCost = this->nBlockSigOpsCost;
+    ContractTxConverter convert(iter->GetTx(), NULL, &pblock->vtx);
+    ExtractContractTX resultConverter;
+    if (!convert.extractionContractTransactions(resultConverter)) {
+        //this check already happens when accepting txs into mempool
+        //therefore, this can only be triggered by using raw transactions on the staker itself
+        return false;
+    }
+    std::vector<ContractTransaction> qtumTransactions = resultConverter.first;
+    uint64_t txGas = 0;
+    for (const auto& contractTransaction : qtumTransactions) {
+        txGas += contractTransaction.params.gasLimit;
+        if (txGas > txGasLimit) {
+            // Limit the tx gas limit by the soft limit if such a limit has been specified.
+            return false;
+        }
+        if (bceResult.usedGas + contractTransaction.params.gasLimit > softBlockGasLimit) {
+            //if this transaction's gasLimit could cause block gas limit to be exceeded, then don't add it
+            return false;
+        }
+        if (contractTransaction.params.gasPrice < minGasPrice) {
+            //if this transaction's gasPrice is less than the current DGP minGasPrice don't add it
+            return false;
+        }
+    }
+    // We need to pass the DGP's block gas limit (not the soft limit) since it is consensus critical.
+    ContractExec exec(*pblock, qtumTransactions, hardBlockGasLimit);
+    if (!exec.performByteCode()) {
+        //error, don't add contract
+        return false;
+    }
+    ContractExecResult testExecResult;
+    if (!exec.processingResults(testExecResult)) {
+        return false;
+    }
+    if (bceResult.usedGas + testExecResult.usedGas > softBlockGasLimit) {
+        //if this transaction could cause block gas limit to be exceeded, then don't add it
+        return false;
+    }
+    //apply contractTx costs to local state
+    if (fNeedSizeAccounting) {
+        nBlockSize += ::GetSerializeSize(iter->GetTx(), SER_NETWORK, PROTOCOL_VERSION);
+    }
+    nBlockWeight += iter->GetTxWeight();
+    nBlockSigOpsCost += iter->GetSigOpCost();
+    //apply value-transfer txs to local state
+    /*
+    for (CTransaction &t : testExecResult.valueTransfers) {
+        if (fNeedSizeAccounting) {
+            nBlockSize += ::GetSerializeSize(t, SER_NETWORK, PROTOCOL_VERSION);
+        }
+        nBlockWeight += GetTransactionWeight(t);
+        nBlockSigOpsCost += GetLegacySigOpCount(t);
+    }
+    */
+    //calculate sigops from new refund/proof tx
+    //first, subtract old proof tx
+    nBlockSigOpsCost -= GetLegacySigOpCount(*pblock->vtx[0]);
+    // manually rebuild refundtx
+    CMutableTransaction contrTx(*pblock->vtx[0]);
+    //note, this will need changed for MPoS
+    int i = contrTx.vout.size();
+    contrTx.vout.resize(contrTx.vout.size() + testExecResult.refundOutputs.size());
+    for (CTxOut& vout : testExecResult.refundOutputs) {
+        contrTx.vout[i] = vout;
+        i++;
+    }
+    nBlockSigOpsCost += GetLegacySigOpCount(contrTx);
+    //all contract costs now applied to local state
+    //Check if block will be too big or too expensive with this contract execution
+    if (nBlockSigOpsCost * WITNESS_SCALE_FACTOR > (uint64_t)MAX_BLOCK_SIGOPS_COST ||
+        nBlockSize > MaxBlockSerSize) {
+        //contract will not be added to block
+        return false;
+    }
+    //block is not too big, so apply the contract execution and it's results to the actual block
+    //apply local bytecode to global bytecode state
+    bceResult.usedGas += testExecResult.usedGas;
+    // bceResult.refundSender += testExecResult.refundSender;
+    bceResult.refundOutputs.insert(bceResult.refundOutputs.end(), testExecResult.refundOutputs.begin(), testExecResult.refundOutputs.end());
+    // bceResult.valueTransfers = std::move(testExecResult.valueTransfers);
+    pblock->vtx.emplace_back(iter->GetSharedTx());
+    pblocktemplate->vTxFees.push_back(iter->GetFee());
+    pblocktemplate->vTxSigOpsCost.push_back(iter->GetSigOpCost());
+    if (fNeedSizeAccounting) {
+        this->nBlockSize += ::GetSerializeSize(iter->GetTx(), SER_NETWORK, PROTOCOL_VERSION);
+    }
+    this->nBlockWeight += iter->GetTxWeight();
+    ++nBlockTx;
+    this->nBlockSigOpsCost += iter->GetSigOpCost();
+    nFees += iter->GetFee();
+    inBlock.insert(iter);
+    /*
+    for (CTransaction &t : bceResult.valueTransfers) {
+        pblock->vtx.emplace_back(MakeTransactionRef(std::move(t)));
+        if (fNeedSizeAccounting) {
+            this->nBlockSize += ::GetSerializeSize(t, SER_NETWORK, PROTOCOL_VERSION);
+        }
+        this->nBlockWeight += GetTransactionWeight(t);
+        this->nBlockSigOpsCost += GetLegacySigOpCount(t);
+        ++nBlockTx;
+    }
+    */
+    //calculate sigops from new refund/proof tx
+    this->nBlockSigOpsCost -= GetLegacySigOpCount(*pblock->vtx[0]);
+//    RebuildRefundTransaction(); // TODO:
+    this->nBlockSigOpsCost += GetLegacySigOpCount(*pblock->vtx[0]);
+    // bceResult.valueTransfers.clear();
     return true;
 }
 
