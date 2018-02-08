@@ -52,9 +52,8 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
         // Sender provides N pubkeys, receivers provides M signatures
         mTemplates.insert(std::make_pair(TX_MULTISIG, CScript() << OP_SMALLINTEGER << OP_PUBKEYS << OP_SMALLINTEGER << OP_CHECKMULTISIG));
 
-        // TODO: change the format of contract template
         // Contract creation tx
-        mTemplates.insert(std::make_pair(TX_CREATE, CScript() << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_CREATE));
+        mTemplates.insert(std::make_pair(TX_CREATE, CScript() << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_CREATE));
         // Call contract tx
         mTemplates.insert(std::make_pair(TX_CALL, CScript() << OP_DATA << OP_DATA << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_CALL));
     }

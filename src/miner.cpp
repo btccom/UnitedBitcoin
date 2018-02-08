@@ -273,7 +273,6 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
     uint64_t txGas = 0;
     for (const auto& contractTransaction : qtumTransactions) {
         txGas += contractTransaction.params.gasLimit;
-        printf("contract tx gasLimit: %d, gasPrice: %d, minGasPrice: %d\n", contractTransaction.params.gasLimit, contractTransaction.params.gasPrice, minGasPrice);
         if (txGas > txGasLimit) {
             // Limit the tx gas limit by the soft limit if such a limit has been specified.
             return false;

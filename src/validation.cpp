@@ -1856,9 +1856,9 @@ bool ContractTxConverter::receiveStack(const CScript& scriptPubKey) {
     stack.pop_back();
     opcode = (opcodetype)(*scriptRest.begin());
     // FIXME: check contract opcode and operands format
-    if((opcode == OP_CREATE && stack.size() < 2) || (opcode == OP_CALL && stack.size() < 3)
-       || (opcode == OP_UPGRADE && stack.size() < 1)
-       || (opcode == OP_DESTROY && stack.size() < 1)
+    if((opcode == OP_CREATE && stack.size() < 4) || (opcode == OP_CALL && stack.size() < 6)
+       || (opcode == OP_UPGRADE && stack.size() < 6)
+       || (opcode == OP_DESTROY && stack.size() < 4)
        || (opcode == OP_DEPOSIT_TO_CONTRACT && stack.size() < 2)){
         stack.clear();
         return false;
@@ -1879,30 +1879,32 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         // TODO: get contract args from stack
         switch (opcode) {
             case OP_CREATE: {
-                // TODO: need a param of gasPrice
-                gasPrice = DEFAULT_MIN_GAS_PRICE;
+                // OP_CREATE gasPrice gasLimit caller_address contractData
+                gasPrice = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
-                bytecode = stack.back();
-                stack.pop_back();
                 caller_address = stack.back(); // FIXME: must be same with first input's address
+                stack.pop_back();
+                bytecode = stack.back();
                 stack.pop_back();
                 // TODO: check caller in vin addresses
                 // TODO: generate contract address
                 is_create = true;
             } break;
             case OP_CALL: {
+                // OP_CALL gasPrice gasLIMIT caller_address contract_address api_name api_arg
                 gasPrice = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
-                apiArg = stack.back();
-                stack.pop_back();
-                api_name = stack.back();
+                caller_address = stack.back(); // FIXME: must be same with first input's address
                 stack.pop_back();
                 contract_address = stack.back();
                 stack.pop_back();
-                caller_address = stack.back(); // FIXME: must be same with first input's address
+                api_name = stack.back();
+                stack.pop_back();
+                apiArg = stack.back();
                 stack.pop_back();
                 // TODO: check caller in vin addresses
             } break;
