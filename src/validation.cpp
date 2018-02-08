@@ -1771,7 +1771,6 @@ bool ContractExec::performByteCode()
             ContractInfo contract_info;
             contract_info.address = params.contract_address;
             pending_contracts_to_create[contract_info.address] = contract_info;
-            std::cout << "got OP_CREATE op" << std::endl;
             try {
                 // TODO: create or receive pending state
                 engine->set_state_pointer_value("evaluator", this);
@@ -1880,6 +1879,8 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         // TODO: get contract args from stack
         switch (opcode) {
             case OP_CREATE: {
+                // TODO: need a param of gasPrice
+                gasPrice = DEFAULT_MIN_GAS_PRICE;
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
                 bytecode = stack.back();
@@ -1930,6 +1931,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
 //            return false;
 //        }
         params.gasLimit = gasLimit;
+        params.gasPrice = gasPrice;
         params.caller_address = ValtypeUtils::vch_to_string(caller_address);
         // TODO: set caller
         params.api_name = ValtypeUtils::vch_to_string(api_name);
@@ -1965,6 +1967,7 @@ ContractTransaction ContractTxConverter::createContractTX(const ContractTransact
     // params.to_address = etp.to_address;
     params.deposit_amount = etp.deposit_amount;
     params.gasLimit = etp.gasLimit;
+    params.gasPrice = etp.gasPrice;
     params.code = etp.code;
     txContract.opcode = opcode;
     // TODO: check etp by different opcode value, eg. OP_CREATE can't contains
