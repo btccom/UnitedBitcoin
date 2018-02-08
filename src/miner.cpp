@@ -44,6 +44,7 @@
 
 uint64_t nLastBlockTx = 0;
 uint64_t nLastBlockWeight = 0;
+uint64_t nLastBlockSize = 0;
 
 int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev)
 {
@@ -109,7 +110,7 @@ void BlockAssembler::resetBlock()
     nFees = 0;
 }
 
-std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& scriptPubKeyIn, bool fMineWitnessTx)
+std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& scriptPubKeyIn, bool fMineWitnessTx, int64_t* pTotalFees, int32_t txProofTime, int32_t nTimeLimit)
 {
     int64_t nTimeStart = GetTimeMicros();
 
@@ -120,6 +121,8 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     if(!pblocktemplate.get())
         return nullptr;
     pblock = &pblocktemplate->block; // pointer for convenience
+
+    this->nTimeLimit = nTimeLimit;
 
     // Add dummy coinbase tx as first transaction
     pblock->vtx.emplace_back();
@@ -152,13 +155,10 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     // transaction (which in most cases can be a no-op).
     fIncludeWitness = IsWitnessEnabled(pindexPrev, chainparams.GetConsensus()) && fMineWitnessTx;
 
-    int nPackagesSelected = 0;
-    int nDescendantsUpdated = 0;
-    addPackageTxs(nPackagesSelected, nDescendantsUpdated);
-
     int64_t nTime1 = GetTimeMicros();
 
     nLastBlockTx = nBlockTx;
+    nLastBlockSize = nBlockSize;
     nLastBlockWeight = nBlockWeight;
 
     // Create coinbase transaction.
@@ -169,6 +169,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
     coinbaseTx.vout[0].nValue = nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus());
     coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
+    originalRewardTx = coinbaseTx;
     pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
 
     //////////////////////////////////////////////////////// contract
@@ -177,6 +178,16 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     softBlockGasLimit = hardBlockGasLimit;
     softBlockGasLimit = std::min(softBlockGasLimit, hardBlockGasLimit);
     txGasLimit = softBlockGasLimit;
+
+    nBlockMaxSize = MaxBlockSerSize;
+//    addPriorityTxs(minGasPrice); // TODO
+    int nPackagesSelected = 0;
+    int nDescendantsUpdated = 0;
+    addPackageTxs(nPackagesSelected, nDescendantsUpdated, minGasPrice);
+    //this should already be populated by AddBlock in case of contracts, but if no contracts
+    //then it won't get populated
+//    RebuildRefundTransaction(); // TODO
+
     ////////////////////////////////////////////////////////
 
     pblocktemplate->vchCoinbaseCommitment = GenerateCoinbaseCommitment(*pblock, pindexPrev, chainparams.GetConsensus());
@@ -244,9 +255,9 @@ bool BlockAssembler::TestPackageTransactions(const CTxMemPool::setEntries& packa
 }
 
 bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64_t minGasPrice) {
-//    if (nTimeLimit != 0 && GetAdjustedTime() >= nTimeLimit - BYTECODE_TIME_BUFFER) { // FIXME
-//        return false;
-//    }
+    if (nTimeLimit != 0 && GetAdjustedTime() >= nTimeLimit - BYTECODE_TIME_BUFFER) {
+        return false;
+    }
     // operate on local vars first, then later apply to `this`
     uint64_t nBlockWeight = this->nBlockWeight;
     uint64_t nBlockSize = this->nBlockSize;
@@ -262,6 +273,7 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
     uint64_t txGas = 0;
     for (const auto& contractTransaction : qtumTransactions) {
         txGas += contractTransaction.params.gasLimit;
+        printf("contract tx gasLimit: %d, gasPrice: %d, minGasPrice: %d\n", contractTransaction.params.gasLimit, contractTransaction.params.gasPrice, minGasPrice);
         if (txGas > txGasLimit) {
             // Limit the tx gas limit by the soft limit if such a limit has been specified.
             return false;
@@ -443,7 +455,7 @@ void BlockAssembler::SortForBlock(const CTxMemPool::setEntries& package, CTxMemP
 // Each time through the loop, we compare the best transaction in
 // mapModifiedTxs with the next transaction in the mempool to decide what
 // transaction package to work on next.
-void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpdated)
+void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpdated, uint64_t minGasPrice)
 {
     // mapModifiedTx will store sorted packages after they are modified
     // because some of their txs are already in the block
@@ -455,7 +467,7 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
     // and modifying them for their already included ancestors
     UpdatePackagesForAdded(inBlock, mapModifiedTx);
 
-    CTxMemPool::indexed_transaction_set::index<ancestor_score>::type::iterator mi = mempool.mapTx.get<ancestor_score>().begin();
+    CTxMemPool::indexed_transaction_set::index<ancestor_score>::type::iterator mi = mempool.mapTx.get<ancestor_score>().begin(); // TODO: ancestor_score_or_gas_price
     CTxMemPool::txiter iter;
 
     // Limit the number of attempts to add transactions to the block when it is
@@ -466,6 +478,10 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
 
     while (mi != mempool.mapTx.get<ancestor_score>().end() || !mapModifiedTx.empty())
     {
+        if (nTimeLimit != 0 && GetAdjustedTime() >= nTimeLimit) {
+            //no more time to add transactions, just exit
+            return;
+        }
         // First try to find a new transaction in mapTx to evaluate.
         if (mi != mempool.mapTx.get<ancestor_score>().end() &&
                 SkipMapTxEntry(mempool.mapTx.project<0>(mi), mapModifiedTx, failedTx)) {
@@ -528,11 +544,12 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
 
             ++nConsecutiveFailed;
 
-            if (nConsecutiveFailed > MAX_CONSECUTIVE_FAILURES && nBlockWeight >
-                    nBlockMaxWeight - 4000) {
-                // Give up if we're close to full and haven't succeeded in a while
-                break;
-            }
+            // TODO: change to testIfFull when try to add tx
+//            if (nConsecutiveFailed > MAX_CONSECUTIVE_FAILURES && nBlockWeight >
+//                    nBlockMaxWeight - 4000) {
+//                // Give up if we're close to full and haven't succeeded in a while
+//                break;
+//            }
             continue;
         }
 
@@ -560,8 +577,31 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
         std::vector<CTxMemPool::txiter> sortedEntries;
         SortForBlock(ancestors, iter, sortedEntries);
 
-        for (size_t i=0; i<sortedEntries.size(); ++i) {
-            AddToBlock(sortedEntries[i]);
+        bool wasAdded = true;
+        for (size_t i = 0; i<sortedEntries.size(); ++i) {
+            if (!wasAdded || (nTimeLimit != 0 && GetAdjustedTime() >= nTimeLimit))
+            {
+                //if out of time, or earlier ancestor failed, then skip the rest of the transactions
+                mapModifiedTx.erase(sortedEntries[i]);
+                wasAdded = false;
+                continue;
+            }
+            const CTransaction& tx = sortedEntries[i]->GetTx();
+            if (wasAdded) {
+                if (tx.HasContractOp() && !tx.HasOpSpend()) {
+                    wasAdded = AttemptToAddContractToBlock(sortedEntries[i], minGasPrice);
+                    if (!wasAdded) {
+                        if (fUsingModified) {
+                            //this only needs to be done once to mark the whole package (everything in sortedEntries) as failed
+                            mapModifiedTx.get<ancestor_score>().erase(modit);
+                            failedTx.insert(iter);
+                        }
+                    }
+                }
+                else {
+                    AddToBlock(sortedEntries[i]);
+                }
+            }
             // Erase from the modified set, if present
             mapModifiedTx.erase(sortedEntries[i]);
         }
