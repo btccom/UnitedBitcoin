@@ -6,7 +6,7 @@ namespace uvm
 {
 	UvmContractEngine::UvmContractEngine(bool use_contract)
 	{
-		_scope = std::make_shared<lua::lib::GluaStateScope>(use_contract);
+		_scope = std::make_shared<lua::lib::UvmStateScope>(use_contract);
 	}
 	UvmContractEngine::~UvmContractEngine()
 	{
@@ -54,16 +54,6 @@ namespace uvm
 		_scope->notify_stop();
 	}
 
-	// @throws uvm::core::GluaException
-	void UvmContractEngine::compilefile_to_stream(std::string filename, void *stream)
-	{
-		char err_msg[LUA_EXCEPTION_MULTILINE_STRNG_MAX_LENGTH] = "\0";
-		if (!lua::lib::compilefile_to_stream(_scope->L(), filename.c_str(), (GluaModuleByteStream*)stream, err_msg, USE_TYPE_CHECK))
-		{
-			throw uvm::core::GluaException(err_msg);
-		}
-	}
-
 	void UvmContractEngine::add_global_bool_variable(std::string name, bool value)
 	{
 		_scope->add_global_bool_variable(name.c_str(), value);
@@ -85,9 +75,9 @@ namespace uvm
 
 	void UvmContractEngine::set_state_pointer_value(std::string name, void *addr)
 	{
-		GluaStateValue statevalue;
+		UvmStateValue statevalue;
 		statevalue.pointer_value = addr;
-		lua::lib::set_lua_state_value(_scope->L(), name.c_str(), statevalue, GluaStateValueType::LUA_STATE_VALUE_POINTER);
+		lua::lib::set_lua_state_value(_scope->L(), name.c_str(), statevalue, UvmStateValueType::LUA_STATE_VALUE_POINTER);
 	}
 
 	void UvmContractEngine::clear_exceptions()
@@ -100,16 +90,16 @@ namespace uvm
 		clear_exceptions();
 		lua::lib::execute_contract_api_by_address(_scope->L(), contract_id.c_str(), method.c_str(), argument.c_str(), result_json_string);
 		if (_scope->L()->force_stopping == true && _scope->L()->exit_code == LUA_API_INTERNAL_ERROR)
-			throw uvm::core::GluaException("execute contract internal error");
+			throw uvm::core::UvmException("execute contract internal error");
 		int exception_code = lua::lib::get_lua_state_value(_scope->L(), "exception_code").int_value;
 		char* exception_msg = (char*)lua::lib::get_lua_state_value(_scope->L(), "exception_msg").string_value;
 		if (exception_code > 0)
 		{
 			if (exception_code == UVM_API_LVM_LIMIT_OVER_ERROR)
-				throw uvm::core::GluaException("execute contract out of memory");
+				throw uvm::core::UvmException("execute contract out of memory");
 			else
 			{
-				throw uvm::core::GluaException(exception_msg);
+				throw uvm::core::UvmException(exception_msg);
 			}
 		}
 	}
@@ -119,23 +109,23 @@ namespace uvm
 		clear_exceptions();
 		lua::lib::execute_contract_init_by_address(_scope->L(), contract_id.c_str(), argument.c_str(), result_json_string);
 		if (_scope->L()->force_stopping == true && _scope->L()->exit_code == LUA_API_INTERNAL_ERROR)
-			throw uvm::core::GluaException("execute contract internal error");
+			throw uvm::core::UvmException("execute contract internal error");
 		int exception_code = lua::lib::get_lua_state_value(_scope->L(), "exception_code").int_value;
 		char* exception_msg = (char*)lua::lib::get_lua_state_value(_scope->L(), "exception_msg").string_value;
 		if (exception_code > 0)
 		{
 			if (exception_code == UVM_API_LVM_LIMIT_OVER_ERROR)
-				throw uvm::core::GluaException("execute contract out of memory");
+				throw uvm::core::UvmException("execute contract out of memory");
 			else
 			{
-				throw uvm::core::GluaException(exception_msg);
+				throw uvm::core::UvmException(exception_msg);
 			}
 		}
 	}
 
 	void UvmContractEngine::load_and_run_stream(void *stream)
 	{
-		lua::lib::run_compiled_bytestream(_scope->L(), (GluaModuleByteStream*)stream);
+		lua::lib::run_compiled_bytestream(_scope->L(), (UvmModuleByteStream*)stream);
 	}
 
 	std::shared_ptr<::blockchain::contract_engine::VMModuleByteStream> UvmContractEngine::get_bytestream_from_code(const uvm::blockchain::Code& code)

@@ -153,7 +153,7 @@ typedef struct global_State {
 } global_State;
 
 
-typedef struct GluaStatePreProcessorFunction
+typedef struct UvmStatePreProcessorFunction
 {
     std::list<void*> args;
     void(*processor)(lua_State *L, std::list<void*>*args_list);
@@ -162,11 +162,11 @@ typedef struct GluaStatePreProcessorFunction
         if (nullptr != processor)
             processor(L, &args);
     }
-} GluaStatePreProcessorFunction;
+} UvmStatePreProcessorFunction;
 
-inline GluaStatePreProcessorFunction make_lua_state_preprocessor(std::list<void*> &args, void(*processor)(lua_State *L, std::list<void*>*args_list))
+inline UvmStatePreProcessorFunction make_lua_state_preprocessor(std::list<void*> &args, void(*processor)(lua_State *L, std::list<void*>*args_list))
 {
-    GluaStatePreProcessorFunction func;
+    UvmStatePreProcessorFunction func;
     func.args = args;
     func.processor = processor;
     return func;
@@ -208,14 +208,12 @@ struct lua_State {
     std::list<std::pair<ptrdiff_t, ptrdiff_t>> *malloced_buffers;
     char compile_error[LUA_COMPILE_ERROR_MAX_LENGTH];
 	char runerror[LUA_VM_EXCEPTION_STRNG_MAX_LENGTH];
-	bool bytecode_debugger_opened;
     FILE *in;
     FILE *out;
     FILE *err;
     bool force_stopping;
 	int exit_code;
-    bool debugger_pausing;
-    GluaStatePreProcessorFunction *preprocessor;
+    UvmStatePreProcessorFunction *preprocessor;
 };
 
 void *lua_malloc(lua_State *L, size_t size);

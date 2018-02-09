@@ -37,8 +37,6 @@
 #include <uvm/lvm.h>
 #include <uvm/uvm_api.h>
 #include <uvm/uvm_lib.h>
-#include <uvm/uvm_debug_file.h>
-#include <uvm/lremote_debugger.h>
 
 using uvm::lua::api::global_uvm_chain_api;
 
@@ -675,7 +673,7 @@ static LClosure *getcached(Proto *p, UpVal **encup, StkId base) {
 ** already black (which means that 'cache' was already cleared by the
 ** GC).
 */
-static void pushclosure(lua_State *L, Proto *p, UpVal **encup, StkId base,
+static void pushclosure(lua_State *L, Proto *p, UpVal **encup, int enc_nupvalues, StkId base,
     StkId ra) {
     int nup = p->sizeupvalues;
     Upvaldesc *uv = p->upvalues;
@@ -686,8 +684,17 @@ static void pushclosure(lua_State *L, Proto *p, UpVal **encup, StkId base,
     for (i = 0; i < nup; i++) {  /* fill in its upvalues */
         if (uv[i].instack)  /* upvalue refers to local variable? */
             ncl->upvals[i] = luaF_findupval(L, base + uv[i].idx);
-        else  /* get upvalue from enclosing function */
-            ncl->upvals[i] = encup[uv[i].idx];
+		else  /* get upvalue from enclosing function */
+		{
+			auto idx = uv[i].idx;
+			if (idx >= enc_nupvalues || idx < 0)
+			{
+				L->force_stopping = true;
+				lua_set_run_error(L, "upvalue index out of parent closure's upvalues size");
+				return;
+			}
+			ncl->upvals[i] = encup[idx];
+		}
         if (nullptr != ncl->upvals[i])
             ncl->upvals[i]->refcount++;
         /* new closure is white, so we do not need a barrier here */
@@ -816,125 +823,6 @@ void luaV_finishOp(lua_State *L) {
 #define settableProtected(L,t,k,v) { const TValue *slot; \
   if (!luaV_fastset(L,t,k,slot,luaH_get,v)) \
     Protect(luaV_finishset(L,t,k,v,slot)); }
-
-
-// FIXME: duplicate code in uvm_lib.cpp
-typedef std::unordered_map<std::string, std::pair<std::string, bool>> LuaDebuggerInfoList;
-
-static LuaDebuggerInfoList g_debug_infos;
-static bool g_debug_running = false;
-
-static uvm::debugger::LRemoteDebugger *remote_debugger; // TODO: 
-
-static LuaDebuggerInfoList *get_lua_debugger_info_list_in_state(lua_State *L)
-{
-	return &g_debug_infos;
-}
-static int enter_lua_debugger(lua_State *L)
-{
-	LuaDebuggerInfoList *debugger_info = get_lua_debugger_info_list_in_state(L);
-	if (!debugger_info)
-		return 0;
-	if (lua_gettop(L) > 0 && lua_isstring(L, 1))
-	{
-		// if has string parameter, use this function to get the value of the name in running debugger;
-		auto found = debugger_info->find(luaL_checkstring(L, 1));
-		if (found == debugger_info->end())
-			return 0;
-		return 0;
-	}
-
-	debugger_info->clear();
-	g_debug_running = true;
-
-	// get all info snapshot in current lua_State stack
-	// and then pause the thread(but other thread can use this lua_State
-	// maybe you want to start a REPL before real enter debugger
-
-	// first need back to caller func frame
-
-	CallInfo *ci = L->ci;
-	auto old_l_top = L->top;
-	CallInfo *oci = ci->previous;
-	Proto *np = getproto(ci->func);
-	Proto *p = getproto(oci->func);
-	LClosure *ocl = clLvalue(oci->func);
-	int real_localvars_count = (int)(ci->func - oci->func - 1);
-	int linedefined = p->linedefined;
-	// fprintf(L->out, "debugging into line %d\n", linedefined); // FIXME: logging the debugging code line
-	L->ci = oci; // FIXME: ci，
-	int top = lua_gettop(L);
-
-	// capture locals vars and values(need get localvar name from whereelse)
-	for (int i = 0; i < top; ++i)
-	{
-		luaL_tojsonstring(L, i + 1, nullptr);
-		const char *value_str = luaL_checkstring(L, -1);
-		lua_pop(L, 1);
-		// if the debugger position is before the localvar position, ignore the next localvars
-		if (i >= real_localvars_count) // the localvars is after the debugger() call
-			break;
-		// get local var name
-		if (i < p->sizelocvars)
-		{
-			LocVar localvar = p->locvars[i];
-			const char *varname = getstr(localvar.varname);
-
-			if (std::string(value_str) != "nil") // varnil，nil
-			{
-				fprintf(L->out, "[debugger]%s=%s\n", varname, value_str);
-			}
-			debugger_info->insert(std::make_pair(varname, std::make_pair(value_str, false)));
-			if(remote_debugger)
-			{
-				remote_debugger->set_last_lvm_debugger_status(varname, value_str, false);
-			}
-		}
-	}
-	// capture upvalues vars and values(need get upvalue name from whereelse)
-	L->ci = ci;
-	for (int i = 0; i < p->sizeupvalues; ++i)
-	{
-		Upvaldesc upval = p->upvalues[i];
-		const char *upval_name = getstr(upval.name);
-		if (std::string(upval_name) == "_ENV")
-			continue;
-		UpVal *upv = ocl->upvals[upval.idx];
-		lua_pushinteger(L, 1);
-		setobj2s(L, ci->func + 1, upv->v);
-		auto value_string1 = luaL_tojsonstring(L, -1, nullptr);
-		lua_pop(L, 2);
-		if (std::string(value_string1) != "nil")
-		{
-			fprintf(L->out, "[debugger-upvalue]%s=%s\n", upval_name, value_string1);
-		}
-		debugger_info->insert(std::make_pair(upval_name, std::make_pair(value_string1, true)));
-		if (remote_debugger)
-		{
-			remote_debugger->set_last_lvm_debugger_status(upval_name, value_string1, true);
-		}
-	}
-	L->ci = ci;
-	L->top = old_l_top;
-	if (L->debugger_pausing)
-	{
-		do
-		{
-			std::this_thread::yield();
-		} while (g_debug_running); // while not exit lua debugger
-	}
-	return 0;
-}
-
-static int exit_lua_debugger(lua_State *L)
-{
-	g_debug_infos.clear();
-	g_debug_running = false;
-	return 0;
-}
-
-static bool debugger_watcher_started = false;
-
 // FIXME: end duplicate code in uvm_lib.cpp
 
 static int get_line_in_current_proto(CallInfo* ci, Proto *proto)
@@ -985,7 +873,7 @@ newframe:  /* reentry point when frame changes (call/return) */
     {
         insts_executed_count = static_cast<int*>(lua_malloc(L, sizeof(int)));
         *insts_executed_count = 0;
-        GluaStateValue lua_state_value_of_exected_count;
+        UvmStateValue lua_state_value_of_exected_count;
         lua_state_value_of_exected_count.int_pointer_value = insts_executed_count;
         uvm::lua::lib::set_lua_state_value(L, INSTRUCTIONS_EXECUTED_COUNT_LUA_STATE_MAP_KEY, lua_state_value_of_exected_count, LUA_STATE_VALUE_INT_POINTER);
     }
@@ -1000,99 +888,16 @@ newframe:  /* reentry point when frame changes (call/return) */
 
     /* main loop of interpreter */
     for (;;) {
-		while (L->bytecode_debugger_opened && remote_debugger && remote_debugger->is_pausing_lvm())
-		{
-			std::this_thread::sleep_for(std::chrono::seconds(1));
-		}
-		// TODO: , socket，（offset)，/
-		if(L->bytecode_debugger_opened)
-		{
-			// TODO
-			if(!remote_debugger)
-			{
-				remote_debugger = new uvm::debugger::LRemoteDebugger();
-			}
-			L->debugger_pausing = false;
-			
-			int line_pre_defined = 7;
-			//std::unordered_map<std::string, std::vector<int>> debugger_source_lines = {
-				// {"@tests_typed/full_correct_typed.lua", { 15 + line_pre_defined, 15, 16, 17 }}
-			//	{"@tests_typed/full_correct_typed.lua",{ 15 }}
-			// };
-			if(!remote_debugger->is_running())
-			{
-				remote_debugger->start_async();
-				std::this_thread::sleep_for(std::chrono::seconds(1));
-			}
-
-			auto debugger_source_lines = remote_debugger->debugger_source_lines();
-			Proto *proto = cl->p;
-			std::string proto_source((proto->source == nullptr) ? "(*no name)" : getstr(proto->source));
-			std::string proto_source_ldf_filename = proto_source + ".ldf";
-			uvm::lua::core::LuaDebugFileInfo *ldf = nullptr;
-			if (proto_source_ldf_filename[0] == '@')
-			{
-				proto_source_ldf_filename = proto_source_ldf_filename.substr(1);
-				FILE *ldf_file = fopen(proto_source_ldf_filename.c_str(), "r");
-				if (ldf_file)
-				{
-					auto ldf_deserialized = uvm::lua::core::LuaDebugFileInfo::deserialize_from_file(ldf_file);
-					ldf = new uvm::lua::core::LuaDebugFileInfo();
-					*ldf = ldf_deserialized;
-					fclose(ldf_file);
-				}
-			}
-			// TODO: debuggersocket
-			auto source_found_in_debugger = debugger_source_lines.find(proto_source);
-			if (source_found_in_debugger != debugger_source_lines.end())
-			{
-				auto debugger_lines = source_found_in_debugger->second;
-				// Instruction i2 = *(ci->u.l.savedpc);
-				int idx = (int)(ci->u.l.savedpc - proto->code); // proto
-				if(idx<proto->sizecode)
-				{
-					int line_in_proto = proto->lineinfo[idx];
-					for(const auto &need_debug_line : debugger_lines)
-					{
-						auto lua_need_debug_line = need_debug_line;
-						if (ldf)
-							lua_need_debug_line = (int) ldf->find_lua_line_by_uvm_line(need_debug_line);
-						if(lua_need_debug_line == proto->linedefined + line_in_proto)
-						{
-							int line_in_lua_file = proto->linedefined + line_in_proto -line_pre_defined; // FIXME
-							
-							if (line_in_lua_file != last_debug_line_in_file)
-							{
-								last_debug_line_in_file = line_in_lua_file;
-								// TODO: paused to debug
-								// TODO: ，，remote
-
-								// enter_lua_debugger(L);
-								lua_pushcfunction(L, enter_lua_debugger);
-								lua_pcall(L, 0, 0, 0);
-								// exit_lua_debugger(L);
-
-								// TODO: wait remote debugger tool to resume running
-								// TODO: remote debugger tool can send back variable or functioncall to get result back
-								lua_pushcfunction(L, exit_lua_debugger);
-								lua_pcall(L, 0, 0, 0);
-
-								remote_debugger->set_pausing_lvm(true);
-								// remote_debugger->shutdown(); // FIXME: ，
-							}
-						}
-					}
-				}
-			}
-			if (ldf)
-				delete ldf;
-		}
         if (!ci || ci->u.l.savedpc == nullptr) {
           global_uvm_chain_api->throw_exception(L, UVM_API_LVM_LIMIT_OVER_ERROR, "wrong bytecode instruction, can't find savedpc");
           vmbreak;
         }
         Instruction i = *(ci->u.l.savedpc++);
-        // printf("%d\n", i);
+
+#ifdef DEBUG
+	printf("%d\n", GET_OPCODE(i));
+#endif // DEBUG
+
         StkId ra;
 
 		*insts_executed_count += 1; // executed instructions count
@@ -1123,7 +928,6 @@ newframe:  /* reentry point when frame changes (call/return) */
         ra = RA(i);
         lua_assert(base == ci->u.l.base);
         lua_assert(base <= L->top && L->top < L->stack + L->stacksize);
-		// TODO: ，
 		
         vmdispatch(GET_OPCODE(i)) {
             vmcase(UOP_MOVE) {
@@ -1462,7 +1266,6 @@ newframe:  /* reentry point when frame changes (call/return) */
                 int c = GETARG_C(i);
                 StkId rb;
                 L->top = base + c + 1;  /* mark the end of concat operands */
-                // TODO: check args are string
                 Protect(luaV_concat(L, c - b + 1));
                 ra = RA(i);  /* 'luaV_concat' may invoke TMs and move the stack */
                 rb = base + b;
@@ -1580,12 +1383,6 @@ newframe:  /* reentry point when frame changes (call/return) */
                 // return R(a), R(a+1), ... , R(a+b-2), b is return result count + 1, index from 0
                 if (use_last_return && b > 1 && top >= a + 1)
                 {
-					/*for(int i=1;i<=top;++i)
-					{
-						auto param_json_str = luaL_tojsonstring(L, i, nullptr);
-						printf("");
-					}*/
-					// auto ret_json_str = luaL_tojsonstring(L, a + 1, nullptr);
                     lua_getglobal(L, "_G");
                     lua_pushvalue(L, a + 1);
                     lua_setfield(L, -2, "last_return");
@@ -1707,7 +1504,7 @@ newframe:  /* reentry point when frame changes (call/return) */
                 Proto *p = cl->p->p[p_index];
                 LClosure *ncl = getcached(p, cl->upvals, base);  /* cached closure */
                 if (ncl == nullptr)  /* no match? */
-                    pushclosure(L, p, cl->upvals, base, ra);  /* create a new one */
+                    pushclosure(L, p, cl->upvals, cl->nupvalues, base, ra);  /* create a new one */
                 else
                     setclLvalue(L, ra, ncl);  /* push cashed closure */
                 checkGC(L, ra + 1);

@@ -255,7 +255,7 @@ static void close_state(lua_State *L) {
 }
 
 
-// TODO: lua_State，
+// TODO: remove lua thread
 LUA_API lua_State *lua_newthread(lua_State *L) {
     global_State *g = G(L);
     lua_State *L1;
@@ -313,13 +313,11 @@ LUA_API lua_State *lua_newstate(lua_Alloc f, void *ud) {
     L->malloced_buffers = new std::list<std::pair<ptrdiff_t, ptrdiff_t>>();
     memset(L->compile_error, 0x0, LUA_COMPILE_ERROR_MAX_LENGTH);
 	memset(L->runerror, 0x0, LUA_VM_EXCEPTION_STRNG_MAX_LENGTH);
-	L->bytecode_debugger_opened = false;
     L->in = stdin;
     L->out = stdout;
     L->err = stderr;
     L->force_stopping = false;
 	L->exit_code = 0;
-    L->debugger_pausing = false;
     L->preprocessor = nullptr;
     preinit_thread(L, g);
     g->frealloc = f;
@@ -371,7 +369,7 @@ static size_t align8(size_t s) {
 };
 
 // FIXME: use memory page, and use best fit malloc strategy
-// TODO: ，（）
+// TODO: change to better strategy
 void *lua_malloc(lua_State *L, size_t size)
 {
     size = align8(size);

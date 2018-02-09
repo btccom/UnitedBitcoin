@@ -182,7 +182,7 @@ int lualib_net_accept(lua_State *L)
 
 static void process_async_connection(lua_State *L, NetServerInfo *server, TcpSocket *socket)
 {
-	// FIXME: ，，callbackupval，
+	// FIXME: now use global variable. if callback use non-global upvals, some problem maybe happen
 	lua_getglobal(L, "net_async_handler");
 	if(!lua_isfunction(L, -1))
 	{

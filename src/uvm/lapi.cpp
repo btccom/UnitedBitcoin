@@ -1037,69 +1037,6 @@ LUA_API int lua_load_with_check(lua_State *L, lua_Reader reader, void *data,
     return status;
 }
 
-static int lua_common_compile(lua_State *L, lua_Reader reader, void *dt,
-    const char *chunkname, const char *mode, lua_Writer writer, void *dest)
-{
-    Proto *proto = getproto(L->top - 1);
-    if (nullptr == dest)
-    {
-        perror("compile destination not found");
-        return LUA_ERRERR;
-    }
-    lua_lock(L);
-    luaU_dump(L, proto, writer, dest, 0);
-    lua_unlock(L);
-    return LUA_OK;
-}
-
-/**
-* compile current lua state to binary
-*/
-LUA_API int lua_compile(lua_State *L, lua_Reader reader, void *dt,
-    const char *chunkname, const char *mode, lua_Writer writer, FILE *out_file)
-{
-    return lua_common_compile(L, reader, dt, chunkname, mode, writer, out_file);
-}
-
-LUA_API int (lua_compile_to_stream)(lua_State *L, lua_Reader reader, void *dt,
-    const char *chunkname, const char *mode, lua_Writer writer, GluaModuleByteStreamP stream)
-{
-    return lua_common_compile(L, reader, dt, chunkname, mode, writer, stream);
-}
-
-LUA_API int lua_compilex(lua_State *L, lua_Reader reader, void *dt,
-    const char *chunkname, const char *mode, lua_Writer writer, const char *out_filename)
-{
-    FILE *f = fopen(out_filename, "wb");
-    if (nullptr == f)
-    {
-        perror("compile out file not found");
-        return LUA_ERRERR;
-    }
-
-    struct FileReleaseScope {
-        FILE *_f;
-        FileReleaseScope(FILE *f) : _f(f) { }
-        ~FileReleaseScope() {
-            if (ferror(_f))
-            {
-                perror("write");
-            }
-            if (fclose(_f))
-            {
-                perror("close");
-            }
-        }
-    } file_release_scope(f);
-
-    int status = lua_compile(L, reader, dt, chunkname, mode, writer, f);
-    if (status) {
-        return status;
-    }
-    return LUA_OK;
-}
-
-
 LUA_API int lua_dump(lua_State *L, lua_Writer writer, void *data, int strip) {
     int status;
     TValue *o;

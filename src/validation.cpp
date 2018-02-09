@@ -44,7 +44,7 @@
 #include <pubkey.h>
 #include <base58.h>
 
-#include <uvm/btc_uvm_api.h>
+#include <btc_uvm_api.h>
 #include <contract_engine/contract_helper.hpp>
 
 #include <atomic>
@@ -1778,7 +1778,7 @@ bool ContractExec::performByteCode()
                 // TODO: get apis and offline_apis from contract bytecode
                 engine->execute_contract_init_by_address(params.contract_address, params.api_arg, &api_result_json_string); // FIXME: call api if is not "init"
             }
-            catch(uvm::core::GluaException& e)
+            catch(uvm::core::UvmException& e)
             {
                 pending_contract_exec_result.exit_code = 1;
                 pending_contract_exec_result.error_message = e.what();
@@ -1793,7 +1793,7 @@ bool ContractExec::performByteCode()
             try {
                 engine->execute_contract_api_by_address(params.contract_address, params.api_name, params.api_arg, &api_result_json_string);
             }
-            catch(uvm::core::GluaException &e)
+            catch(uvm::core::UvmException &e)
             {
                 pending_contract_exec_result.exit_code = 1;
                 pending_contract_exec_result.error_message = e.what();
@@ -1804,7 +1804,7 @@ bool ContractExec::performByteCode()
             try {
                 engine->execute_contract_api_by_address(params.contract_address, "on_deposit", deposit_arg, &api_result_json_string);
             }
-            catch(uvm::core::GluaException &e)
+            catch(uvm::core::UvmException &e)
             {
                 pending_contract_exec_result.exit_code = 1;
                 pending_contract_exec_result.error_message = e.what();
@@ -1943,7 +1943,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         if(bytecode.size()>0) {
             try {
                 params.code = ContractHelper::load_contract_from_gpc_data(bytecode);
-            } catch (uvm::core::GluaException &e) {
+            } catch (uvm::core::UvmException &e) {
                 LogPrintf(e.what());
                 return false;
             }

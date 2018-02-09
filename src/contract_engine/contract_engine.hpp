@@ -9,7 +9,7 @@ namespace blockchain
 	namespace contract_engine
 	{
 
-		typedef GluaModuleByteStream VMModuleByteStream;
+		typedef UvmModuleByteStream VMModuleByteStream;
 
 		// abstract contract vm
 		class ContractEngine
@@ -27,9 +27,6 @@ namespace blockchain
 			virtual void add_gas_used(int64_t delta_used) = 0;
 
 			virtual void stop()=0;
-
-			// @throws exception
-			virtual void compilefile_to_stream(std::string filename, void *stream) = 0;
 
 			virtual void add_global_bool_variable(std::string name, bool value) = 0;
 			virtual void add_global_int_variable(std::string name, int64_t value) = 0;

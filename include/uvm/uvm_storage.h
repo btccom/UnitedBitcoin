@@ -23,7 +23,7 @@ namespace uvm
 	namespace lib
 	{
 		// int uvmlib_get_storage(lua_State *L);
-		// uvm.get_storage具体的实现
+		// implementation of uvm.get_storage in contract
 		int uvmlib_get_storage_impl(lua_State *L,
 			const char *contract_id, const char *name);
 

@@ -1,4 +1,7 @@
 ﻿// TODO: async apis
+/**
+ * This is a simple http module for uvm
+ */
 
 #include "uvm/lprefix.h"
 
@@ -149,7 +152,7 @@ static bool response_headers_traverser(lua_State *L, void *ud, size_t len, std::
 	return true;
 }
 
-// http, http.request(method, url, body, headers)
+// send http request, http.request(method, url, body, headers)
 static int lualib_http_request(lua_State *L)
 {
 	auto method = luaL_checkstring(L, 1);
@@ -160,7 +163,7 @@ static int lualib_http_request(lua_State *L)
 	auto body = luaL_tolstring(L, 3, &body_len);
 	/*
 	auto headers_table_value = lua_type_to_storage_value_type(L, 4);
-	if(headers_table_value.type != GluaStorageValueType::LVALUE_TABLE)
+	if(headers_table_value.type != UvmStorageValueType::LVALUE_TABLE)
 	{
 		global_uvm_chain_api->throw_exception(L, UVM_API_SIMPLE_ERROR, "headers must be table");
 		return 0;
@@ -182,13 +185,13 @@ static int lualib_http_request(lua_State *L)
 	/*
 	for(const auto &p : *headers_table)
 	{
-		if (p.second.type == GluaStorageValueType::LVALUE_STRING)
+		if (p.second.type == UvmStorageValueType::LVALUE_STRING)
 			ss << p.first << ":" << p.second.value.string_value << "\r\n";
-		else if(p.second.type == GluaStorageValueType::LVALUE_INTEGER)
+		else if(p.second.type == UvmStorageValueType::LVALUE_INTEGER)
 			ss << p.first << ":" << p.second.value.int_value << "\r\n";
-		else if (p.second.type == GluaStorageValueType::LVALUE_NUMBER)
+		else if (p.second.type == UvmStorageValueType::LVALUE_NUMBER)
 			ss << p.first << ":" << p.second.value.number_value << "\r\n";
-		else if (p.second.type == GluaStorageValueType::LVALUE_BOOLEAN)
+		else if (p.second.type == UvmStorageValueType::LVALUE_BOOLEAN)
 			ss << p.first << ":" << p.second.value.bool_value << "\r\n";
 	}
 	*/
@@ -209,7 +212,7 @@ static int lualib_http_request(lua_State *L)
 	auto *ctx = new HttpContext();
 	ctx->socket = socket;
 	ctx->res = new HttpResponse();
-	size_t body_len_from_header = 0; // headerbody
+	size_t body_len_from_header = 0; // get body size from header
 	do
 	{
 		result_count = lualib_net_read_until_string_impl(L, socket, "\r\n");
@@ -364,7 +367,7 @@ static int lualib_http_accept(lua_State *L)
 	ctx->socket = socket;
 	ctx->req = new HttpRequest();
 	ctx->res = new HttpResponse();
-	size_t body_len_from_header = 0; // headerbody
+	size_t body_len_from_header = 0; // get body size from header
 	do
 	{
 		int result_count = lualib_net_read_until_string_impl(L, socket, "\r\n");
@@ -591,7 +594,7 @@ static int lualib_http_finish_res(lua_State *L)
 		lualib_net_write_string_impl(L, socket, header.first + ":" + header.second + "\r\n");
 	}
 	lualib_net_write_string_impl(L, socket, "\r\n");
-	// TODO: Transfer-Encodingchunked，chunked
+	// TODO: use chunked if headers['Transfer-Encoding'] is 'chunked'
 	lualib_net_write_impl(L, socket, ctx->res->body);
 	lualib_net_close_socket_impl(L, socket);
 	return 0;

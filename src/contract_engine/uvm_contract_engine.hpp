@@ -9,7 +9,7 @@ namespace uvm
 	class UvmContractEngine : public ::blockchain::contract_engine::ContractEngine
 	{
 	private:
-		std::shared_ptr<lua::lib::GluaStateScope> _scope;
+		std::shared_ptr<lua::lib::UvmStateScope> _scope;
 	public:
 		UvmContractEngine(bool use_contract=true);
 		virtual ~UvmContractEngine();
@@ -23,9 +23,6 @@ namespace uvm
 		virtual void add_gas_used(int64_t delta_used);
 
 		virtual void stop();
-
-		// @throws uvm::core::GluaException
-		virtual void compilefile_to_stream(std::string filename, void *stream);
 
 		virtual void add_global_bool_variable(std::string name, bool value);
 		virtual void add_global_int_variable(std::string name, int64_t value);

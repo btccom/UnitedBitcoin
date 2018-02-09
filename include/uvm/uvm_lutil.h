@@ -107,7 +107,6 @@ namespace uvm
             return false;
         }
 
-		// 
 		size_t string_lines_count(const std::string &str);
 
         class TimeDiff
