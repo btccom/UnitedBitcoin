@@ -59,6 +59,7 @@
 #include <fc/crypto/base58.hpp>
 #include <boost/uuid/sha1.hpp>
 #include <exception>
+#include <contract_storage/contract_storage.hpp>
 
 #if defined(NDEBUG)
 # error "Bitcoin cannot be compiled without assertions."
@@ -1950,7 +1951,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         if(!is_create)
             params.contract_address = ValtypeUtils::vch_to_string(contract_address);
         else
-            params.contract_address = ContractHelper::generate_contract_address(params.code, params.caller_address, 0); // FIXME: use blockchain height
+            params.contract_address = ContractHelper::generate_contract_address(params.code, params.caller_address, 0); // FIXME: use hash(contract vout + caller-fee-spender-vin) as contract address
         return true;
     }
     catch(const scriptnum_error& err){
@@ -2224,6 +2225,12 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                                  error("ConnectBlock(): exec bytecode error"),
                                  REJECT_INVALID, exec.pending_contract_exec_result.error_message);
             }
+            // if is create contract, store contract info to db(if vout is deleted, need rollback)
+            if(resultConvertContractTx.first[0].opcode == OP_CREATE)
+            {
+                // TODO
+            }
+
             for(ContractTransaction &ctx : resultConvertContractTx.first) {
 //                sumGas += ctx.gas() * ctx.gasPrice(); // FIXME
                 // TODO
