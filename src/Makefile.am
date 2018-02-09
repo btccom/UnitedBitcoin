@@ -33,6 +33,7 @@ LIBBITCOIN_CRYPTO=crypto/libbitcoin_crypto.a
 LIBBITCOINQT=qt/libbitcoinqt.a
 LIBSECP256K1=secp256k1/libsecp256k1.la
 
+
 if ENABLE_ZMQ
 LIBBITCOIN_ZMQ=libbitcoin_zmq.a
 endif
@@ -180,7 +181,7 @@ BITCOIN_CORE_H = \
 obj/build.h: FORCE
 	@$(MKDIR_P) $(builddir)/obj
 	@$(top_srcdir)/share/genbuild.sh "$(abs_top_builddir)/src/obj/build.h" \
-	  "$(abs_top_srcdir)"
+      "$(abs_top_srcdir)"
 libbitcoin_util_a-clientversion.$(OBJEXT): obj/build.h
 
 # server: shared between bitcoind and bitcoin-qt
@@ -298,6 +299,10 @@ libbitcoin_server_a_SOURCES = \
     jsondiff/helper.cpp \
     jsondiff/json_value_types.cpp \
     jsondiff/jsondiff.cpp \
+    sqlite3.c \
+    contract_storage/change.cpp \
+    contract_storage/contract_info.cpp \
+    contract_storage/contract_storage.cpp \
   $(BITCOIN_CORE_H)
 
 if ENABLE_ZMQ
