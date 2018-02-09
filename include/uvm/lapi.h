@@ -25,27 +25,6 @@
 #define api_checknelems(L,n)	api_check(L, (n) < (L->top - L->ci->func), \
 				  "not enough elements in the stack")
 
-LUA_API int (lua_compilex)(lua_State *L, lua_Reader reader, void *dt,
-    const char *chunkname, const char *mode, lua_Writer writer, const char *out_filename);
-
-LUA_API int (lua_compile)(lua_State *L, lua_Reader reader, void *dt,
-    const char *chunkname, const char *mode, lua_Writer writer, FILE *out_file);
-
-LUA_API int (lua_compile_to_stream)(lua_State *L, lua_Reader reader, void *dt,
-    const char *chunkname, const char *mode, lua_Writer writer, GluaModuleByteStreamP stream);
-
-/**
- * compile lua code file to bytecode file
- * @return TRUE(1 or not 0) if success, FALSE(0) if failed
- */
-LUA_API int(luaL_compilefile)(const char *filename, const char *out_filename, char *error,
-	bool use_type_check = false, bool is_contract=false);
-
-LUA_API int(luaL_compilefilex)(const char *filename, FILE *out_file, char *error, bool is_contract=false);
-
-LUA_API int(luaL_compilefile_to_stream)(lua_State *L, const char *filename, GluaModuleByteStreamP stream,
-	char *error, bool use_type_check = false, bool is_contract=false);
-
 /**
  * index -2 is key, index -1 is value
  */

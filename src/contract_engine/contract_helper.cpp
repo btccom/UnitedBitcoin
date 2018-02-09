@@ -71,7 +71,7 @@ std::string ContractHelper::to_printable_hex(unsigned char chr)
 read_count = common_fread_int(f, &api_count); \
 if (read_count != 1)\
 {\
-throw uvm::core::GluaException(except_1); \
+throw uvm::core::UvmException(except_1); \
 }\
 for (int i = 0; i < api_count; i++)\
 {\
@@ -79,7 +79,7 @@ int api_len = 0; \
 read_count = common_fread_int(f, &api_len); \
 if (read_count != 1)\
 {\
-throw uvm::core::GluaException(except_2); \
+throw uvm::core::UvmException(except_2); \
 }\
 api_buf = (char*)malloc(api_len + 1); \
 if (api_buf == NULL) \
@@ -90,7 +90,7 @@ read_count = common_fread_octets(f, api_buf, api_len); \
 if (read_count != 1)\
 {\
 free(api_buf); \
-throw uvm::core::GluaException(except_3); \
+throw uvm::core::UvmException(except_3); \
 }\
 api_buf[api_len] = '\0'; \
 dst_set.insert(std::string(api_buf)); \
@@ -103,7 +103,7 @@ free(api_buf); \
 read_count = common_fread_int(f, &storage_count); \
 if (read_count != 1)\
 {\
-throw uvm::core::GluaException(except_1); \
+throw uvm::core::UvmException(except_1); \
 }\
 for (int i = 0; i < storage_count; i++)\
 {\
@@ -111,7 +111,7 @@ int storage_name_len = 0; \
 read_count = common_fread_int(f, &storage_name_len); \
 if (read_count != 1)\
 {\
-throw uvm::core::GluaException(except_2); \
+throw uvm::core::UvmException(except_2); \
 }\
 storage_buf = (char*)malloc(storage_name_len + 1); \
 if (storage_buf == NULL) \
@@ -122,14 +122,14 @@ read_count = common_fread_octets(f, storage_buf, storage_name_len); \
 if (read_count != 1)\
 {\
 free(storage_buf); \
-throw uvm::core::GluaException(except_3); \
+throw uvm::core::UvmException(except_3); \
 }\
 storage_buf[storage_name_len] = '\0'; \
 read_count = common_fread_int(f, (int*)&storage_type); \
 if (read_count != 1)\
 {\
 free(storage_buf); \
-throw uvm::core::GluaException(except_4); \
+throw uvm::core::UvmException(except_4); \
 }\
 dst_map.insert(std::make_pair(std::string(storage_buf), storage_type)); \
 free(storage_buf); \
@@ -151,7 +151,7 @@ uvm::blockchain::Code ContractHelper::load_contract_from_gpc_data(const std::vec
         read_count = common_fread_int(f, (int*)&digest[i]);
         if (read_count != 1)
         {
-            throw uvm::core::GluaException("Read verify code fail!");
+            throw uvm::core::UvmException("Read verify code fail!");
         }
     }
 
@@ -159,14 +159,14 @@ uvm::blockchain::Code ContractHelper::load_contract_from_gpc_data(const std::vec
     read_count = common_fread_int(f, &len);
     if (read_count != 1 || len < 0 || (len >= (f->size() - f->pos)))
     {
-        throw uvm::core::GluaException("Read bytescode len fail!");
+        throw uvm::core::UvmException("Read bytescode len fail!");
     }
 
     code.code.resize(len);
     read_count = common_fread_octets(f, code.code.data(), len);
     if (read_count != 1)
     {
-        throw uvm::core::GluaException("Read bytescode fail!");
+        throw uvm::core::UvmException("Read bytescode fail!");
     }
 
     boost::uuids::detail::sha1 sha;
@@ -175,7 +175,7 @@ uvm::blockchain::Code ContractHelper::load_contract_from_gpc_data(const std::vec
     sha.get_digest(check_digest);
     if (memcmp((void*)digest, (void*)check_digest, sizeof(unsigned int) * 5))
     {
-        throw uvm::core::GluaException("Verify bytescode SHA1 fail!");
+        throw uvm::core::UvmException("Verify bytescode SHA1 fail!");
     }
 
     for (int i = 0; i < 5; ++i)

@@ -347,7 +347,6 @@ static int math_log10(lua_State *L) {
 
 static const luaL_Reg mathlib[] = {
     { "abs", math_abs },
-	// 三角函数和平方根函数,log函数等暂时不提供，等能确保这些函数在不同节点使用系统c库能确保同样参数结果一样时再提供，或者自己重新实现一个
     // { "acos", math_acos },
     // { "asin", math_asin },
     // { "atan", math_atan },

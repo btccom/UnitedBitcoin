@@ -43,21 +43,11 @@ static const luaL_Reg loadedlibs[] = {
     { LUA_LOADLIBNAME, luaopen_package }, // READ, whether this module can load outside libs?
     { LUA_COLIBNAME, luaopen_coroutine },
     { LUA_TABLIBNAME, luaopen_table },
-    // {LUA_IOLIBNAME, luaopen_io},
-    // {LUA_OSLIBNAME, luaopen_os},
     { LUA_STRLIBNAME, luaopen_string },
     { LUA_TIMELIBNAME, luaopen_time },
     { LUA_MATHLIBNAME, luaopen_math },
-    // { LUA_UVMLIBNAME, luaopen_uvm },
     { LUA_JSONLIBNAME, luaopen_json },
     { LUA_UTF8LIBNAME, luaopen_utf8 },
-	// { LUA_NETLIBNAME, luaopen_net },
-	// { LUA_HTTPLIBNAME, luaopen_http },
-	// { LUA_JSONRPCLIBNAME, luaopen_jsonrpc },
-    // {LUA_DBLIBNAME, luaopen_debug},
-#if defined(LUA_COMPAT_BITLIB)
-    { LUA_BITLIBNAME, luaopen_bit32 },
-#endif
     { nullptr, nullptr }
 };
 

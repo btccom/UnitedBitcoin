@@ -8,38 +8,39 @@
 #include <memory>
 
 #include <uvm/uvm_storage.h>
+#include <uvm/uvm_lib.h>
 
 using uvm::lua::api::global_uvm_chain_api;
 
-static GluaStorageTableReadList *get_or_init_storage_table_read_list(lua_State *L)
+static UvmStorageTableReadList *get_or_init_storage_table_read_list(lua_State *L)
 {
-	GluaStateValueNode state_value_node = uvm::lua::lib::get_lua_state_value_node(L, LUA_STORAGE_READ_TABLES_KEY);
-	GluaStorageTableReadList *list = nullptr;;
+	UvmStateValueNode state_value_node = uvm::lua::lib::get_lua_state_value_node(L, LUA_STORAGE_READ_TABLES_KEY);
+	UvmStorageTableReadList *list = nullptr;;
 	if (state_value_node.type != LUA_STATE_VALUE_POINTER || nullptr == state_value_node.value.pointer_value)
 	{
-		list = (GluaStorageTableReadList*)malloc(sizeof(GluaStorageTableReadList));
-		new (list)GluaStorageTableReadList();
-		GluaStateValue value_to_store;
+		list = (UvmStorageTableReadList*)malloc(sizeof(UvmStorageTableReadList));
+		new (list)UvmStorageTableReadList();
+		UvmStateValue value_to_store;
 		value_to_store.pointer_value = list;
 		uvm::lua::lib::set_lua_state_value(L, LUA_STORAGE_READ_TABLES_KEY, value_to_store, LUA_STATE_VALUE_POINTER);
 	}
 	else
 	{
-		list = (GluaStorageTableReadList*)state_value_node.value.pointer_value;
+		list = (UvmStorageTableReadList*)state_value_node.value.pointer_value;
 	}
 	return list;
 }
 
-static struct GluaStorageValue get_last_storage_changed_value(lua_State *L, const char *contract_id,
-	GluaStorageChangeList *list, const std::string &key)
+static struct UvmStorageValue get_last_storage_changed_value(lua_State *L, const char *contract_id,
+	UvmStorageChangeList *list, const std::string &key)
 {
-	struct GluaStorageValue nil_value;
+	struct UvmStorageValue nil_value;
 	nil_value.type = uvm::blockchain::StorageValueTypes::storage_value_null;
-	auto post_when_read_table = [&](GluaStorageValue value) {
+	auto post_when_read_table = [&](UvmStorageValue value) {
 		if (lua_storage_is_table(value.type))
 		{
 			// when read a table, snapshot it and record it, when commit, merge to the changes
-			GluaStorageTableReadList *table_read_list = get_or_init_storage_table_read_list(L);
+			UvmStorageTableReadList *table_read_list = get_or_init_storage_table_read_list(L);
 			if (table_read_list)
 			{
 				for (auto it = table_read_list->begin(); it != table_read_list->end(); ++it)
@@ -49,7 +50,7 @@ static struct GluaStorageValue get_last_storage_changed_value(lua_State *L, cons
 						return;
 					}
 				}
-				GluaStorageChangeItem change_item;
+				UvmStorageChangeItem change_item;
 				change_item.contract_id = contract_id;
 				change_item.key = key;
 				change_item.before = value;
@@ -61,16 +62,15 @@ static struct GluaStorageValue get_last_storage_changed_value(lua_State *L, cons
 	{
 		auto value = global_uvm_chain_api->get_storage_value_from_uvm_by_address(L, contract_id, key);
 		post_when_read_table(value);
-		// ǵһζȡҪȡסظ϶ȡ
-
+		// cache the value if it's the first time to read
 		if (!list) {
-			list = (GluaStorageChangeList*)malloc(sizeof(GluaStorageChangeList));
-			new (list)GluaStorageChangeList();
-			GluaStateValue value_to_store;
+			list = (UvmStorageChangeList*)malloc(sizeof(UvmStorageChangeList));
+			new (list)UvmStorageChangeList();
+			UvmStateValue value_to_store;
 			value_to_store.pointer_value = list;
 			uvm::lua::lib::set_lua_state_value(L, LUA_STORAGE_CHANGELIST_KEY, value_to_store, LUA_STATE_VALUE_POINTER);
 		}
-		GluaStorageChangeItem change_item;
+		UvmStorageChangeItem change_item;
 		change_item.before = value;
 		change_item.after = value;
 		change_item.contract_id = contract_id;
@@ -99,9 +99,10 @@ static std::string global_key_for_storage_prop(std::string contract_id, std::str
 	return "gk_" + contract_id + "__" + key;
 }
 
-bool lua_push_storage_value(lua_State *L, const GluaStorageValue &value);
-#define max_support_array_size 10000000  // Ŀǰֵ֧array size
-static bool lua_push_storage_table_value(lua_State *L, GluaTableMap *map, int type)
+bool lua_push_storage_value(lua_State *L, const UvmStorageValue &value);
+#define max_support_array_size 10000000  // max array size supported
+
+static bool lua_push_storage_table_value(lua_State *L, UvmTableMap *map, int type)
 {
 	if (nullptr == L || nullptr == map)
 		return false;
@@ -127,14 +128,14 @@ static bool lua_push_storage_table_value(lua_State *L, GluaTableMap *map, int ty
 		for (auto it = map->begin(); it != map->end(); ++it)
 		{
 			const auto &key = it->first;
-			GluaStorageValue value = it->second;
+			UvmStorageValue value = it->second;
 			lua_push_storage_value(L, value);
 			lua_setfield(L, -2, key.c_str());
 		}
 	}
 	return true;
 }
-bool lua_push_storage_value(lua_State *L, const GluaStorageValue &value)
+bool lua_push_storage_value(lua_State *L, const UvmStorageValue &value)
 {
 	if (nullptr == L)
 		return false;
@@ -146,9 +147,9 @@ bool lua_push_storage_value(lua_State *L, const GluaStorageValue &value)
 	case uvm::blockchain::StorageValueTypes::storage_value_null: lua_pushnil(L); break;
 	case uvm::blockchain::StorageValueTypes::storage_value_string: lua_pushstring(L, value.value.string_value); break;
 	case uvm::blockchain::StorageValueTypes::storage_value_stream: {
-		auto stream = (uvm::lua::lib::GluaByteStream*) value.value.userdata_value;
+		auto stream = (uvm::lua::lib::UvmByteStream*) value.value.userdata_value;
 		lua_pushlightuserdata(L, (void*)stream);
-		luaL_getmetatable(L, "GluaByteStream_metatable");
+		luaL_getmetatable(L, "UvmByteStream_metatable");
 		lua_setmetatable(L, -2);
 	} break;
 	default: {
@@ -164,17 +165,16 @@ bool lua_push_storage_value(lua_State *L, const GluaStorageValue &value)
 	return true;
 }
 
-static GluaStorageChangeItem diff_storage_change_if_is_table(lua_State *L, GluaStorageChangeItem change_item)
+static UvmStorageChangeItem diff_storage_change_if_is_table(lua_State *L, UvmStorageChangeItem change_item)
 {
 	if (!lua_storage_is_table(change_item.after.type))
 		return change_item;
 	if (!lua_storage_is_table(change_item.before.type) || !lua_storage_is_table(change_item.after.type))
 		return change_item;
-	// FIXME: mallocֶplacement newǷ
-	auto new_before = (GluaTableMapP)malloc(sizeof(GluaTableMap));
-	new (new_before)GluaTableMap();
-	auto new_after = (GluaTableMapP)malloc(sizeof(GluaTableMap));
-	new (new_after)GluaTableMap();
+	auto new_before = (UvmTableMapP)malloc(sizeof(UvmTableMap));
+	new (new_before)UvmTableMap();
+	auto new_after = (UvmTableMapP)malloc(sizeof(UvmTableMap));
+	new (new_after)UvmTableMap();
 	for (auto it1 = change_item.before.value.table_value->begin(); it1 != change_item.before.value.table_value->end(); ++it1)
 	{
 		auto found = change_item.after.value.table_value->find(it1->first);
@@ -204,7 +204,7 @@ static GluaStorageChangeItem diff_storage_change_if_is_table(lua_State *L, GluaS
 	change_item.after.value.table_value = new_after;
 	return change_item;
 }
-static bool has_property_changed_in_changelist(GluaStorageChangeList *list, std::string contract_id, std::string name)
+static bool has_property_changed_in_changelist(UvmStorageChangeList *list, std::string contract_id, std::string name)
 {
 	if (nullptr == list)
 		return false;
@@ -218,32 +218,32 @@ static bool has_property_changed_in_changelist(GluaStorageChangeList *list, std:
 }
 bool luaL_commit_storage_changes(lua_State *L)
 {
-	GluaStateValueNode storage_changelist_node = uvm::lua::lib::get_lua_state_value_node(L, LUA_STORAGE_CHANGELIST_KEY);
+	UvmStateValueNode storage_changelist_node = uvm::lua::lib::get_lua_state_value_node(L, LUA_STORAGE_CHANGELIST_KEY);
 	if (global_uvm_chain_api->has_exception(L))
 	{
 		if (storage_changelist_node.type == LUA_STATE_VALUE_POINTER && nullptr != storage_changelist_node.value.pointer_value)
 		{
-			GluaStorageChangeList *list = (GluaStorageChangeList*)storage_changelist_node.value.pointer_value;
+			UvmStorageChangeList *list = (UvmStorageChangeList*)storage_changelist_node.value.pointer_value;
 			list->clear();
 		}
 		return false;
 	}
 	// merge changes
-	std::unordered_map<std::string, std::shared_ptr<std::unordered_map<std::string, GluaStorageChangeItem>>> changes;
-	GluaStorageTableReadList *table_read_list = get_or_init_storage_table_read_list(L);
+	std::unordered_map<std::string, std::shared_ptr<std::unordered_map<std::string, UvmStorageChangeItem>>> changes;
+	UvmStorageTableReadList *table_read_list = get_or_init_storage_table_read_list(L);
 	if (storage_changelist_node.type != LUA_STATE_VALUE_POINTER && table_read_list)
 	{
 		storage_changelist_node.type = LUA_STATE_VALUE_POINTER;
-		auto *list = (GluaStorageChangeList*)malloc(sizeof(GluaStorageChangeList));
-		new (list)GluaStorageChangeList();
-		GluaStateValue value_to_store;
+		auto *list = (UvmStorageChangeList*)malloc(sizeof(UvmStorageChangeList));
+		new (list)UvmStorageChangeList();
+		UvmStateValue value_to_store;
 		value_to_store.pointer_value = list;
 		uvm::lua::lib::set_lua_state_value(L, LUA_STORAGE_CHANGELIST_KEY, value_to_store, LUA_STATE_VALUE_POINTER);
 		storage_changelist_node.value.pointer_value = list;
 	}
 	if (storage_changelist_node.type == LUA_STATE_VALUE_POINTER && nullptr != storage_changelist_node.value.pointer_value)
 	{
-		GluaStorageChangeList *list = (GluaStorageChangeList*)storage_changelist_node.value.pointer_value;
+		UvmStorageChangeList *list = (UvmStorageChangeList*)storage_changelist_node.value.pointer_value;
 		// merge initial tables here
 		if (table_read_list)
 		{
@@ -255,9 +255,9 @@ bool luaL_commit_storage_changes(lua_State *L)
 				if (lua_istable(L, -1))
 				{
 					auto after_value = lua_type_to_storage_value_type(L, -1, 0);
-					// changelistǷԵĸıеĻreadvalue
+					// check whether changelist has this property's change item. only read value if not exist
 					change_item.after = after_value;
-					// FIXME: a= {}, storage.a = a, a['name'] = 123, storage.a = {}ô? ǰstorageһtable
+					// FIXME: eg. a= {}, storage.a = a, a['name'] = 123, storage.a = {}   How to deal with the above circumstances?  maybe it will help to treat the storage as a table
 					//if (!has_property_changed_in_changelist(list, change_item.contract_id, change_item.key))
 					// {
 					if (!change_item.before.equals(change_item.after))
@@ -272,7 +272,7 @@ bool luaL_commit_storage_changes(lua_State *L)
 		}
 		for (auto it = list->begin(); it != list->end(); ++it)
 		{
-			GluaStorageChangeItem change_item = *it;
+			UvmStorageChangeItem change_item = *it;
 			auto found = changes.find(change_item.contract_id);
 			if (found != changes.end())
 			{
@@ -289,7 +289,7 @@ bool luaL_commit_storage_changes(lua_State *L)
 			}
 			else
 			{
-				auto contract_changes = std::make_shared<std::unordered_map<std::string, GluaStorageChangeItem>>();
+				auto contract_changes = std::make_shared<std::unordered_map<std::string, UvmStorageChangeItem>>();
 				contract_changes->insert(contract_changes->end(), std::make_pair(change_item.key, change_item));
 				changes.insert(changes.end(), std::make_pair(change_item.contract_id, contract_changes));
 			}
@@ -299,7 +299,6 @@ bool luaL_commit_storage_changes(lua_State *L)
 	{
 		return false;
 	}
-	// ǵúԼʼinitstorageΪգchangesΪգ
 	if (uvm::lua::lib::is_calling_contract_init_api(L)
 		&& changes.size() == 0)
 	{
@@ -319,14 +318,12 @@ bool luaL_commit_storage_changes(lua_State *L)
 			global_uvm_chain_api->throw_exception(L, UVM_API_SIMPLE_ERROR, "Can't get contract info by contract address %s", it->first.c_str());
 			return false;
 		}
-		// ǵinit APIstorageĺԼַͳʼõĺԼַһҪstorageafterǷܺͱʱstorageƥ
 		bool is_in_starting_contract_init = false;
 		if (uvm::lua::lib::is_calling_contract_init_api(L))
 		{
 			auto starting_contract_address = uvm::lua::lib::get_starting_contract_address(L);
 			if (it->first == starting_contract_address)
 			{
-				// storageafterǷܺͱʱstorageƥ
 				is_in_starting_contract_init = true;
 				const auto &storage_properties_in_chain = stream->contract_storage_properties;
 				if (it->second->size() != storage_properties_in_chain.size())
@@ -336,8 +333,6 @@ bool luaL_commit_storage_changes(lua_State *L)
 				}
 				for (auto &p1 : *(it->second))
 				{
-					//if (p1.second.before.type == uvm::blockchain::StorageValueTypes::storage_value_null)
-					//	continue;
 					if (storage_properties_in_chain.find(p1.first) == storage_properties_in_chain.end())
 					{
 						global_uvm_chain_api->throw_exception(L, UVM_API_SIMPLE_ERROR, "Can't find storage %s", p1.first.c_str());
@@ -347,7 +342,7 @@ bool luaL_commit_storage_changes(lua_State *L)
 					if (uvm::blockchain::is_any_table_storage_value_type(p1.second.after.type)
 						|| uvm::blockchain::is_any_array_storage_value_type(p1.second.after.type))
 					{
-						// ʱ[]ҲΪ{}
+						// [] will show as {} in runtime
 						if (!uvm::blockchain::is_any_table_storage_value_type(storage_info_in_chain)
 							&& !uvm::blockchain::is_any_array_storage_value_type(storage_info_in_chain))
 						{
@@ -367,7 +362,6 @@ bool luaL_commit_storage_changes(lua_State *L)
 								return false;
 							}
 						}
-						// afterֵͺֵǷƥ
 						if (p1.second.after.type == uvm::blockchain::storage_value_unknown_table
 							|| p1.second.after.type == uvm::blockchain::storage_value_unknown_array)
 						{
@@ -394,8 +388,8 @@ bool luaL_commit_storage_changes(lua_State *L)
 		{
 			if (lua_storage_is_table(it2->second.after.type))
 			{
-				// beforeǿtableafterarrayʱ
-				// beforearray, afterǿtableʱ
+				// when before is empty table, and after is array
+				// when before is array, and after is empty table
 				if (lua_storage_is_array(it2->second.before.type) && it2->second.after.value.table_value->size() == 0)
 					it2->second.after.type = it2->second.before.type;
 				else if (lua_storage_is_table(it2->second.before.type) && it2->second.before.value.table_value->size()>0)
@@ -403,7 +397,7 @@ bool luaL_commit_storage_changes(lua_State *L)
 				// just save table diff
 				it2->second = diff_storage_change_if_is_table(L, it2->second);
 			}
-			// storageıҪӦԼıͣʵ޸commit
+			// check storage changes and the corresponding types of compile-time contracts, and modify the type of commit
 			if (!is_in_starting_contract_init)
 			{
 				const auto &storage_properties_in_chain = stream->contract_storage_properties;
@@ -414,7 +408,7 @@ bool luaL_commit_storage_changes(lua_State *L)
 					if (uvm::blockchain::is_any_table_storage_value_type(it2->second.after.type)
 						|| uvm::blockchain::is_any_array_storage_value_type(it2->second.after.type))
 					{
-						// ʱ[]ҲΪ{}
+						// [] showed as {} in runtime
 						if (!uvm::blockchain::is_any_table_storage_value_type(storage_info_in_chain)
 							&& !uvm::blockchain::is_any_array_storage_value_type(storage_info_in_chain))
 						{
@@ -434,7 +428,7 @@ bool luaL_commit_storage_changes(lua_State *L)
 								return false;
 							}
 						}
-						// afterֵͺֵǷƥ
+						// check match of after's value type and type in chain
 						if (it2->second.after.type == uvm::blockchain::storage_value_unknown_table
 							|| it2->second.after.type == uvm::blockchain::storage_value_unknown_array)
 						{
@@ -455,7 +449,7 @@ bool luaL_commit_storage_changes(lua_State *L)
 					}
 				}
 			}
-			// map/arrayֵҪһµĲǻ
+			// map/array's sub item values' types must be consistent, and are primitive types
 			if (lua_storage_is_table(it2->second.after.type))
 			{
 				uvm::blockchain::StorageValueTypes item_value_type;
@@ -468,7 +462,7 @@ bool luaL_commit_storage_changes(lua_State *L)
 						continue;
 					}
 					is_first = true;
-					if (!GluaStorageValue::is_same_base_type_with_type_parse(p.second.type, item_value_type))
+					if (!UvmStorageValue::is_same_base_type_with_type_parse(p.second.type, item_value_type))
 					{
 						global_uvm_chain_api->throw_exception(L, UVM_API_SIMPLE_ERROR,
 							"array/map's value type must be same in contract storage");
@@ -503,14 +497,14 @@ bool luaL_commit_storage_changes(lua_State *L)
 					continue;
 				}
 				else if (it2->second.after.type == uvm::blockchain::StorageValueTypes::storage_value_stream
-					&& ((uvm::lua::lib::GluaByteStream*) it2->second.after.value.userdata_value)->equals((uvm::lua::lib::GluaByteStream*) it2->second.before.value.userdata_value))
+					&& ((uvm::lua::lib::UvmByteStream*) it2->second.after.value.userdata_value)->equals((uvm::lua::lib::UvmByteStream*) it2->second.before.value.userdata_value))
 				{
 					it2 = it->second->erase(it2);
 					continue;
 				}
 				else if (!lua_storage_is_table(it2->second.after.type)
 					&& it2->second.after.type != uvm::blockchain::StorageValueTypes::storage_value_string
-					&& memcmp(&it2->second.after.value, &it2->second.before.value, sizeof(GluaStorageValueUnion)) == 0)
+					&& memcmp(&it2->second.after.value, &it2->second.before.value, sizeof(UvmStorageValueUnion)) == 0)
 				{
 					it2 = it->second->erase(it2);
 					continue;
@@ -537,7 +531,7 @@ bool luaL_commit_storage_changes(lua_State *L)
 	auto result = global_uvm_chain_api->commit_storage_changes_to_uvm(L, changes);
 	if (storage_changelist_node.type == LUA_STATE_VALUE_POINTER && nullptr != storage_changelist_node.value.pointer_value)
 	{
-		GluaStorageChangeList *list = (GluaStorageChangeList*)storage_changelist_node.value.pointer_value;
+		UvmStorageChangeList *list = (UvmStorageChangeList*)storage_changelist_node.value.pointer_value;
 		list->clear();
 	}
 	return result;
@@ -568,7 +562,6 @@ namespace uvm {
 				return 1;
 			}
 			lua_pop(L, 1);
-			// printf("get storage %s:%s\n", contract_name, name);
 			const auto &state_value_node = uvm::lua::lib::get_lua_state_value_node(L, LUA_STORAGE_CHANGELIST_KEY);
 			int result;
 			if (state_value_node.type != LUA_STATE_VALUE_POINTER || !state_value_node.value.pointer_value)
@@ -591,7 +584,7 @@ namespace uvm {
 			}
 			else
 			{
-				GluaStorageChangeList *list = (GluaStorageChangeList*)state_value_node.value.pointer_value;
+				UvmStorageChangeList *list = (UvmStorageChangeList*)state_value_node.value.pointer_value;
 				const auto &value = get_last_storage_changed_value(L, contract_id, list, std::string(name));
 				lua_push_storage_value(L, value);
 				if (lua_storage_is_table(value.type))
@@ -623,13 +616,13 @@ namespace uvm {
 
 			// uvm::lua::lib::add_maybe_storage_changed_contract_id(L, contract_id);
 
-			// FIXME: tableÿδ¶ռڴ̫ˣҶȡҲ̫
-			// FIXME: commitʱȥȡstorageıҪÿζ
+			// FIXME: If this is a table, each time you create a new object, take up too much memory, and read too slow
+			// FIXME: When considering the commit to read storage changes, do not change every time
 			const auto &arg2 = lua_type_to_storage_value_type(L, value_index, 0);
 
 			if (lua_istable(L, value_index))
 			{
-				// tableҪread_listΪֱ޸
+				// add it to read_list if it's table, because it will be changed
 				lua_pushvalue(L, value_index);
 				lua_setglobal(L, global_key_for_storage_prop(contract_id, name).c_str());
 				auto *table_read_list = get_or_init_storage_table_read_list(L);
@@ -646,12 +639,12 @@ namespace uvm {
 					}
 					if (!found)
 					{
-						GluaStorageChangeItem change_item;
+						UvmStorageChangeItem change_item;
 						change_item.contract_id = contract_id;
 						change_item.key = name;
 						change_item.before = arg2;
 						change_item.after = arg2;
-						// TODO: Ϊ˱arg2̫ռڴϲʷͷŶ
+						// merge change history to release too many not-used-again objects
 						table_read_list->push_back(change_item);
 					}
 				}
@@ -665,19 +658,19 @@ namespace uvm {
 			*/
 
 			// log the value before and the new value
-			GluaStateValueNode state_value_node = uvm::lua::lib::get_lua_state_value_node(L, LUA_STORAGE_CHANGELIST_KEY);
-			GluaStorageChangeList *list;
+			UvmStateValueNode state_value_node = uvm::lua::lib::get_lua_state_value_node(L, LUA_STORAGE_CHANGELIST_KEY);
+			UvmStorageChangeList *list;
 			if (state_value_node.type != LUA_STATE_VALUE_POINTER || nullptr == state_value_node.value.pointer_value)
 			{
-				list = (GluaStorageChangeList*)malloc(sizeof(GluaStorageChangeList));
-				new (list)GluaStorageChangeList();
-				GluaStateValue value_to_store;
+				list = (UvmStorageChangeList*)malloc(sizeof(UvmStorageChangeList));
+				new (list)UvmStorageChangeList();
+				UvmStateValue value_to_store;
 				value_to_store.pointer_value = list;
 				uvm::lua::lib::set_lua_state_value(L, LUA_STORAGE_CHANGELIST_KEY, value_to_store, LUA_STATE_VALUE_POINTER);
 			}
 			else
 			{
-				list = (GluaStorageChangeList*)state_value_node.value.pointer_value;
+				list = (UvmStorageChangeList*)state_value_node.value.pointer_value;
 			}
 			if (uvm::lua::lib::check_in_lua_sandbox(L))
 			{
@@ -804,12 +797,12 @@ namespace uvm {
 			}
 
 
-			GluaStorageChangeItem change_item;
+			UvmStorageChangeItem change_item;
 			change_item.key = name;
 			change_item.contract_id = contract_id;
 			change_item.after = after;
 			change_item.before = before;
-			// TODO: Ϊ˱arg2̫ռڴϲʷͷŶ
+			// merge change history to release too many not-used-again objects
 			list->push_back(change_item);
 
 			return 0;

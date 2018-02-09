@@ -18,9 +18,6 @@
 
 #include <uvm/uvm_api.h>
 #include <uvm/uvm_lib.h>
-#include <uvm/uvm_tokenparser.h>
-#include <uvm/lparsercombinator.h>
-#include <uvm/ltypechecker.h>
 #include <uvm/uvm_lutil.h>
 #include <uvm/lobject.h>
 #include <uvm/lzio.h>
@@ -31,12 +28,8 @@
 #include <uvm/ldebug.h>
 #include <uvm/lauxlib.h>
 #include <uvm/lualib.h>
-#include <uvm/lrepl.h>
 #include <uvm/lfunc.h>
-#include <uvm/lcompile.h>
 #include <uvm/uvm_storage.h>
-#include <uvm/uvm_decompile.h>
-#include <uvm/uvm_disassemble.h>
 
 namespace uvm
 {
@@ -44,7 +37,7 @@ namespace uvm
     {
       namespace api
       {
-        IGluaChainApi *global_uvm_chain_api = nullptr;
+        IUvmChainApi *global_uvm_chain_api = nullptr;
       }
 
       using uvm::lua::api::global_uvm_chain_api;
@@ -55,273 +48,29 @@ namespace uvm
 			std::vector<std::string> contract_special_api_names = { "init", "on_deposit", "on_destroy", "on_upgrade" };
 			std::vector<std::string> contract_int_argument_special_api_names = { "on_deposit" };
 
-#define LUA_REPL_RUNNING_STATE_KEY "lua_repl_running"
 #define LUA_IN_SANDBOX_STATE_KEY "lua_in_sandbox"
             // storagecontract idstate key
 #define LUA_MAYBE_CHANGE_STORAGE_CONTRACT_IDS_STATE_KEY "maybe_change_storage_contract_ids_state"
 
             static const char *globalvar_whitelist[] = {
                 "print", "pprint", "table", "string", "time", "math", "json", "type", "require", "Array", "Stream",
-                "import_contract_from_address", "import_contract", "emit", "is_valid_address",
-                "uvm", "storage", "repl", "exit", "exit_repl", "self", "debugger", "exit_debugger",
+                "import_contract_from_address", "import_contract", "emit", "is_valid_address", "is_valid_contract_address",
+                "uvm", "storage", "exit", "self", "debugger", "exit_debugger",
                 "caller", "caller_address",
                 "contract_transfer", "contract_transfer_to", "transfer_from_contract_to_address",
 				"transfer_from_contract_to_public_account",
                 "get_chain_random", "get_transaction_fee",
                 "get_transaction_id", "get_header_block_num", "wait_for_future_random", "get_waited",
-                "get_contract_balance_amount", "get_chain_now", "get_current_contract_address", "get_system_asset_symbol",
+                "get_contract_balance_amount", "get_chain_now", "get_current_contract_address", "get_system_asset_symbol", "get_system_asset_precision",
                 "pairs", "ipairs", "pairsByKeys", "collectgarbage", "error", "getmetatable", "_VERSION",
                 "tostring", "tojsonstring", "tonumber", "tointeger", "todouble", "totable", "toboolean",
                 "next", "rawequal", "rawlen", "rawget", "rawset", "select",
                 "setmetatable"
             };
 
-            // ordered_mapunordered_map，Stream typeStream
-			static const std::map<std::string, std::string> globalvar_type_infos =
-			{
-				// inner types
-				{ GLUA_TYPE_NAMESPACE_PREFIX_WRAP(string), "string" },
-				{ GLUA_TYPE_NAMESPACE_PREFIX_WRAP(int), "int" },
-				{ GLUA_TYPE_NAMESPACE_PREFIX_WRAP(number), "number" },
-				{ GLUA_TYPE_NAMESPACE_PREFIX_WRAP(bool), "bool" },
-				{ GLUA_TYPE_NAMESPACE_PREFIX_WRAP(table), "table" },
-				{ GLUA_TYPE_NAMESPACE_PREFIX_WRAP(Array), "Array" },
-				{ GLUA_TYPE_NAMESPACE_PREFIX_WRAP(Map), "Map" },
-				{ GLUA_TYPE_NAMESPACE_PREFIX_WRAP(Nil), "nil" },
-				{ GLUA_TYPE_NAMESPACE_PREFIX_WRAP(Function), "function" },
-				{ GLUA_TYPE_NAMESPACE_PREFIX_WRAP(object), "object" },
-
-				// bin operations
-			{ "(+)", "(number, number) => number" }, // bin operations functions are '(' + op + ')'
-			{ "(-)", "(number, number) => number" },
-			{ "(*)", "(number, number) => number" },
-
-			// (/$$...)，(+$int#int)，，
-			// /，/$$...， func$int$int$int
-			{ "(+$int$int)", "(int, int) => int" },
-			{ "(-$int$int)", "(int, int) => int" },
-			{ "(*$int$int)", "(int, int) => int" },
-			{ "(^$int$int)", "(int, int) => int" },
-
-			{ "(/)", "(number, number) => number" },
-			{ "(//)", "(number, number) => int" },
-			{ "(^)", "(number, number) => number" },
-			{ "(%)", "(number, number) => number" },
-			{ "(&)", "(int, int) => int" },
-			{ "(~)", "(int, int) => int" },
-			{ "(|)", "(number, number) => int" },
-			{ "(>>)", "(number, number) => number" },
-			{ "(<<)", "(number, number) => number" },
-			{ "(<)", "(number, number) => bool" },
-			{ "(<=)", "(number, number) => bool" },
-			{ "(>)", "(number, number) => bool" },
-			{ "(>=)", "(number, number) => bool" },
-			{ "(==)", "(object, object) => bool" },
-			{ "(~=)", "(object, object) => bool" },
-			{ "(and)", "(object, object) => object" },
-			{ "(or)", "(object, object) => object" },
-			{ "(..)", "(string, string) => string" },
-			// infix operations
-		{ "-", "(number) => number" },
-		{ "not", "(object) => bool" },
-		{ "#", "(object) => int" },
-		{ "~", "(int) => int" },
-		// global functions
-	{ "print", "(...) => void" },
-	{ "pprint", "(...) => void" },
-	{ "table", R"END(record {
-concat:(table,string, ...)=>string;
-insert:(table, ...)=>void;
-append: (table, object) => void;
-length: (table) => int;
-remove:(table, ...) => object;
-sort:(table, ...) => void
-})END" },
-{ "string", R"END(record {
-split: (string, string) => table;
-byte: (string) => int;
-char: (...) => string;
-find: (string, string, ...) => string;
-format: (string, ...) => string;
-gmatch: (string, string) => function;
-gsub: (string, string, string, ...) => string;
-len: (string) => int;
-match: (string, string, ...) => string;
-rep: (string, int, ...) => string;
-reverse: (string) => string;
-sub: (string, int, ...) => string;
-upper: (string) => string
-})END" },
-{ "Array", "(object) => table" },
-{ "time", R"END(record {
-add: (int, string, int) => int;
-tostr: (int) => string;
-difftime: (int, int) => int
-})END" },
-{ "math", R"END(record {
-abs$int: (int) => int;
-abs: (number) => number;
-ceil: (number) => int;
-floor: (number) => int;
-max: (...) => number;
-maxinteger: int;
-min: (...) => number;
-mininteger: int;
-pi: number;
-tointeger: (number) => int;
-type: (number) => string
-})END" },
-{ "json", R"END(record {
-dumps: (object) => string;
-loads: (string) => object
-})END" },
-{ "utf8", R"END(record {
-char: (...) => string;
-charpattern: string;
-codes: (string) => function;
-codepoint: (string, int, int) => int;
-len: (striing, int, int) => int;
-offset: (string, int, int) => int
-})END" },
-{ "os", R"END(record {
-clock: () => int;
-date: (string, int) => string;
-difftime: (int, int) => int;
-execute: (string) => void;
-exit: (int, bool) => void;
-getenv: (string) => string;
-remove: (string) => void;
-rename: (string, string) => void;
-setlocale: (string, string) => void;
-time: (...) => int;
-tmpname: () => string
-})END" },
-{ "io", R"END(record {
-close: (...) => void;
-flush: () => void;
-input: (...) => void;
-lines: (string) => function;
-open: (string, string) => void;
-read: (string) => string;
-seek: (...) => int;
-write: (string) => void
-})END" },
-{ "net", R"END(record {
-listen: (string, port) => object;
-connect: (string, port) => object;
-accept: (object) => object;
-accept_async: (object, function) => void;
-start_io_loop: (object) => void;
-read: (object, int) => string;
-read_until: (object, string) => string;
-write: (object, object) => void;
-close_socket: (object) => void;
-close_server: (object) => void;
-shutdown: () => void
-})END" },
-{ "http", R"END(record {
-listen: (string, port) => object;
-connect: (string, port) => object;
-request: (string, string, string, table) => object;
-close: (object) => void;
-accept: (object) => object;
-accept_async: (object, function) => void;
-start_io_loop: (object) => void;
-get_req_header: (object, string) => string;
-get_res_header: (object, string) => string;
-get_req_http_method: (object) => string;
-get_req_path: (object) => string;
-get_req_http_protocol: (object) => string;
-get_req_body: (object) => string;
-set_res_header: (object, string, string) => void;
-write_res_body: (object, string) => void;
-set_status: (object, int, string) => void;
-get_status: (object) => int;
-get_status_message: (object) => string;
-get_res_body: (object) => string;
-finish_res: (object) => void
-})END" },
-// FIXME: Stream record，self
-{ GLUA_TYPE_NAMESPACE_PREFIX_WRAP(Stream), R"END(record {
-size: (table) => int;
-pos: (table) => int;
-reset_pos: (table) => void;
-current: (table) => int;
-eof: (table) => bool;
-push: (table, int) => void;
-push_string: (table, string) => void;
-next: (table) => bool
-})END"},
-{"Stream", "() => Stream"},
-				{ "jsonrpc", R"END(record {})END" },
-                { "type", "(object) => string" },
-                { "require", "(string) => object" },
-                { "import_contract_from_address", "(string) => table" },
-                { "import_contract", "(string) => table" },
-                // { "emit", "(string, string) => void" },
-                { "uvm", "table" },
-                { "storage", "table" },
-                { "repl", "() => void" },
-                { "exit", "(object) => object" },
-				{ "exit_repl", "object (object)" },
-                { "debugger", "(...) => void" },
-                { "exit_debugger", "() => void" },
-                { "caller", "string" },
-                { "caller_address", "string" },
-				// 
-				{ "param", "string" },
-				{ "truncated", "bool" },
-				{ "contract_id", "string" },
-				{ "event_type", "string" },
-
-                { "contract_transfer", "(...) => object" },
-                { "contract_transfer_to", "(...) => object" },
-                { "transfer_from_contract_to_address", "(string, string, int) => int" },
-				{ "transfer_from_contract_to_public_account", "(string, string, int) => int"},
-                { "get_chain_random", "() => number" },
-                { "get_transaction_fee", "() => int" },
-                { "get_transaction_id", "() => string" },
-                { "get_header_block_num", "() => int" },
-                { "wait_for_future_random", "(int) => int" },
-                { "get_waited", "(int) => int" },
-                { "get_contract_balance_amount", "(string, string) => int" },
-                { "get_chain_now", "() => int" },
-                { "get_current_contract_address", "() => string" },
-				{ "get_system_asset_symbol", "() => string" },
-				{ "is_valid_address", "(string) => bool" },
-                { "pairs", "(table) => object" },
-                { "ipairs", "(table) => object" },
-				{ "pairsByKeys", "(table) => object" },
-                { "collectgarbage", "object (...)" },
-                { "error", "(...) => object" },
-                { "getmetatable", "(table) => table" },
-                { "_VERSION", "string" },
-				{ "_ENV", "table" },
-				{ "_G", "table" },
-                { "tostring", "(object) => string" },
-                { "tojsonstring", "(object) => string" },
-                { "tonumber", "(object) => number" },
-                { "tointeger", "(object) => int" },
-                { "todouble", "(object) => number" },
-                { "totable", "(object) => table" },
-				{ "toboolean", "(object) => bool" },
-                { "next", "(...) => object" },
-                { "rawequal", "(object, object) => bool" },
-                { "rawlen", "(object) => int" },
-                { "rawget", "(object, object) => object" },
-                { "rawset", "(object, object, object) => void" },
-                { "select", "(...) => object" },
-                { "setmetatable", "(table, table) => void" }
-            };
-
-            const std::map<std::string, std::string> *get_globalvar_type_infos()
-            {
-                return &globalvar_type_infos;
-            }
-
             typedef lua_State* L_Key1;
 
-            typedef std::unordered_map<std::string, GluaStateValueNode> L_VM1;
+            typedef std::unordered_map<std::string, UvmStateValueNode> L_VM1;
 
             typedef std::shared_ptr<L_VM1> L_V1;
 
@@ -352,7 +101,7 @@ next: (table) => bool
                     return it->second;
             }
 
-			// 
+			// transfer from contract to account
 			static int transfer_from_contract_to_public_account(lua_State *L)
             {
 				if (lua_gettop(L) < 3)
@@ -424,6 +173,13 @@ next: (table) => bool
 			{
 				const char *system_asset_symbol = uvm::lua::api::global_uvm_chain_api->get_system_asset_symbol(L);
 				lua_pushstring(L, system_asset_symbol);
+				return 1;
+			}
+
+			static int get_system_asset_precision(lua_State *L)
+			{
+				auto precision = uvm::lua::api::global_uvm_chain_api->get_system_asset_precision(L);
+				lua_pushinteger(L, precision);
 				return 1;
 			}
 
@@ -540,13 +296,6 @@ next: (table) => bool
                     debugger_info->insert(std::make_pair(upval_name, std::make_pair(value_string1, true)));
                 }
                 L->ci = ci;
-                if (L->debugger_pausing)
-                {
-                    do
-                    {
-                        std::this_thread::yield();
-                    } while (g_debug_running); // while not exit lua debugger
-                }
                 return 0;
             }
 
@@ -615,9 +364,9 @@ next: (table) => bool
                 return 1;
             }
 
-            /************************************************************************/
-            /* （，）               */
-            /************************************************************************/
+			/**
+			 * get pseudo random number generate by some block(maybe future block or past block's data
+			 */
             static int get_waited_block_random(lua_State *L)
             {
                 if (lua_gettop(L) < 1 || !lua_isinteger(L, 1))
@@ -660,11 +409,24 @@ next: (table) => bool
 				return 1;
 			}
 
+			static int is_valid_contract_address(lua_State *L)
+			{
+				if (lua_gettop(L) < 1 || !lua_isstring(L, 1))
+				{
+					uvm::lua::api::global_uvm_chain_api->throw_exception(L, UVM_API_SIMPLE_ERROR, "is_valid_contract_address need a param of address string");
+					return 0;
+				}
+				auto address = luaL_checkstring(L, 1);
+				auto result = uvm::lua::api::global_uvm_chain_api->is_valid_contract_address(L, address);
+				lua_pushboolean(L, result ? 1 : 0);
+				return 1;
+			}
+
 			static int uvm_core_lib_Stream_size(lua_State *L)
             {
-				auto stream = (GluaByteStream*) luaL_checkudata(L, 1, "GluaByteStream_metatable");
+				auto stream = (UvmByteStream*) luaL_checkudata(L, 1, "UvmByteStream_metatable");
 				if(uvm::lua::api::global_uvm_chain_api->is_object_in_pool(L, (intptr_t) stream,
-					GluaOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE)>0)
+					UvmOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE)>0)
 				{
 					auto stream_size = stream->size();
 					lua_pushinteger(L, stream_size);
@@ -679,9 +441,9 @@ next: (table) => bool
 
 			static int uvm_core_lib_Stream_eof(lua_State *L)
 			{
-				auto stream = (GluaByteStream*)luaL_checkudata(L, 1, "GluaByteStream_metatable");
+				auto stream = (UvmByteStream*)luaL_checkudata(L, 1, "UvmByteStream_metatable");
 				if (uvm::lua::api::global_uvm_chain_api->is_object_in_pool(L, (intptr_t)stream,
-					GluaOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE)>0)
+					UvmOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE)>0)
 				{
 					lua_pushboolean(L, stream->eof());
 					return 1;
@@ -695,9 +457,9 @@ next: (table) => bool
 
 			static int uvm_core_lib_Stream_current(lua_State *L)
 			{
-				auto stream = (GluaByteStream*)luaL_checkudata(L, 1, "GluaByteStream_metatable");
+				auto stream = (UvmByteStream*)luaL_checkudata(L, 1, "UvmByteStream_metatable");
 				if (uvm::lua::api::global_uvm_chain_api->is_object_in_pool(L, (intptr_t)stream,
-					GluaOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE)>0)
+					UvmOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE)>0)
 				{
 					lua_pushinteger(L, stream->current());
 					return 1;
@@ -711,9 +473,9 @@ next: (table) => bool
 
 			static int uvm_core_lib_Stream_next(lua_State *L)
 			{
-				auto stream = (GluaByteStream*)luaL_checkudata(L, 1, "GluaByteStream_metatable");
+				auto stream = (UvmByteStream*)luaL_checkudata(L, 1, "UvmByteStream_metatable");
 				if (uvm::lua::api::global_uvm_chain_api->is_object_in_pool(L, (intptr_t)stream,
-					GluaOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE)>0)
+					UvmOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE)>0)
 				{
 					lua_pushboolean(L, stream->next());
 					return 1;
@@ -727,9 +489,9 @@ next: (table) => bool
 
 			static int uvm_core_lib_Stream_pos(lua_State *L)
 			{
-				auto stream = (GluaByteStream*)luaL_checkudata(L, 1, "GluaByteStream_metatable");
+				auto stream = (UvmByteStream*)luaL_checkudata(L, 1, "UvmByteStream_metatable");
 				if (uvm::lua::api::global_uvm_chain_api->is_object_in_pool(L, (intptr_t)stream,
-					GluaOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE)>0)
+					UvmOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE)>0)
 				{
 					lua_pushinteger(L, stream->pos());
 					return 1;
@@ -743,9 +505,9 @@ next: (table) => bool
 
 			static int uvm_core_lib_Stream_reset_pos(lua_State *L)
 			{
-				auto stream = (GluaByteStream*)luaL_checkudata(L, 1, "GluaByteStream_metatable");
+				auto stream = (UvmByteStream*)luaL_checkudata(L, 1, "UvmByteStream_metatable");
 				if (uvm::lua::api::global_uvm_chain_api->is_object_in_pool(L, (intptr_t)stream,
-					GluaOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE)>0)
+					UvmOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE)>0)
 				{
 					stream->reset_pos();
 					return 0;
@@ -759,10 +521,10 @@ next: (table) => bool
 
 			static int uvm_core_lib_Stream_push(lua_State *L)
 			{
-				auto stream = (GluaByteStream*)luaL_checkudata(L, 1, "GluaByteStream_metatable");
+				auto stream = (UvmByteStream*)luaL_checkudata(L, 1, "UvmByteStream_metatable");
 				auto c = luaL_checkinteger(L, 2);
 				if (uvm::lua::api::global_uvm_chain_api->is_object_in_pool(L, (intptr_t)stream,
-					GluaOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE)>0)
+					UvmOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE)>0)
 				{
 					stream->push((char)c);
 					return 0;
@@ -776,10 +538,10 @@ next: (table) => bool
 
 			static int uvm_core_lib_Stream_push_string(lua_State *L)
 			{
-				auto stream = (GluaByteStream*)luaL_checkudata(L, 1, "GluaByteStream_metatable");
+				auto stream = (UvmByteStream*)luaL_checkudata(L, 1, "UvmByteStream_metatable");
 				auto argstr = luaL_checkstring(L, 2);
 				if (uvm::lua::api::global_uvm_chain_api->is_object_in_pool(L, (intptr_t)stream,
-					GluaOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE)>0)
+					UvmOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE)>0)
 				{
 					for(size_t i=0;i<strlen(argstr);++i)
 					{
@@ -794,15 +556,15 @@ next: (table) => bool
 				}
 			}
 
-			// Stream,tostring，lightuserdata
-			// userdatauvm gcnew class
-			// 
+			/**
+			 * constructor of Stream record type. use lightuserdata to avoiding crash in tostring
+			 */
 			static int uvm_core_lib_Stream(lua_State *L)
             {
-				auto stream = new GluaByteStream();
-				uvm::lua::api::global_uvm_chain_api->register_object_in_pool(L, (intptr_t) stream, GluaOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE);
+				auto stream = new UvmByteStream();
+				uvm::lua::api::global_uvm_chain_api->register_object_in_pool(L, (intptr_t) stream, UvmOutsideObjectTypes::OUTSIDE_STREAM_STORAGE_TYPE);
 				lua_pushlightuserdata(L, (void*) stream);
-				luaL_getmetatable(L, "GluaByteStream_metatable");
+				luaL_getmetatable(L, "UvmByteStream_metatable");
 				lua_setmetatable(L, -2);
 				return 1;
             }
@@ -921,7 +683,7 @@ next: (table) => bool
 				}
 			}
 
-            // storage
+			// read meta method of storage
 			// storage::__index: function(s, key)
 			//    if type(key) ~= 'string' then
 			//    uvm.error('only string can be storage key')
@@ -961,7 +723,7 @@ next: (table) => bool
 				}
             }
 
-            // storageAPI
+			// write meta method of storage
 			// storage::__newindex: function(s, key, val)
 			// if type(key) ~= 'string' then
 			//	uvm.error('only string can be storage key')
@@ -985,29 +747,16 @@ next: (table) => bool
                 auto contract_id = luaL_checkstring(L, -1);
                 lua_pop(L, 2); // top=3, self, key, value
                 return uvm::lib::uvmlib_set_storage_impl(L, contract_id, key, 3);
-
-                /*
-				int old_top = lua_gettop(L); // 3
-				lua_getfield(L, 1, "contract"); // top=4
-				lua_pushcfunction(L, uvm::lib::uvmlib_set_storage); // storage, key, val, contract, set_storage
-				lua_pushvalue(L, 4); // storage, key, val, contract, set_storage, contract
-				lua_pushvalue(L, 2);
-				lua_pushvalue(L, 3); // storage, key, val, contract, set_storage, contract, key, val
-				lua_call(L, 3, 0);
-				lua_pop(L, lua_gettop(L) - old_top);
-                */
-
-				// return 0;
             }
 
 			static int uvm_core_lib_pairs_by_keys_func_loader(lua_State *L)
             {
 				lua_getglobal(L, "__real_pairs_by_keys_func");
-				bool exist = !lua_isnil(L, -1);
+				bool exist = !lua_isnil(L, -1) && (lua_isfunction(L, -1) || lua_iscfunction(L, -1));
 				lua_pop(L, 1);
 				if (exist)
 					return 0; 
-				// pairsByKeyskey，keykeykey
+				// pairsByKeys' iterate order is number first(than string), short string first(than long string), little ASCII string first
 				const char *code = R"END(
 function __real_pairs_by_keys_func(t)
 	local hashes = {}  
@@ -1066,7 +815,7 @@ end
 				add_global_c_function(L, "debugger", &enter_lua_debugger);
 				add_global_c_function(L, "exit_debugger", &exit_lua_debugger);
 				lua_createtable(L, 0, 0);
-				lua_setglobal(L, "last_return"); // 
+				lua_setglobal(L, "last_return"); // func's last return value in this global variable
 				add_global_c_function(L, "Array", &uvm_core_lib_Array);
 				add_global_c_function(L, "Map", &uvm_core_lib_Hashmap);
 
@@ -1077,7 +826,7 @@ end
 				}
 				lua_pop(L, 1);
 
-				luaL_newmetatable(L, "GluaByteStream_metatable");
+				luaL_newmetatable(L, "UvmByteStream_metatable");
 				lua_pushcfunction(L, &uvm_core_lib_Stream_size);
 				lua_setfield(L, -2, "size");
 				lua_pushcfunction(L, &uvm_core_lib_Stream_eof);
@@ -1099,27 +848,12 @@ end
 				lua_setfield(L, -2, "__index");
 				lua_pop(L, 1);
 
+                lua_pushinteger(L, 0);
+				lua_setglobal(L, "__real_pairs_by_keys_func");
+
 				add_global_c_function(L, "Stream", &uvm_core_lib_Stream);
-
-				/*
-				add_global_c_function(L, "uvm_core_lib_contract_metatable_index", &uvm_core_lib_contract_metatable_index);
-				add_global_c_function(L, "uvm_core_lib_storage_metatable_index", &uvm_core_lib_storage_metatable_index);
-				add_global_c_function(L, "uvm_core_lib_storage_metatable_new_index", &uvm_core_lib_storage_metatable_new_index);
-				add_global_c_function(L, "uvm_core_lib_contract_metatable_newindex", &uvm_core_lib_contract_metatable_newindex);
-				*/
-
 				add_global_c_function(L, "uvm_core_lib_pairs_by_keys_func_loader", &uvm_core_lib_pairs_by_keys_func_loader);
 				
-				/*
-				uvm.storage_mt = {
-						__index = uvm_core_lib_storage_metatable_index,
-						__newindex = uvm_core_lib_storage_metatable_new_index
-					}
-					contract_mt = {	  
-						__index = uvm_core_lib_contract_metatable_index,
-						__newindex = uvm_core_lib_contract_metatable_newindex
-					}
-				*/
 				lua_createtable(L, 0, 0);
 				lua_pushcfunction(L, &uvm_core_lib_storage_metatable_index);
 				lua_setfield(L, -2, "__index");
@@ -1130,12 +864,6 @@ end
 				lua_setfield(L, -2, "storage_mt");
 				lua_pop(L, 2);
 
-				/*
-				contract_mt = {	  
-						__index = uvm_core_lib_contract_metatable_index,
-						__newindex = uvm_core_lib_contract_metatable_newindex
-					}
-				*/
 				lua_createtable(L, 0, 0);
 				lua_pushcfunction(L, &uvm_core_lib_contract_metatable_index);
 				lua_setfield(L, -2, "__index");
@@ -1143,7 +871,6 @@ end
 				lua_setfield(L, -2, "__newindex");
 				lua_setglobal(L, "contract_mt");
 
-				// add_global_c_function(L, "pairsByKeys", &uvm_core_lib_pairs_by_keys);
 
 				/*
 				__old_pairs = pairs
@@ -1171,7 +898,9 @@ end
                     add_global_c_function(L, "get_transaction_fee", get_transaction_fee);
                     add_global_c_function(L, "emit", emit_uvm_event);
 					add_global_c_function(L, "is_valid_address", is_valid_address);
+					add_global_c_function(L, "is_valid_contract_address", is_valid_contract_address);
 					add_global_c_function(L, "get_system_asset_symbol", get_system_asset_symbol);
+					add_global_c_function(L, "get_system_asset_precision", get_system_asset_precision);
                 }
                 return L;
             }
@@ -1195,11 +924,11 @@ end
                     auto lua_table_map_list_p = get_lua_state_value(L, LUA_TABLE_MAP_LIST_STATE_MAP_KEY).pointer_value;
                     if (nullptr != lua_table_map_list_p)
                     {
-                        auto list_p = (std::list<GluaTableMapP>*) lua_table_map_list_p;
+                        auto list_p = (std::list<UvmTableMapP>*) lua_table_map_list_p;
                         for (auto it = list_p->begin(); it != list_p->end(); ++it)
                         {
-                            GluaTableMapP lua_table_map = *it;
-                            // lua_table_map->~GluaTableMap();
+                            UvmTableMapP lua_table_map = *it;
+                            // lua_table_map->~UvmTableMap();
                             // lua_free(L, lua_table_map);
                             delete lua_table_map;
                         }
@@ -1216,14 +945,14 @@ end
                         }
                     }
                     // close values in state values(some pointers need free), eg. storage infos, contract infos
-                    GluaStateValueNode storage_changelist_node = get_lua_state_value_node(L, LUA_STORAGE_CHANGELIST_KEY);
+                    UvmStateValueNode storage_changelist_node = get_lua_state_value_node(L, LUA_STORAGE_CHANGELIST_KEY);
                     if (storage_changelist_node.type == LUA_STATE_VALUE_POINTER && nullptr != storage_changelist_node.value.pointer_value)
                     {
-                        GluaStorageChangeList *list = (GluaStorageChangeList*)storage_changelist_node.value.pointer_value;
+                        UvmStorageChangeList *list = (UvmStorageChangeList*)storage_changelist_node.value.pointer_value;
                         for (auto it = list->begin(); it != list->end(); ++it)
                         {
-                            GluaStorageValue before = it->before;
-                            GluaStorageValue after = it->after;
+                            UvmStorageValue before = it->before;
+                            UvmStorageValue after = it->after;
                             if (lua_storage_is_table(before.type))
                             {
                                 // free_lua_table_map(L, before.value.table_value);
@@ -1233,23 +962,18 @@ end
                                 // free_lua_table_map(L, after.value.table_value);
                             }
                         }
-                        list->~GluaStorageChangeList();
+                        list->~UvmStorageChangeList();
                         lua_free(L, list);
                     }
 
-                    GluaStateValueNode storage_table_read_list_node = get_lua_state_value_node(L, LUA_STORAGE_READ_TABLES_KEY);
+                    UvmStateValueNode storage_table_read_list_node = get_lua_state_value_node(L, LUA_STORAGE_READ_TABLES_KEY);
                     if (storage_table_read_list_node.type == LUA_STATE_VALUE_POINTER && nullptr != storage_table_read_list_node.value.pointer_value)
                     {
-                        GluaStorageTableReadList *list = (GluaStorageTableReadList*)storage_table_read_list_node.value.pointer_value;
-                        list->~GluaStorageTableReadList();
+                        UvmStorageTableReadList *list = (UvmStorageTableReadList*)storage_table_read_list_node.value.pointer_value;
+                        list->~UvmStorageTableReadList();
                         lua_free(L, list);
                     }
 
-                    GluaStateValueNode repl_state_node = get_lua_state_value_node(L, LUA_REPL_RUNNING_STATE_KEY);
-                    if (repl_state_node.type == LUA_STATE_VALUE_INT_POINTER)
-                    {
-                        lua_free(L, repl_state_node.value.int_pointer_value);
-                    }
                     int *insts_executed_count = get_lua_state_value(L, INSTRUCTIONS_EXECUTED_COUNT_LUA_STATE_MAP_KEY).int_pointer_value;
                     if (nullptr != insts_executed_count)
                     {
@@ -1260,12 +984,7 @@ end
                     {
                         lua_free(L, stopped_pointer);
                     }
-                    auto repl_running_node = get_lua_state_value_node(L, LUA_REPL_RUNNING_STATE_KEY);
-                    if (repl_running_node.type == LUA_STATE_VALUE_INT_POINTER && nullptr != repl_running_node.value.int_pointer_value)
-                    {
-                        lua_free(L, repl_running_node.value.int_pointer_value);
-                    }
-
+                    
                     states_map->erase(L);
                 }
 
@@ -1286,10 +1005,10 @@ end
                 states_map->erase(L);
             }
 
-            GluaStateValueNode get_lua_state_value_node(lua_State *L, const char *key)
+            UvmStateValueNode get_lua_state_value_node(lua_State *L, const char *key)
             {
-                GluaStateValue nil_value = { 0 };
-                GluaStateValueNode nil_value_node;
+                UvmStateValue nil_value = { 0 };
+                UvmStateValueNode nil_value_node;
                 nil_value_node.type = LUA_STATE_VALUE_nullptr;
                 nil_value_node.value = nil_value;
                 if (nullptr == L || nullptr == key || strlen(key) < 1)
@@ -1307,13 +1026,13 @@ end
                     return map->at(key_str);
             }
 
-            GluaStateValue get_lua_state_value(lua_State *L, const char *key)
+            UvmStateValue get_lua_state_value(lua_State *L, const char *key)
             {
                 return get_lua_state_value_node(L, key).value;
             }
             void set_lua_state_instructions_limit(lua_State *L, int limit)
             {
-                GluaStateValue value = { limit };
+                UvmStateValue value = { limit };
                 set_lua_state_value(L, INSTRUCTIONS_LIMIT_LUA_STATE_MAP_KEY, value, LUA_STATE_VALUE_INT);
             }
 
@@ -1337,14 +1056,14 @@ end
 
             void enter_lua_sandbox(lua_State *L)
             {
-                GluaStateValue value;
+                UvmStateValue value;
                 value.int_value = 1;
                 set_lua_state_value(L, LUA_IN_SANDBOX_STATE_KEY, value, LUA_STATE_VALUE_INT);
             }
 
             void exit_lua_sandbox(lua_State *L)
             {
-                GluaStateValue value;
+                UvmStateValue value;
                 value.int_value = 0;
                 set_lua_state_value(L, LUA_IN_SANDBOX_STATE_KEY, value, LUA_STATE_VALUE_INT);
             }
@@ -1364,7 +1083,7 @@ end
                 {
                     pointer = (int*)lua_malloc(L, sizeof(int));
                     *pointer = 1;
-                    GluaStateValue value;
+                    UvmStateValue value;
                     value.int_pointer_value = pointer;
                     set_lua_state_value(L, LUA_STATE_STOP_TO_RUN_IN_LVM_STATE_MAP_KEY, value, LUA_STATE_VALUE_INT_POINTER);
                 }
@@ -1397,7 +1116,7 @@ end
                 }
             }
 
-            void set_lua_state_value(lua_State *L, const char *key, GluaStateValue value, enum GluaStateValueType type)
+            void set_lua_state_value(lua_State *L, const char *key, UvmStateValue value, enum UvmStateValueType type)
             {
                 if (nullptr == L || nullptr == key || strlen(key) < 1)
                 {
@@ -1405,7 +1124,7 @@ end
                 }
 
                 L_V1 map = create_value_map_for_lua_state(L);
-                GluaStateValueNode node_v;
+                UvmStateValueNode node_v;
                 node_v.type = type;
                 node_v.value = value;
                 if (node_v.type == LUA_STATE_VALUE_STRING)
@@ -1418,7 +1137,7 @@ end
             static const char* reader_of_stream(lua_State *L, void *ud, size_t *size)
             {
                 UNUSED(L);
-                GluaModuleByteStream *stream = static_cast<GluaModuleByteStream*>(ud);
+                UvmModuleByteStream *stream = static_cast<UvmModuleByteStream*>(ud);
                 if (!stream)
                     return nullptr;
 				if (size)
@@ -1432,7 +1151,7 @@ end
                 FILE *f = fopen(binary_filename, "rb");
                 if (nullptr == f)
                     return nullptr;
-				auto stream = std::make_shared<GluaModuleByteStream>();
+				auto stream = std::make_shared<UvmModuleByteStream>();
                 if (nullptr == stream)
                     return nullptr;
 				auto f_cur = ftell(f);
@@ -1450,24 +1169,12 @@ end
                 return closure;
             }
 
-            void free_bytecode_stream(GluaModuleByteStreamP stream)
+            void free_bytecode_stream(UvmModuleByteStreamP stream)
             {
-				/*
-                if (nullptr != stream)
-                {
-					stream->contract_apis.clear();
-					stream->contract_apis_count = 0;
-					stream->offline_apis.clear();
-					stream->offline_apis_count = 0;
-					stream->contract_emit_events.clear();
-					stream->contract_emit_events_count = 0;
-                    free(stream);
-                }
-				*/
 				delete stream;
             }
 
-            LClosure *luaU_undump_from_stream(lua_State *L, GluaModuleByteStream *stream, const char *name)
+            LClosure *luaU_undump_from_stream(lua_State *L, UvmModuleByteStream *stream, const char *name)
             {
                 ZIO z;
                 luaZ_init(L, &z, reader_of_stream, (void*) stream);
@@ -1475,25 +1182,6 @@ end
                 auto cl = luaU_undump(L, &z, name);
 				return cl;
             }
-
-			bool undump_from_bytecode_stream_to_file(lua_State *L, GluaModuleByteStream *stream, FILE *out)
-            {
-				LClosure *closure = luaU_undump_from_stream(L, stream, "undump_tmp");
-				if (!closure)
-					return false;
-				luaL_PrintFunctionToFile(out, closure->p, 1);
-				return true;
-            }
-
-			bool undump_from_bytecode_file_to_file(lua_State *L, const char *bytecode_filename, FILE *out)
-            {
-				LClosure *closure = luaU_undump_from_file(L, bytecode_filename, "undump_tmp");
-				if (!closure)
-					return false;
-				luaL_PrintFunctionToFile(out, closure->p, 1);
-				return true;
-            }
-
 
 #define UPVALNAME_OF_PROTO(proto, x) (((proto)->upvalues[x].name) ? getstr((proto)->upvalues[x].name) : "-")
 #define MYK(x)		(-1-(x))
@@ -1512,369 +1200,6 @@ end
             {
                 return TYPED_LUA_LIB_CODE;
             }
-
-			std::string pre_modify_lua_source_code_string(lua_State *L, std::string source_filepath,
-				bool create_debug_file, std::string &source_code, char *error, bool *changed,
-				bool use_type_check, bool include_typed_lua_lib, GluaModuleByteStream *stream,
-				bool throw_exception, bool in_repl, bool is_contract)
-            {
-				std::string code = source_code;
-				auto origin_code = code;
-
-				if (use_type_check)
-				{
-					using namespace uvm::parser;
-					ParserContext ctx;
-					auto chunk_p = ctx.generate_uvm_parser();
-					auto token_parser = std::make_shared<GluaTokenParser>(L);
-					if (include_typed_lua_lib)
-					{
-						ctx.set_inner_lib_code_lines(7); // lib code lines
-						code = get_typed_lua_lib_code() + code;
-					}
-					try
-					{
-						token_parser->parse(code);
-					}
-					catch (std::exception e) 
-					{
-						auto parse_tokens_error = e.what();
-						if (strlen(parse_tokens_error) > 0)
-						{
-							std::string error_str = std::string("error in line ")
-								+ std::to_string(token_parser->current_parsing_linenumber() - ctx.inner_lib_code_lines() + 2) + ", " + parse_tokens_error;
-							if (throw_exception)
-								lcompile_error_set(L, error, "syntax parser error %s", error_str.c_str());
-							if (changed)
-								*changed = false;
-							return origin_code;
-						}
-					}
-                    auto parser_input=token_parser.get();
-                    auto vparser=uvm::parser::Input(parser_input);
-					auto pr = ctx.parse_syntax(vparser);
-					if (pr.state() != uvm::parser::ParserState::SUCCESS)
-					{
-						if (throw_exception) {
-							std::string error_in_ctx = ctx.get_error() + "\n" + ctx.simple_token_error();
-							lcompile_error_set(L, error, "syntax parser error %s", error_in_ctx.c_str());
-						}
-						if (changed)
-							*changed = false;
-						return origin_code;
-					}
-					GluaTypeChecker type_checker(&ctx);
-					GluaTypeInfoP contract_storage_type = nullptr;
-					GluaTypeInfoP contract_type = nullptr;
-					if (in_repl)
-						type_checker.set_in_repl(in_repl);
-					bool check_syntax_has_errors = is_contract ? type_checker.check_contract_syntax_tree_type(pr.result(), &contract_type, &contract_storage_type) : type_checker.check_syntax_tree_type(pr.result());
-
-					const char *error_str = "syntax tree type check error: ";
-					std::stringstream ss;
-					ss << error_str << "\n"; 
-
-					bool has_contract_import_error = false;
-					if(is_contract)
-					{
-						for(const auto &p : type_checker.get_imported_contracts())
-						{
-							if(!uvm::lua::api::global_uvm_chain_api->check_contract_exist(L, p.first.c_str()))
-							{
-								has_contract_import_error = true;
-								ss << "import_contract error in line " << p.second << ", contract " << p.first << " not found\n";
-							}
-						}
-					}
-					if (!check_syntax_has_errors || type_checker.has_error() || has_contract_import_error)
-					{
-						for (const auto & item : type_checker.errors())
-							ss << item.second << "\n";
-						if(throw_exception)
-							uvm::lua::api::global_uvm_chain_api->throw_exception(L, UVM_API_COMPILE_ERROR, ss.str().c_str());
-						if (error && throw_exception)
-						{
-							lcompile_error_set(L, error, ss.str().c_str());
-						}
-						if (changed)
-							*changed = false;
-						return origin_code;
-					}
-					code = type_checker.dump();
-					if (create_debug_file)
-					{
-						std::string ldf_filename = source_filepath + ".ldf";
-						FILE *ldf_file = fopen(ldf_filename.c_str(), "w");
-						if (ldf_file)
-						{
-							type_checker.dump_ldf_to_file(ldf_file);
-							fclose(ldf_file);
-						}
-					}
-
-					if(stream)
-					{
-						auto emit_events = type_checker.get_emit_event_types();
-						stream->contract_emit_events.clear();
-						for(const auto &event_name : emit_events)
-						{
-							stream->contract_emit_events.push_back(event_name);
-						}
-						if(is_contract && contract_storage_type)
-						{
-							try
-							{
-								contract_storage_type->put_contract_storage_type_to_module_stream(stream);
-								contract_storage_type->put_contract_apis_info_to_module_stream(stream);
-							} catch(uvm::core::GluaException const &e)
-							{
-								if (throw_exception)
-									uvm::lua::api::global_uvm_chain_api->throw_exception(L, UVM_API_COMPILE_ERROR, e.what());
-								if (error && throw_exception)
-								{
-									lcompile_error_set(L, error, e.what());
-								}
-							}
-						}
-					}
-				}
-				else
-				{
-					// TODO: lua，emit(EventName, EventArg)eventName
-				}
-
-
-				auto token_parser = std::make_shared<uvm::parser::GluaTokenParser>(L);
-				bool code_changed = false;
-				try
-				{
-					token_parser->parse(code);
-					for (auto it = token_parser->begin(); it != token_parser->end(); ++it)
-					{
-						if (it->type == uvm::parser::LTK_NAME && it->token.length() > LUA_MAX_LOCALVARNAME_LENGTH)
-						{
-							const char *error_format = "too long local variable name %s, limit length %d";
-							if(throw_exception)
-								lcompile_error_set(L, error, error_format, it->token.c_str(), LUA_MAX_LOCALVARNAME_LENGTH);
-							if (changed)
-								*changed = false;
-							return origin_code;
-						}
-						if (it->type == uvm::parser::LTK_NAME && (it->token == "import_contract" || it->token == "import_contract_from_address"))
-						{
-							// check next is string	or '(' + string + ')'
-							++it;
-							if (it == token_parser->end())
-							{
-								if(throw_exception)
-									lcompile_error_set(L, error, "unfinished import_contract statement");
-								if (changed)
-									*changed = false;
-								return origin_code;
-							}
-							bool hasXkh = it->type == '(';
-							if (hasXkh)
-								++it;
-							if (it == token_parser->end() || it->type != uvm::parser::LTK_STRING || it->token.length() < 1)
-							{
-								if(throw_exception)
-									lcompile_error_set(L, error, "import_contract only accept literal not empty string, but accept %s", it->token.c_str());
-								if (changed)
-									*changed = false;
-								return origin_code;
-							}
-						}
-					}
-					code = token_parser->dump();
-					token_parser->reset_position();
-					// find offline keyword and use M.locals = M.locals or {}; M.locals[#M.locals+1]='<api_name>';
-					std::vector<uvm::parser::GluaParserToken> new_tokens_after_offline;
-					auto offline_it = token_parser->begin();
-					size_t line_added = 0;
-
-					while (offline_it != token_parser->end())
-					{
-						offline_it->linenumber += line_added;
-						if (offline_it->type == uvm::parser::LTK_OFFLINE)
-						{
-							if (token_parser->has_n_tokens_after(4))
-							{
-								// replace code tokens
-								++offline_it;
-								auto func_token = *offline_it;
-								func_token.linenumber += line_added;
-								++offline_it;
-								auto module_var_token = *offline_it;
-								module_var_token.linenumber += line_added;
-								++offline_it;
-								auto splitter_token = *offline_it;
-								++offline_it;
-								auto api_name_token = *offline_it;
-								api_name_token.linenumber += line_added;
-								++offline_it;
-								uvm::parser::GluaParserToken	dot_token;
-								dot_token.token = ".";
-								dot_token.linenumber = func_token.linenumber;
-								dot_token.position = func_token.position;
-								dot_token.source_token = ".";
-								dot_token.type = (enum uvm::parser::TOKEN_RESERVED)'.';
-								uvm::parser::GluaParserToken locals_token;
-								locals_token.token = "locals";
-								locals_token.linenumber = func_token.linenumber;
-								locals_token.position = func_token.position;
-								locals_token.source_token = "locals";
-								locals_token.type = uvm::parser::TOKEN_RESERVED::LTK_NAME;
-								new_tokens_after_offline.push_back(module_var_token);
-								new_tokens_after_offline.push_back(dot_token);
-								new_tokens_after_offline.push_back(locals_token);
-								uvm::parser::GluaParserToken assign_token;
-								assign_token.linenumber = func_token.linenumber;
-								assign_token.position = func_token.position;
-								assign_token.token = "=";
-								assign_token.source_token = "=";
-								assign_token.type = (enum uvm::parser::TOKEN_RESERVED)'=';
-								new_tokens_after_offline.push_back(assign_token);
-								new_tokens_after_offline.push_back(module_var_token);
-								new_tokens_after_offline.push_back(dot_token);
-								new_tokens_after_offline.push_back(locals_token);
-								uvm::parser::GluaParserToken or_token;
-								or_token.token = "or";
-								or_token.linenumber = func_token.linenumber;
-								or_token.position = func_token.position;
-								or_token.source_token = "or";
-								or_token.type = uvm::parser::TOKEN_RESERVED::LTK_OR;
-								new_tokens_after_offline.push_back(or_token);
-								uvm::parser::GluaParserToken ldk_token;
-								ldk_token.linenumber = func_token.linenumber;
-								ldk_token.position = func_token.position;
-								ldk_token.token = "{";
-								ldk_token.source_token = "{";
-								ldk_token.type = (enum uvm::parser::TOKEN_RESERVED)'{';
-								uvm::parser::GluaParserToken rdk_token;
-								rdk_token.linenumber = func_token.linenumber;
-								rdk_token.position = func_token.position;
-								rdk_token.token = "}";
-								rdk_token.source_token = "}";
-								rdk_token.type = (enum uvm::parser::TOKEN_RESERVED)'}';
-								new_tokens_after_offline.push_back(ldk_token);
-								new_tokens_after_offline.push_back(rdk_token);
-								++line_added;
-								func_token.linenumber += 1;
-								module_var_token.linenumber += 1;
-								splitter_token.linenumber += 1;
-								dot_token.linenumber += 1;
-								api_name_token.linenumber += 1;
-								locals_token.linenumber += 1;
-								assign_token.linenumber += 1;
-								new_tokens_after_offline.push_back(module_var_token);
-								new_tokens_after_offline.push_back(dot_token);
-								new_tokens_after_offline.push_back(locals_token);
-								uvm::parser::GluaParserToken lzk_token;
-								lzk_token.linenumber = module_var_token.linenumber;
-								lzk_token.position = module_var_token.position;
-								lzk_token.token = "[";
-								lzk_token.source_token = "[";
-								lzk_token.type = (enum uvm::parser::TOKEN_RESERVED)'[';
-								uvm::parser::GluaParserToken rzk_token;
-								rzk_token.linenumber = module_var_token.linenumber;
-								rzk_token.position = module_var_token.position;
-								rzk_token.token = "]";
-								rzk_token.source_token = "]";
-								rzk_token.type = (enum uvm::parser::TOKEN_RESERVED)']';
-								uvm::parser::GluaParserToken len_token;
-								len_token.linenumber = module_var_token.linenumber;
-								len_token.position = module_var_token.position;
-								len_token.token = "#";
-								len_token.source_token = "#";
-								len_token.type = (enum uvm::parser::TOKEN_RESERVED)'#';
-								uvm::parser::GluaParserToken add_token;
-								add_token.linenumber = module_var_token.linenumber;
-								add_token.position = module_var_token.position;
-								add_token.token = "+";
-								add_token.source_token = "+";
-								add_token.type = (enum uvm::parser::TOKEN_RESERVED)'+';
-								uvm::parser::GluaParserToken n1_token;
-								n1_token.linenumber = module_var_token.linenumber;
-								n1_token.position = module_var_token.position;
-								n1_token.token = "1";
-								n1_token.source_token = "1";
-								n1_token.type = uvm::parser::LTK_INT;
-
-								new_tokens_after_offline.push_back(lzk_token);
-								new_tokens_after_offline.push_back(len_token);
-								new_tokens_after_offline.push_back(module_var_token);
-								new_tokens_after_offline.push_back(dot_token);
-								new_tokens_after_offline.push_back(locals_token);
-								new_tokens_after_offline.push_back(add_token);
-								new_tokens_after_offline.push_back(n1_token);
-								new_tokens_after_offline.push_back(rzk_token);
-								new_tokens_after_offline.push_back(assign_token);
-								uvm::parser::GluaParserToken api_name_str_token;
-								api_name_str_token.linenumber = module_var_token.linenumber;
-								api_name_str_token.position = module_var_token.position;
-								api_name_str_token.source_token = std::string("'") + api_name_token.token + "'";
-								api_name_str_token.token = api_name_str_token.source_token;
-								api_name_str_token.type = uvm::parser::LTK_STRING;
-								new_tokens_after_offline.push_back(api_name_str_token);
-								++line_added;
-								func_token.linenumber += 1;
-								module_var_token.linenumber += 1;
-								splitter_token.linenumber += 1;
-								api_name_token.linenumber += 1;
-								new_tokens_after_offline.push_back(func_token);
-								new_tokens_after_offline.push_back(module_var_token);
-								new_tokens_after_offline.push_back(splitter_token);
-								new_tokens_after_offline.push_back(api_name_token);
-								code_changed = true;
-								continue;
-							}
-							else
-							{
-								if(throw_exception)
-									lcompile_error_set(L, error, "offline function <M>[.:]<api_name> syntax error");
-								if (changed)
-									*changed = false;
-								return origin_code;
-							}
-						}
-						else
-							new_tokens_after_offline.push_back(*offline_it);
-						++offline_it;
-					}
-					if (code_changed)
-					{
-						token_parser->replace_all_tokens(new_tokens_after_offline);
-						code = token_parser->dump();
-					}
-				}
-				catch (std::exception e)
-				{
-					uvm::lua::api::global_uvm_chain_api->throw_exception(L, UVM_API_PARSER_ERROR, e.what());
-					if (changed)
-						*changed = false;
-					return origin_code;
-				}
-
-				if (changed)
-					*changed = true;
-				return code;
-            }
-
-			std::string pre_modify_lua_source_code(lua_State *L, std::string source_filepath, char *error,
-				bool *changed, bool use_type_check, GluaModuleByteStreamP stream, bool is_contract)
-			{
-				std::ifstream in(source_filepath, std::ios::in);
-				if (!in.is_open())
-				{
-					if (changed)
-						*changed = false;
-					return "";
-				}
-				std::string code((std::istreambuf_iterator<char>(in)),
-					(std::istreambuf_iterator<char>()));
-				in.close();
-				return pre_modify_lua_source_code_string(L, source_filepath, true, code, error, changed, use_type_check, true, stream, true, false, is_contract);
-			}
 
             static bool upval_defined_in_parent(lua_State *L, Proto *parent, std::list<Proto*> *all_protos, Upvaldesc upvaldesc)
             {
@@ -1913,72 +1238,6 @@ end
                     else
                         return false;
                 }
-            }
-
-			std::string decompile_bytecode_to_source_code(lua_State *L, GluaModuleByteStream *stream,
-				std::string module_name, char *error)
-            {
-				LClosure *closure = luaU_undump_from_stream(L, stream, module_name.c_str());
-				if (!closure)
-				{
-					if (error)
-					{
-						const char *msg = "load bytecode error";
-						memcpy(error, msg, sizeof(char) * (strlen(msg) + 1));
-					}
-					return "load bytecode error";
-				}
-				auto decompile_ctx = std::make_shared<uvm::decompile::GluaDecompileContext>();
-				return uvm::decompile::luaU_decompile(decompile_ctx, closure->p, 0);
-            }
-
-			std::string decompile_bytecode_file_to_source_code(lua_State *L, std::string bytecode_filepath,
-				std::string module_name, char *error)
-            {
-				LClosure *closure = luaU_undump_from_file(L, bytecode_filepath.c_str(), module_name.c_str());
-				if (!closure)
-				{
-					if (error)
-					{
-						const char *msg = "load bytecode error";
-						memcpy(error, msg, sizeof(char) * (strlen(msg) + 1));
-					}
-					return "load bytecode error";
-				}
-                auto decompile_ctx = std::make_shared<uvm::decompile::GluaDecompileContext>();
-				return uvm::decompile::luaU_decompile(decompile_ctx, closure->p, 0);
-            }
-
-			std::string disassemble_bytecode(lua_State *L, GluaModuleByteStream *stream, std::string module_name, char *error)
-            {
-				LClosure *closure = luaU_undump_from_stream(L, stream, module_name.c_str());
-				if (!closure)
-				{
-					if (error)
-					{
-						const char *msg = "load bytecode error";
-						memcpy(error, msg, sizeof(char) * (strlen(msg) + 1));
-					}
-					return "load bytecode error";
-				}
-                auto decompile_ctx = std::make_shared<uvm::decompile::GluaDecompileContext>();
-				return uvm::decompile::luadec_disassemble(decompile_ctx, closure->p, 1, "tmp");
-            }
-
-			std::string disassemble_bytecode_file(lua_State *L, std::string bytecode_filepath, std::string module_name, char *error)
-            {
-				LClosure *closure = luaU_undump_from_file(L, bytecode_filepath.c_str(), module_name.c_str());
-				if (!closure)
-				{
-					if (error)
-					{
-						const char *msg = "load bytecode error";
-						memcpy(error, msg, sizeof(char) * (strlen(msg) + 1));
-					}
-					return "load bytecode error";
-				}
-                auto decompile_ctx = std::make_shared<uvm::decompile::GluaDecompileContext>();
-				return uvm::decompile::luadec_disassemble(decompile_ctx, closure->p, 1, "tmp");
             }
 
             bool check_contract_proto(lua_State *L, Proto *proto, char *error, std::list<Proto*> *parents)
@@ -2108,6 +1367,8 @@ end
                         {
                             in_whitelist = true; // whether this can do? maybe need to get what property are fetching
                         }
+                        if (strcmp(upvalue_name, "-") == 0)
+							continue;
                         if (!in_whitelist)
                         {
                             Upvaldesc upvaldesc = proto->upvalues[c];
@@ -2142,7 +1403,7 @@ end
                             bool in_whitelist = false;
                             for (size_t i = 0; i < globalvar_whitelist_count; ++i)
                             {
-                                if (strcmp(cname, globalvar_whitelist[i]) == 0)
+                                if (strcmp(cname, globalvar_whitelist[i]) == 0 || strcmp(cname, "-") == 0)
                                 {
                                     in_whitelist = true;
                                     break;
@@ -2228,132 +1489,12 @@ end
                 return check_contract_proto(L, closure->p);
             }
 
-            bool check_contract_bytecode_stream(lua_State *L, GluaModuleByteStream *stream, char *error)
+            bool check_contract_bytecode_stream(lua_State *L, UvmModuleByteStream *stream, char *error)
             {
                 LClosure *closure = luaU_undump_from_stream(L, stream, "check_contract");
                 if (!closure)
                     return false;
                 return check_contract_proto(L, closure->p, error);
-            }
-
-
-            bool compilefile_to_file(const char *filename, const char *out_filename, char *error, bool use_type_check)
-            {
-                return luaL_compilefile(filename, out_filename, error, use_type_check) == 0;
-            }
-            bool compilefile_to_stream(lua_State *L, const char *filename, GluaModuleByteStreamP stream, char *error, bool use_type_check, bool is_contract)
-            {
-                return luaL_compilefile_to_stream(L, filename, stream, error, use_type_check, is_contract) == 0;
-            }
-
-            bool compile_contract_to_stream(const char *filename, GluaModuleByteStreamP stream,
-                char *error, GluaStatePreProcessorFunction *preprocessor, bool use_type_check)
-            {
-                // check contract requirements
-                // must have init function and start function
-                GluaStateScope scope;
-                lua_State *L = scope.L();
-                if (nullptr != preprocessor)
-                    (*preprocessor)(L);
-
-                if (uvm::lua::api::global_uvm_chain_api->has_exception(L))
-                    uvm::lua::api::global_uvm_chain_api->clear_exceptions(L);
-
-				struct _saved_out_release_t
-				{
-					lua_State *_L;
-					FILE *_saved_out;
-					FILE *_saved_err;
-					inline _saved_out_release_t(lua_State *L)
-					{
-						_L = L;
-						_saved_out = L->out;
-						L->out = nullptr;
-						_saved_err = L->err;
-						L->err = nullptr;
-					}
-					inline ~_saved_out_release_t()
-					{
-						_L->out = _saved_out;
-						_L->err = _saved_err;
-					}
-				} _saved_out_release(L);
-
-                if (!compilefile_to_stream(L, filename, stream, error, use_type_check, true))
-                {
-                    if (error && strlen(error) > 0)
-                    {
-						lua_set_compile_error(L, error);
-                        uvm::lua::api::global_uvm_chain_api->throw_exception(L, UVM_API_COMPILE_ERROR, error);
-                    }
-                    else
-                        uvm::lua::api::global_uvm_chain_api->throw_exception(L, UVM_API_COMPILE_ERROR, "compile error");
-                    return false;
-                }
-                if (uvm::lua::api::global_uvm_chain_api->has_exception(L))
-                    uvm::lua::api::global_uvm_chain_api->clear_exceptions(L);
-                if (!luaL_get_contract_apis(L, stream, error))
-                {
-					lcompile_error_get(L, error);
-                    uvm::lua::api::global_uvm_chain_api->throw_exception(L, UVM_API_COMPILE_ERROR, "compile error");
-                    return false;
-                }
-                lcompile_error_get(L, error);
-				for(size_t i=0;i<stream->contract_apis.size();++i)
-				{
-					// FIXME: id/name/storage，
-					if(stream->contract_apis[i] == "id"
-						|| stream->contract_apis[i] == "name"
-						|| stream->contract_apis[i] == "storage")
-					{
-						lua_set_compile_error(L, "contract's id/name/storage property can't be api name");
-						lcompile_error_get(L, error);
-						uvm::lua::api::global_uvm_chain_api->throw_exception(L, UVM_API_COMPILE_ERROR, error);
-						return false;
-					}
-				}
-
-                run_compiled_bytestream(L, stream);
-				if(strlen(L->runerror)>0)
-				{
-					lcompile_error_get(L, error);
-				}
-                if (uvm::lua::api::global_uvm_chain_api->has_exception(L))
-                    return false;
-
-                // check contract bytecode
-                if (!check_contract_bytecode_stream(L, stream, error))
-                {
-                    uvm::lua::api::global_uvm_chain_api->throw_exception(L, UVM_API_COMPILE_ERROR, "compile error when check contract bytecode");
-                    return false;
-                }
-                lua_getglobal(L, "last_return");
-                if (!lua_istable(L, -1))
-                {
-                    lua_pop(L, 1); // pop last_return
-                    const char *error_str = "contract code must end with return a module/table";
-                    if (error)
-                        strcpy(error, error_str);
-                    uvm::lua::api::global_uvm_chain_api->throw_exception(L, UVM_API_SIMPLE_ERROR, error_str);
-                    return false;
-                }
-                else
-                {
-                    // check init and start exist and are functions
-                    lua_getfield(L, -1, "init");
-                    if (!lua_isfunction(L, -1))
-                    {
-                        lua_pop(L, 2);// pop last_return, init
-                        const char *error_str = "contract must have init function";
-                        if (error)
-                            strcpy(error, error_str);
-                        uvm::lua::api::global_uvm_chain_api->throw_exception(L, UVM_API_SIMPLE_ERROR, error_str);
-                        return false;
-                    }
-                    lua_pop(L, 1); // pop init
-                    lua_pop(L, 1); // pop last_return
-                    return true;
-                }
             }
 
 			std::stack<std::string> *get_using_contract_id_stack(lua_State *L, bool init_if_not_exist)
@@ -2371,7 +1512,7 @@ end
 						return nullptr;
 					}
 					contract_id_stack_value_in_state_map.pointer_value = (void*)contract_id_stack;
-					uvm::lua::lib::set_lua_state_value(L, GLUA_CONTRACT_API_CALL_STACK_STATE_MAP_KEY, contract_id_stack_value_in_state_map, GluaStateValueType::LUA_STATE_VALUE_POINTER);
+					uvm::lua::lib::set_lua_state_value(L, GLUA_CONTRACT_API_CALL_STACK_STATE_MAP_KEY, contract_id_stack_value_in_state_map, UvmStateValueType::LUA_STATE_VALUE_POINTER);
 				}
 				else
 					contract_id_stack = (std::stack<std::string>*) (contract_id_stack_value_in_state_map.pointer_value);
@@ -2386,7 +1527,7 @@ end
 				return contract_id_stack->top();
             }
 
-            GluaTableMapP create_managed_lua_table_map(lua_State *L)
+            UvmTableMapP create_managed_lua_table_map(lua_State *L)
             {
                 return luaL_create_lua_table_map_in_memory_pool(L);
             }
@@ -2405,9 +1546,9 @@ end
 				return malloc_managed_string(L, sizeof(char) * (strlen(init_data) + 1), init_data);
             }
 
-            GluaModuleByteStream *malloc_managed_byte_stream(lua_State *L)
+            UvmModuleByteStream *malloc_managed_byte_stream(lua_State *L)
             {
-                return (GluaModuleByteStream*)lua_calloc(L, 1, sizeof(GluaModuleByteStream));
+                return (UvmModuleByteStream*)lua_calloc(L, 1, sizeof(UvmModuleByteStream));
             }
 
             bool run_compiledfile(lua_State *L, const char *filename)
@@ -2517,7 +1658,7 @@ end
                 uvm::lua::api::global_uvm_chain_api->get_contract_address_by_name(L, contract_name, contract_address, &address_size);
                 if (address_size > 0)
                 {
-                    GluaStateValue value;
+                    UvmStateValue value;
                     value.string_value = contract_address;
                     set_lua_state_value(L, STARTING_CONTRACT_ADDRESS, value, LUA_STATE_VALUE_STRING);
                 }
@@ -2527,7 +1668,7 @@ end
             LUA_API int execute_contract_api_by_address(lua_State *L, const char *contract_address,
 				const char *api_name, const char *arg1, std::string *result_json_string)
             {
-                GluaStateValue value;
+                UvmStateValue value;
                 auto str = malloc_managed_string(L, strlen(contract_address) + 1);
                 memset(str, 0x0, strlen(contract_address) + 1);
                 strncpy(str, contract_address, strlen(contract_address));
@@ -2536,7 +1677,7 @@ end
                 return lua_execute_contract_api_by_address(L, contract_address, api_name, arg1, result_json_string);
             }
 
-            int execute_contract_api_by_stream(lua_State *L, GluaModuleByteStream *stream,
+            int execute_contract_api_by_stream(lua_State *L, UvmModuleByteStream *stream,
                 const char *api_name, const char *arg1, std::string *result_json_string)
             {
                 return lua_execute_contract_api_by_stream(L, stream, api_name, arg1, result_json_string);
@@ -2551,7 +1692,7 @@ end
 			std::string get_starting_contract_address(lua_State *L)
             {
 				auto starting_contract_address_node = uvm::lua::lib::get_lua_state_value_node(L, STARTING_CONTRACT_ADDRESS);
-				if (starting_contract_address_node.type == GluaStateValueType::LUA_STATE_VALUE_STRING)
+				if (starting_contract_address_node.type == UvmStateValueType::LUA_STATE_VALUE_STRING)
 				{
 					return starting_contract_address_node.value.string_value;
 				}
@@ -2561,7 +1702,7 @@ end
 
             bool execute_contract_init_by_address(lua_State *L, const char *contract_address, const char *arg1, std::string *result_json_string)
             {
-                GluaStateValue state_value;
+                UvmStateValue state_value;
                 state_value.int_value = 1;
                 set_lua_state_value(L, UVM_CONTRACT_INITING, state_value, LUA_STATE_VALUE_INT);
                 int status = execute_contract_api_by_address(L, contract_address, "init", arg1, result_json_string);
@@ -2574,9 +1715,9 @@ end
                 return execute_contract_api_by_address(L, contract_address, "start", arg1, result_json_string) == LUA_OK;
             }
 
-            bool execute_contract_init(lua_State *L, const char *name, GluaModuleByteStreamP stream, const char *arg1, std::string *result_json_string)
+            bool execute_contract_init(lua_State *L, const char *name, UvmModuleByteStreamP stream, const char *arg1, std::string *result_json_string)
             {
-                GluaStateValue state_value;
+                UvmStateValue state_value;
                 state_value.int_value = 1;
                 set_lua_state_value(L, UVM_CONTRACT_INITING, state_value, LUA_STATE_VALUE_INT);
                 int status = execute_contract_api_by_stream(L, stream, "init", arg1, result_json_string);
@@ -2584,54 +1725,9 @@ end
                 set_lua_state_value(L, UVM_CONTRACT_INITING, state_value, LUA_STATE_VALUE_INT);
                 return status == 0;
             }
-            bool execute_contract_start(lua_State *L, const char *name, GluaModuleByteStreamP stream, const char *arg1, std::string *result_json_string)
+            bool execute_contract_start(lua_State *L, const char *name, UvmModuleByteStreamP stream, const char *arg1, std::string *result_json_string)
             {
                 return execute_contract_api_by_stream(L, stream, "start", arg1, result_json_string) == LUA_OK;
-            }
-
-            bool start_repl(lua_State *L)
-            {
-				// TODO: REPLmain.cppREPL
-                luaL_doREPL(L);
-                return true;
-            }
-
-            int *get_repl_state(lua_State *L)
-            {
-                auto node = get_lua_state_value_node(L, LUA_REPL_RUNNING_STATE_KEY);
-                if (node.type == LUA_STATE_VALUE_INT_POINTER && nullptr != node.value.int_pointer_value)
-                {
-                    return node.value.int_pointer_value;
-                }
-                GluaStateValue value;
-                value.int_pointer_value = (int*)lua_malloc(L, sizeof(int));
-                *value.int_pointer_value = 0;
-                set_lua_state_value(L, LUA_REPL_RUNNING_STATE_KEY, value, LUA_STATE_VALUE_INT_POINTER);
-                return value.int_pointer_value;
-            }
-
-            bool stop_repl(lua_State *L)
-            {
-                int * state = get_repl_state(L);
-                *state = 0;
-                return true;
-            }
-
-            bool start_repl_async(lua_State *L)
-            {
-                int * state = get_repl_state(L);
-                if (nullptr == state)
-                    return false;
-                *state = 1;
-                std::thread t(start_repl, L);
-                t.detach();
-                return true;
-            }
-
-            bool check_repl_running(lua_State *L)
-            {
-                int * state = get_repl_state(L);
-                return nullptr != state && *state > 0;
             }
 
             std::string wrap_contract_name(const char *contract_name)
@@ -2675,25 +1771,6 @@ end
 				const auto &contract_id = get_current_using_contract_id(L);
 				auto contract_id_str = malloc_and_copy_string(L, contract_id.c_str());
 				return contract_id_str;
-				/*
-                lua_Debug ar;
-                lua_getstack(L, 1, &ar);
-                lua_getinfo(L, "Slnu", &ar);
-                const char *localname = lua_getlocal(L, &ar, 1);
-                if (strcmp("self", localname) == 0 && lua_istable(L, -1))
-                {
-                    lua_getfield(L, -1, "id");
-                    const char *id = lua_tostring(L, -1);
-                    lua_pop(L, 2);
-                    return id;
-                }
-                else
-                {
-                    uvm::lua::api::global_uvm_chain_api->throw_exception(L, UVM_API_SIMPLE_ERROR, "the api must have first local self, or need be defined as <M>:<api_name>");
-                }
-                lua_pop(L, 1);
-                return nullptr;
-				*/
             }
 
         }

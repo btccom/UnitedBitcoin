@@ -227,27 +227,16 @@ libbitcoin_server_a_SOURCES = \
   validationinterface.cpp \
   versionbits.cpp \
     uvm/uvm_api_types.cpp \
-    uvm/uvm_astparser.cpp \
-    uvm/uvm_debug_file.cpp \
-    uvm/uvm_decompile.cpp \
-    uvm/uvm_disassemble.cpp \
     uvm/uvm_lib.cpp \
-    uvm/uvm_loader.cpp \
     uvm/uvm_lutil.cpp \
-    uvm/uvm_proto_info.cpp \
-    uvm/uvm_statement.cpp \
     uvm/uvm_state_scope.cpp \
     uvm/uvm_storage.cpp \
-    uvm/uvm_structs.cpp \
     uvm/uvm_tokenparser.cpp \
-    uvm/uvm_vm.cpp \
-    uvm/language_server.cpp \
     uvm/lapi.cpp \
     uvm/lauxlib.cpp \
     uvm/lbaselib.cpp \
     uvm/lbitlib.cpp \
     uvm/lcode.cpp \
-    uvm/lcompile.cpp \
     uvm/lcorolib.cpp \
     uvm/lctype.cpp \
     uvm/ldblib.cpp \
@@ -271,10 +260,7 @@ libbitcoin_server_a_SOURCES = \
     uvm/lopcodes.cpp \
     uvm/loslib.cpp \
     uvm/lparser.cpp \
-    uvm/lparsercombinator.cpp \
     uvm/lprefix.cpp \
-    uvm/lremote_debugger.cpp \
-    uvm/lrepl.cpp \
     uvm/lstate.cpp \
     uvm/lstring.cpp \
     uvm/lstrlib.cpp \
@@ -282,15 +268,11 @@ libbitcoin_server_a_SOURCES = \
     uvm/ltablib.cpp \
     uvm/ltimelib.cpp \
     uvm/ltm.cpp \
-    uvm/ltypechecker.cpp \
-    uvm/ltype_checker_type_info.cpp \
-    uvm/lua.cpp \
-    uvm/luac.cpp \
     uvm/lundump.cpp \
     uvm/lutf8lib.cpp \
     uvm/lvm.cpp \
     uvm/lzio.cpp \
-    uvm/btc_uvm_api.cpp \
+    btc_uvm_api.cpp \
     contract_engine/contract_engine.cpp \
     contract_engine/contract_engine_builder.cpp \
     contract_engine/uvm_contract_engine.cpp \
