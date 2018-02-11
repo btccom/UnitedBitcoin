@@ -314,11 +314,15 @@ LClosure *luaU_undump(lua_State *L, ZIO *Z, const char *name) {
     S.L = L;
     S.Z = Z;
     checkHeader(&S); // FIXME: release
+	if (strlen(L->runerror) > 0 || strlen(L->compile_error) > 0)
+		return nullptr;
     cl = luaF_newLclosure(L, LoadByte(&S));
     setclLvalue(L, L->top, cl);
     luaD_inctop(L);
     cl->p = luaF_newproto(L);
     LoadFunction(&S, cl->p, nullptr);
+	if (strlen(L->runerror) > 0 || strlen(L->compile_error) > 0)
+		return nullptr;
     lua_assert(cl->nupvalues == cl->p->sizeupvalues);
     luai_verifycode(L, buff, cl->p);
     return cl;

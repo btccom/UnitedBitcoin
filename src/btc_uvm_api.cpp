@@ -19,6 +19,7 @@
 #include <uvm/lstate.h>
 
 #include <validation.h>
+#include <contract_engine/pending_state.hpp>
 
 namespace uvm {
     namespace lua {
@@ -58,8 +59,11 @@ namespace uvm {
             */
             void BtcUvmChainApi::throw_exception(lua_State *L, int code, const char *error_format, ...)
             {
+				if (has_error)
+					return;
                 has_error = 1;
-                char *msg = (char*)lua_malloc(L, LUA_EXCEPTION_MULTILINE_STRNG_MAX_LENGTH);
+				char msg[LUA_EXCEPTION_MULTILINE_STRNG_MAX_LENGTH];
+                //char *msg = (char*)lua_malloc(L, LUA_EXCEPTION_MULTILINE_STRNG_MAX_LENGTH);
                 memset(msg, 0x0, LUA_EXCEPTION_MULTILINE_STRNG_MAX_LENGTH);
 
                 va_list vap;
@@ -90,9 +94,9 @@ namespace uvm {
                 uvm::lua::lib::set_lua_state_value(L, "exception_msg", val_msg, UvmStateValueType::LUA_STATE_VALUE_STRING);
             }
 
-            static ContractExec* get_evaluator(lua_State *L)
+            static ::blockchain::contract::PendingState* get_evaluator(lua_State *L)
             {
-                return (ContractExec*) uvm::lua::lib::get_lua_state_value(L, "evaluator").pointer_value;
+                return (::blockchain::contract::PendingState*) uvm::lua::lib::get_lua_state_value(L, "evaluator").pointer_value;
             }
 
             /**
@@ -112,23 +116,20 @@ namespace uvm {
                     return 0;
                 auto evaluator = get_evaluator(L);
                 // find in contract create op
-                for(const auto& ctx : evaluator->txs)
+                for(const auto &pair : evaluator->pending_contracts_to_create)
                 {
-                    if(ctx.opcode == OP_CREATE)
+                    if(pair.first == std::string(addr))
                     {
-                        // create contract tx
-                        if(ctx.params.contract_address == std::string(addr))
+                        const auto &code = pair.second.code;
+                        for(const auto& api : code.abi)
                         {
-                            for(const auto& api : ctx.params.code.abi)
-                            {
-                                contract_info_ret->contract_apis.push_back(api);
-                            }
-                            for (const auto& api : ctx.params.code.offline_abi)
-                            {
-                                contract_info_ret->contract_apis.push_back(api);
-                            }
-                            return 1;
+                            contract_info_ret->contract_apis.push_back(api);
                         }
+                        for (const auto& api : code.offline_abi)
+                        {
+                            contract_info_ret->contract_apis.push_back(api);
+                        }
+                        return 1;
                     }
                 }
                 // TODO: find in pendingState/db
@@ -139,24 +140,20 @@ namespace uvm {
                 if(!contract_info_ret)
                     return 0;
                 auto evaluator = get_evaluator(L);
-                // find in contract create op
-                for(const auto& ctx : evaluator->txs)
+                for(const auto &pair : evaluator->pending_contracts_to_create)
                 {
-                    if(ctx.opcode == OP_CREATE)
+                    if(pair.first == std::string(contract_id))
                     {
-                        // create contract tx
-                        if(ctx.params.contract_address == std::string(contract_id))
+                        const auto &code = pair.second.code;
+                        for(const auto& api : code.abi)
                         {
-                            for(const auto& api : ctx.params.code.abi)
-                            {
-                                contract_info_ret->contract_apis.push_back(api);
-                            }
-                            for (const auto& api : ctx.params.code.offline_abi)
-                            {
-                                contract_info_ret->contract_apis.push_back(api);
-                            }
-                            return 1;
+                            contract_info_ret->contract_apis.push_back(api);
                         }
+                        for (const auto& api : code.offline_abi)
+                        {
+                            contract_info_ret->contract_apis.push_back(api);
+                        }
+                        return 1;
                     }
                 }
                 // TODO: find in pendingState/db
@@ -220,25 +217,20 @@ namespace uvm {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
                 auto addr = name;
                 auto evaluator = get_evaluator(L);
-                // find in contract create op
-                for(const auto& ctx : evaluator->txs)
+                for(const auto &pair : evaluator->pending_contracts_to_create)
                 {
-                    if(ctx.opcode == OP_CREATE)
+                    if(pair.first == std::string(addr))
                     {
-                        // create contract tx
-                        if(ctx.params.contract_address == std::string(addr))
-                        {
-                            const auto& code_val = ctx.params.code;
-                            auto stream = std::make_shared<UvmModuleByteStream>();
-                            if(nullptr == stream)
-                                return nullptr;
-                            stream->buff.resize(code_val.code.size());
-                            memcpy(stream->buff.data(), code_val.code.data(), code_val.code.size());
-                            stream->is_bytes = true;
-                            stream->contract_name = name;
-                            stream->contract_id = std::string(addr);
-                            return stream;
-                        }
+                        const auto &code_val = pair.second.code;
+                        auto stream = std::make_shared<UvmModuleByteStream>();
+                        if(nullptr == stream)
+                            return nullptr;
+                        stream->buff.resize(code_val.code.size());
+                        memcpy(stream->buff.data(), code_val.code.data(), code_val.code.size());
+                        stream->is_bytes = true;
+                        stream->contract_name = name;
+                        stream->contract_id = std::string(addr);
+                        return stream;
                     }
                 }
                 return nullptr;
@@ -249,25 +241,18 @@ namespace uvm {
                 // TODO
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
                 auto evaluator = get_evaluator(L);
-                // find in contract create op
-                for(const auto& ctx : evaluator->txs)
-                {
-                    if(ctx.opcode == OP_CREATE)
-                    {
-                        // create contract tx
-                        if(ctx.params.contract_address == std::string(address))
-                        {
-                            const auto& code_val = ctx.params.code;
-                            auto stream = std::make_shared<UvmModuleByteStream>();
-                            if(nullptr == stream)
-                                return nullptr;
-                            stream->buff.resize(code_val.code.size());
-                            memcpy(stream->buff.data(), code_val.code.data(), code_val.code.size());
-                            stream->is_bytes = true;
-                            stream->contract_name = "";
-                            stream->contract_id = std::string(address);
-                            return stream;
-                        }
+                for(const auto &pair : evaluator->pending_contracts_to_create) {
+                    if (pair.first == std::string(address)) {
+                        const auto &code_val = pair.second.code;
+                        auto stream = std::make_shared<UvmModuleByteStream>();
+                        if(nullptr == stream)
+                            return nullptr;
+                        stream->buff.resize(code_val.code.size());
+                        memcpy(stream->buff.data(), code_val.code.data(), code_val.code.size());
+                        stream->is_bytes = true;
+                        stream->contract_name = "";
+                        stream->contract_id = std::string(address);
+                        return stream;
                     }
                 }
                 return nullptr;

@@ -31,7 +31,7 @@ namespace contract
 		public:
 			ContractStorageService(uint32_t magic_number, const std::string& storage_db_path, const std::string& storage_sql_db_path);
 			~ContractStorageService();
-			
+
 			// these apis may throws boost::exception
 			void open();
 
@@ -59,6 +59,9 @@ namespace contract
 		private:
 			// check db opened? if not, throw boost::exception
 			void check_db() const;
+			void begin_sql_transaction();
+			void commit_sql_transaction();
+			void rollback_sql_transaction();
 			// init commits sql table
 			void init_commits_table();
 			ContractCommitInfoP get_commit_info(const ContractCommitId& commit_id);

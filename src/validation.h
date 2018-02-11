@@ -53,6 +53,7 @@ struct ChainTxData;
 struct PrecomputedTransactionData;
 struct LockPoints;
 
+static const uint32_t CONTRACT_STORAGE_MAGIC_NUMBER = 34125;
 /** Default for -whitelistrelay. */
 static const bool DEFAULT_WHITELISTRELAY = true;
 /** Default for -whitelistforcerelay. */
@@ -645,8 +646,6 @@ public:
     std::vector<ResultExecute> result;
     const CBlock &block;
     const uint64_t blockGasLimit;
-    // contract changes not committed
-    std::unordered_map<std::string, ContractInfo> pending_contracts_to_create;
     ContractExecResult pending_contract_exec_result; // pending contract exec changes not committed
 };
 

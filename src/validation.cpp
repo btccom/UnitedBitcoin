@@ -46,6 +46,7 @@
 
 #include <btc_uvm_api.h>
 #include <contract_engine/contract_helper.hpp>
+#include <contract_engine/pending_state.hpp>
 
 #include <atomic>
 #include <sstream>
@@ -53,6 +54,7 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <boost/thread.hpp>
+#include <boost/scope_exit.hpp>
 #include <fc/array.hpp>
 #include <fc/crypto/ripemd160.hpp>
 #include <fc/crypto/elliptic.hpp>
@@ -1765,16 +1767,23 @@ bool ContractExec::performByteCode()
         const auto &caller_address = params.caller_address;
         engine_builder.set_caller(caller, caller_address);
         auto engine = engine_builder.build();
-        engine->set_gas_limit(params.gasLimit * 10);  // FIXME
+        engine->set_gas_limit(params.gasLimit);
         std::string api_result_json_string;
         if(tx.opcode == OP_CREATE) {
             // save bytecode in pendingState
             ContractInfo contract_info;
             contract_info.address = params.contract_address;
-            pending_contracts_to_create[contract_info.address] = contract_info;
+            for(const auto& item : params.code.abi)
+                contract_info.apis.push_back(item);
+            std::sort(contract_info.apis.begin(), contract_info.apis.end());
+            for(const auto& item : params.code.offline_abi)
+                contract_info.offline_apis.push_back(item);
+            std::sort(contract_info.offline_apis.begin(), contract_info.offline_apis.end());
+            contract_info.code = params.code;
+            blockchain::contract::PendingState pending_state;
+            pending_state.pending_contracts_to_create[contract_info.address] = contract_info;
             try {
-                // TODO: create or receive pending state
-                engine->set_state_pointer_value("evaluator", this);
+                engine->set_state_pointer_value("evaluator", &pending_state);
                 // TODO: get apis and offline_apis from contract bytecode
                 engine->execute_contract_init_by_address(params.contract_address, params.api_arg, &api_result_json_string); // FIXME: call api if is not "init"
             }
@@ -2219,6 +2228,16 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
             ContractExec exec(block, resultConvertContractTx.first, blockGasLimit);
             uint256 sumGas = uint256();
             CAmount nTxFee = view.GetValueIn(tx) - tx.GetValueOut();
+            fs::path storage_db_path = GetDataDir() / "contract_storage.db";
+            fs::path storage_sql_db_path = GetDataDir() / "contract_storage_sql.db";
+            ::contract::storage::ContractStorageService service(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
+			service.open();
+            const auto& old_root_hash = service.current_root_state_hash();
+            bool success = false;
+            BOOST_SCOPE_EXIT(&service, &old_root_hash, &success) {
+                if(!success)
+                    service.rollback_contract_state(old_root_hash);
+            } BOOST_SCOPE_EXIT_END
             auto execRes = exec.performByteCode();
             if(!execRes) {
                 return state.DoS(100,
@@ -2228,14 +2247,33 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
             // if is create contract, store contract info to db(if vout is deleted, need rollback)
             if(resultConvertContractTx.first[0].opcode == OP_CREATE)
             {
-                // TODO
+                // save contract info
+                const auto& con_tx = resultConvertContractTx.first[0];
+                auto new_contract_info_to_commit = std::make_shared<::contract::storage::ContractInfo>();
+                new_contract_info_to_commit->id = con_tx.params.contract_address;
+                new_contract_info_to_commit->name = "";
+                new_contract_info_to_commit->bytecode = con_tx.params.code.code;
+                // sort apis and offline apis to store
+				for (const auto& api : con_tx.params.code.abi)
+				{
+					new_contract_info_to_commit->apis.push_back(api);
+				}
+				std::sort(new_contract_info_to_commit->apis.begin(), new_contract_info_to_commit->apis.end());
+				for (const auto& api : con_tx.params.code.offline_abi)
+				{
+					new_contract_info_to_commit->offline_apis.push_back(api);
+				}
+				std::sort(new_contract_info_to_commit->offline_apis.begin(), new_contract_info_to_commit->offline_apis.end());
+                service.save_contract_info(new_contract_info_to_commit);
             }
+            // TODO: save contract invoke result
 
             for(ContractTransaction &ctx : resultConvertContractTx.first) {
 //                sumGas += ctx.gas() * ctx.gasPrice(); // FIXME
                 // TODO
             }
             // TODO
+            success = true;
         }
 
 
