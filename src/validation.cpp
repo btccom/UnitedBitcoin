@@ -1843,7 +1843,7 @@ bool ContractTxConverter::extractionContractTransactions(ExtractContractTX& cont
         if(txBitcoin.vout[i].scriptPubKey.HasContractOp()){
             if(receiveStack(txBitcoin.vout[i].scriptPubKey)){
                 ContractTransactionParams params;
-                if(parseContractTXParams(params)){
+                if(parseContractTXParams(params, i)){
                     resultTX.push_back(createContractTX(params, i));
                     resultETP.push_back(params);
                 }else{
@@ -1875,7 +1875,7 @@ bool ContractTxConverter::receiveStack(const CScript& scriptPubKey) {
     }
     return true;
 }
-bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& params) {
+bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& params, size_t contract_op_vout_index) {
     try{
         uint64_t gasLimit;
         uint64_t gasPrice;
@@ -1957,10 +1957,11 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 return false;
             }
         }
+
         if(!is_create)
             params.contract_address = ValtypeUtils::vch_to_string(contract_address);
         else
-            params.contract_address = ContractHelper::generate_contract_address(params.code, params.caller_address, 0); // FIXME: use hash(contract vout + caller-fee-spender-vin) as contract address
+            params.contract_address = ContractHelper::generate_contract_address(params.code, params.caller_address, txBitcoin, contract_op_vout_index);
         return true;
     }
     catch(const scriptnum_error& err){
@@ -2228,8 +2229,8 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
             ContractExec exec(block, resultConvertContractTx.first, blockGasLimit);
             uint256 sumGas = uint256();
             CAmount nTxFee = view.GetValueIn(tx) - tx.GetValueOut();
-            fs::path storage_db_path = GetDataDir() / "contract_storage.db";
-            fs::path storage_sql_db_path = GetDataDir() / "contract_storage_sql.db";
+            fs::path storage_db_path = GetDataDir() / CONTRACT_STORAGE_DB_PATH;
+            fs::path storage_sql_db_path = GetDataDir() / CONTRACT_STORAGE_SQL_DB_PATH;
             ::contract::storage::ContractStorageService service(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
 			service.open();
             const auto& old_root_hash = service.current_root_state_hash();

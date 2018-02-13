@@ -37,6 +37,9 @@
 #include <condition_variable>
 #include <fstream>
 
+#include <contract_storage/contract_storage.hpp>
+#include <fc/crypto/base64.hpp>
+
 
 
 struct CUpdatedBlock
@@ -1731,6 +1734,116 @@ UniValue preciousblock(const JSONRPCRequest& request)
     return NullUniValue;
 }
 
+///// contract
+UniValue getcontractinfo(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 1)
+        throw runtime_error(
+                "getcontractinfo \"address\" ( address )\n"
+                        "\nArgument:\n"
+                        "1. \"address\"          (string, required) The contract address\n"
+        );
+
+    LOCK(cs_main);
+
+    std::string strAddr = request.params[0].get_str();
+    if(strAddr.size() < 40)
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect address");
+    fs::path storage_db_path = GetDataDir() / CONTRACT_STORAGE_DB_PATH;
+    fs::path storage_sql_db_path = GetDataDir() / CONTRACT_STORAGE_SQL_DB_PATH;
+    ::contract::storage::ContractStorageService service(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
+    service.open();
+    auto contract_info = service.get_contract_info(strAddr);
+    if(!contract_info)
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Address does not exist");
+
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("id", contract_info->id));
+    result.push_back(Pair("name", contract_info->name));
+    // TODO
+//    result.push_back(Pair("apis", contract_info->apis));
+//    result.push_back(Pair("offline_apis", contract_info->offline_apis));
+    auto bytecode_base64 = fc::base64_encode(contract_info->bytecode.data(), contract_info->bytecode.size());
+    result.push_back(Pair("code", bytecode_base64));
+
+    return result;
+}
+
+UniValue getcreatecontractaddress(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 1)
+        throw runtime_error(
+                "getcreatecontractaddress \"tx\" ( tx )\n"
+                        "\nArgument:\n"
+                        "1. \"tx\"          (string, required) The contract tx hex string\n"
+        );
+
+    LOCK(cs_main);
+    RPCTypeCheck(request.params, {UniValue::VSTR, UniValue::VARR, UniValue::VARR, UniValue::VSTR}, true);
+
+    CMutableTransaction mtx;
+    if (!DecodeHexTx(mtx, request.params[0].get_str(), true))
+        throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "TX decode failed");
+
+    // Fetch previous transactions (inputs):
+    CCoinsView viewDummy;
+    CCoinsViewCache view(&viewDummy);
+    {
+        LOCK(mempool.cs);
+        CCoinsViewCache &viewChain = *pcoinsTip;
+        CCoinsViewMemPool viewMempool(&viewChain, mempool);
+        view.SetBackend(viewMempool); // temporarily switch cache backend to db+mempool view
+
+        for (const CTxIn& txin : mtx.vin) {
+            view.AccessCoin(txin.prevout); // Load entries from viewChain into view; can fail.
+        }
+
+        view.SetBackend(viewDummy); // switch back to avoid locking mempool for too long
+    }
+
+    // Script verification errors
+    UniValue vErrors(UniValue::VARR);
+    std::string contract_address;
+
+    // Use CTransaction for the constant parts of the
+    // transaction to avoid rehashing.
+    const CTransaction txConst(mtx);
+    if(txConst.HasContractOp() && !txConst.HasOpSpend()) {
+        CBlock block;
+        block.vtx.push_back(MakeTransactionRef(txConst));
+        CCoinsViewCache &view = *pcoinsTip;
+        ContractTxConverter converter(txConst, &view, &block.vtx);
+        ExtractContractTX resultConvertContractTx;
+        if (!converter.extractionContractTransactions(resultConvertContractTx)) {
+            throw runtime_error("decode contract tx failed");
+        }
+        if(resultConvertContractTx.first.size() < 1)
+        {
+            throw runtime_error("decode contract tx failed");
+        }
+        else
+        {
+            const auto& con_tx = resultConvertContractTx.first[0];
+            if(con_tx.opcode == OP_CREATE)
+            {
+                contract_address = con_tx.params.contract_address;
+            }
+            else
+            {
+                throw runtime_error("this is not create contract transaction");
+            }
+        }
+    } else {
+        throw runtime_error("this is not create contract transaction");
+    }
+
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("address", contract_address));
+    return result;
+}
+
+/////
+
 UniValue invalidateblock(const JSONRPCRequest& request)
 {
     if (request.fHelp || request.params.size() != 1)
@@ -1930,6 +2043,9 @@ static const CRPCCommand commands[] =
     { "blockchain",         "getwhitelist",           &getwhitelist,           {"blocknum"} },
     { "blockchain",         "readwhitelist",           &readwhitelist,           {"filename"} },
     { "blockchain",         "preciousblock",          &preciousblock,          {"blockhash"} },
+
+    { "blockchain",         "getcontractinfo",        &getcontractinfo,        {"contract_address"} },
+    { "blockchain",         "getcreatecontractaddress", &getcreatecontractaddress, {"contact_tx"} },
 
     /* Not shown in help */
     { "hidden",             "invalidateblock",        &invalidateblock,        {"blockhash"} },

@@ -62,8 +62,7 @@ namespace uvm {
 				if (has_error)
 					return;
                 has_error = 1;
-				char msg[LUA_EXCEPTION_MULTILINE_STRNG_MAX_LENGTH];
-                //char *msg = (char*)lua_malloc(L, LUA_EXCEPTION_MULTILINE_STRNG_MAX_LENGTH);
+                char *msg = (char*)lua_malloc(L, LUA_EXCEPTION_MULTILINE_STRNG_MAX_LENGTH);
                 memset(msg, 0x0, LUA_EXCEPTION_MULTILINE_STRNG_MAX_LENGTH);
 
                 va_list vap;

@@ -1,4 +1,11 @@
 #include <contract_engine/contract_helper.hpp>
+#include <fc/array.hpp>
+#include <fc/crypto/ripemd160.hpp>
+#include <fc/crypto/elliptic.hpp>
+#include <fc/crypto/base58.hpp>
+#include <fc/crypto/sha256.hpp>
+#include <boost/uuid/sha1.hpp>
+#include <exception>
 
 int gpcread(void* ptr, size_t element_size, size_t count, GpcBuffer* gpc_buffer)
 {
@@ -205,7 +212,23 @@ uvm::blockchain::Code ContractHelper::load_contract_from_gpc_data(const std::vec
     return code;
 }
 
-std::string ContractHelper::generate_contract_address(const uvm::blockchain::Code& code, const std::string& caller_address, int32_t chain_height)
+struct ContractCreateDigestInfo
 {
-    return "abc"; // FIXME
+    std::string caller_address;
+    std::string tx_hash;
+    size_t contract_op_vout_index;
+};
+
+FC_REFLECT(::ContractCreateDigestInfo, (caller_address)(tx_hash)(contract_op_vout_index));
+
+std::string ContractHelper::generate_contract_address(const uvm::blockchain::Code& code, const std::string& caller_address, const CTransaction& txBitcoin, size_t contract_op_vout_index)
+{
+    fc::sha512::encoder enc;
+    ContractCreateDigestInfo info;
+    info.caller_address = caller_address;
+    info.tx_hash = txBitcoin.GetHash().GetHex();
+    info.contract_op_vout_index = contract_op_vout_index;
+    fc::raw::pack(enc, info);
+    const auto& addr = fc::ripemd160::hash(enc.result()).str();
+    return addr;
 }

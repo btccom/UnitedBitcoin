@@ -53,6 +53,9 @@ struct ChainTxData;
 struct PrecomputedTransactionData;
 struct LockPoints;
 
+#define CONTRACT_STORAGE_DB_PATH "contract_storage.db"
+#define CONTRACT_STORAGE_SQL_DB_PATH "contract_storage_sql.db"
+
 static const uint32_t CONTRACT_STORAGE_MAGIC_NUMBER = 34125;
 /** Default for -whitelistrelay. */
 static const bool DEFAULT_WHITELISTRELAY = true;
@@ -619,7 +622,7 @@ public:
     bool extractionContractTransactions(ExtractContractTX& contractTx);
 private:
     bool receiveStack(const CScript& scriptPubKey);
-    bool parseContractTXParams(ContractTransactionParams& params);
+    bool parseContractTXParams(ContractTransactionParams& params, size_t contract_op_vout_index);
     ContractTransaction createContractTX(const ContractTransactionParams& etp, const uint32_t nOut);
     // TODO: more functions
     // TODO: build ContractTransaction
