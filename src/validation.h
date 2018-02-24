@@ -19,6 +19,7 @@
 #include <sync.h>
 #include <versionbits.h>
 #include <contract_engine/contract_engine_builder.hpp>
+#include <contract_storage/contract_storage.hpp>
 #include <jsondiff/jsondiff.h>
 #include <fc/io/enum_type.hpp>
 #include <fc/io/varint.hpp>
@@ -596,7 +597,7 @@ struct ContractResultTransferInfo {
 // contract execute result for uvm
 struct ResultExecute {
     uint64_t usedGas = 0;
-    int32_t exit_code;
+    int32_t exit_code = 0;
     std::string error_message;
     std::vector<ContractResultTransferInfo> balance_changes;
     std::vector<std::pair<std::string, StorageChanges>> contract_storage_changes; // contract_id => changes
@@ -607,7 +608,7 @@ struct ContractExecResult {
     uint64_t usedGas = 0;
     std::vector<CTxOut> refundOutputs;
 //    std::vector<CTransaction> valueTransfers;
-    int32_t exit_code;
+    int32_t exit_code = 0;
     std::string error_message;
 
     std::vector<std::pair<std::string, StorageChanges>> contract_storage_changes; // contract_id => changes
@@ -636,14 +637,15 @@ private:
 
 class ContractExec {
 public:
-    ContractExec(const CBlock& _block, std::vector<ContractTransaction> _txs, const uint64_t _blockGasLimit)
-            : block(_block), txs(_txs), blockGasLimit(_blockGasLimit)
+    ContractExec(::contract::storage::ContractStorageService* _storage_service, const CBlock& _block, std::vector<ContractTransaction> _txs, const uint64_t _blockGasLimit)
+            : storage_service(_storage_service), block(_block), txs(_txs), blockGasLimit(_blockGasLimit)
     {}
     bool performByteCode();
     bool processingResults(ContractExecResult &result);
     std::vector<ResultExecute>& getResult() {return result;}
 private:
     // TODO: build contract execute environment
+	::contract::storage::ContractStorageService* storage_service;
 public:
     std::vector<ContractTransaction> txs;
     std::vector<ResultExecute> result;

@@ -2,9 +2,9 @@
 
 namespace blockchain {
     namespace contract {
-        PendingState::PendingState()
+        PendingState::PendingState(::contract::storage::ContractStorageService* _storage_service)
         {
-
+			this->storage_service = _storage_service;
         }
     }
 }

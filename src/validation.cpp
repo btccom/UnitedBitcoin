@@ -50,6 +50,7 @@
 
 #include <atomic>
 #include <sstream>
+#include <list>
 
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/join.hpp>
@@ -1769,23 +1770,27 @@ bool ContractExec::performByteCode()
         auto engine = engine_builder.build();
         engine->set_gas_limit(params.gasLimit);
         std::string api_result_json_string;
+
+		ContractInfo contract_info;
+		contract_info.address = params.contract_address;
+		for (const auto& item : params.code.abi)
+			contract_info.apis.push_back(item);
+		std::sort(contract_info.apis.begin(), contract_info.apis.end());
+		for (const auto& item : params.code.offline_abi)
+			contract_info.offline_apis.push_back(item);
+		std::sort(contract_info.offline_apis.begin(), contract_info.offline_apis.end());
+		contract_info.code = params.code;
+		blockchain::contract::PendingState pending_state(storage_service);
+		pending_state.pending_contracts_to_create[contract_info.address] = contract_info;
+
         if(tx.opcode == OP_CREATE) {
             // save bytecode in pendingState
-            ContractInfo contract_info;
-            contract_info.address = params.contract_address;
-            for(const auto& item : params.code.abi)
-                contract_info.apis.push_back(item);
-            std::sort(contract_info.apis.begin(), contract_info.apis.end());
-            for(const auto& item : params.code.offline_abi)
-                contract_info.offline_apis.push_back(item);
-            std::sort(contract_info.offline_apis.begin(), contract_info.offline_apis.end());
-            contract_info.code = params.code;
-            blockchain::contract::PendingState pending_state;
-            pending_state.pending_contracts_to_create[contract_info.address] = contract_info;
+            
             try {
                 engine->set_state_pointer_value("evaluator", &pending_state);
+				engine->set_state_pointer_value("storage_service", storage_service);
                 // TODO: get apis and offline_apis from contract bytecode
-                engine->execute_contract_init_by_address(params.contract_address, params.api_arg, &api_result_json_string); // FIXME: call api if is not "init"
+                engine->execute_contract_init_by_address(params.contract_address, params.api_arg, &api_result_json_string);
             }
             catch(uvm::core::UvmException& e)
             {
@@ -1824,8 +1829,10 @@ bool ContractExec::performByteCode()
             pending_contract_exec_result.error_message = std::string("not supported contract opcode ") + std::to_string(tx.opcode);
             return false;
         }
+
+		pending_contract_exec_result.contract_storage_changes = pending_state.contract_storage_changes;
+		// TODO: gas used and refund info
     }
-    // TODO: commit to pending state
     return true;
 }
 
@@ -2226,13 +2233,13 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
             }
             // TODO: check min gas price
             uint256 gasAllTxs = uint256();
-            ContractExec exec(block, resultConvertContractTx.first, blockGasLimit);
             uint256 sumGas = uint256();
             CAmount nTxFee = view.GetValueIn(tx) - tx.GetValueOut();
             fs::path storage_db_path = GetDataDir() / CONTRACT_STORAGE_DB_PATH;
             fs::path storage_sql_db_path = GetDataDir() / CONTRACT_STORAGE_SQL_DB_PATH;
             ::contract::storage::ContractStorageService service(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
 			service.open();
+			ContractExec exec(&service, block, resultConvertContractTx.first, blockGasLimit);
             const auto& old_root_hash = service.current_root_state_hash();
             bool success = false;
             BOOST_SCOPE_EXIT(&service, &old_root_hash, &success) {
@@ -2245,6 +2252,12 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                                  error("ConnectBlock(): exec bytecode error"),
                                  REJECT_INVALID, exec.pending_contract_exec_result.error_message);
             }
+            ContractExecResult contract_exec_result;
+            exec.processingResults(contract_exec_result);
+            if(contract_exec_result.exit_code != 0)
+                return state.DoS(100,
+                                 error("ConnectBlock(): exec bytecode error"),
+                                 REJECT_INVALID, exec.pending_contract_exec_result.error_message);
             // if is create contract, store contract info to db(if vout is deleted, need rollback)
             if(resultConvertContractTx.first[0].opcode == OP_CREATE)
             {
@@ -2267,7 +2280,41 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
 				std::sort(new_contract_info_to_commit->offline_apis.begin(), new_contract_info_to_commit->offline_apis.end());
                 service.save_contract_info(new_contract_info_to_commit);
             }
-            // TODO: save contract invoke result
+            // save contract invoke result
+            // save exec result transfers and storage changes
+            auto contract_changes = std::make_shared<::contract::storage::ContractChanges>();
+            for(const auto& p : contract_exec_result.contract_storage_changes)
+            {
+                const auto& contract_id = p.first;
+                const auto& changes = p.second;
+                if(!changes || changes->is_undefined())
+                    continue;
+                const auto& changes_values = changes->value();
+                if(!changes_values.is_object())
+                    continue;
+                const auto& changes_value_items = changes_values.as<jsondiff::JsonObject>();
+                ::contract::storage::ContractStorageChange change;
+                change.contract_id = contract_id;
+                // ordered iterate changes_value_items keys
+                std::list<std::string> changed_storage_names;
+                for(auto it=changes_value_items.begin();it!=changes_value_items.end();it++)
+                {
+                    changed_storage_names.push_back(it->key());
+                }
+                changed_storage_names.sort();
+                for(const auto& storage_name : changed_storage_names)
+                {
+                    const auto& storage_item_changes = changes_value_items[storage_name];
+                    ::contract::storage::ContractStorageItemChange item_change;
+                    item_change.name = storage_name;
+                    item_change.diff = std::make_shared<jsondiff::DiffResult>(storage_item_changes);
+                    change.items.push_back(item_change);
+                }
+                contract_changes->storage_changes.push_back(change);
+            }
+            service.commit_contract_changes(contract_changes);
+            // TODO: put balance changes
+            // TODO: refund
 
             for(ContractTransaction &ctx : resultConvertContractTx.first) {
 //                sumGas += ctx.gas() * ctx.gasPrice(); // FIXME

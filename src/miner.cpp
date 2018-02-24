@@ -31,6 +31,8 @@
 #include <queue>
 #include <utility>
 
+#include <contract_storage/contract_storage.hpp>
+
 //////////////////////////////////////////////////////////////////////////////
 //
 // BitcoinMiner
@@ -286,8 +288,11 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
             return false;
         }
     }
-    // We need to pass the DGP's block gas limit (not the soft limit) since it is consensus critical.
-    ContractExec exec(*pblock, qtumTransactions, hardBlockGasLimit);
+	fs::path storage_db_path = GetDataDir() / CONTRACT_STORAGE_DB_PATH;
+	fs::path storage_sql_db_path = GetDataDir() / CONTRACT_STORAGE_SQL_DB_PATH;
+	::contract::storage::ContractStorageService service(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
+	service.open();
+    ContractExec exec(&service, *pblock, qtumTransactions, hardBlockGasLimit);
     if (!exec.performByteCode()) {
         //error, don't add contract
         return false;

@@ -98,6 +98,11 @@ namespace uvm {
                 return (::blockchain::contract::PendingState*) uvm::lua::lib::get_lua_state_value(L, "evaluator").pointer_value;
             }
 
+			static ::contract::storage::ContractStorageService* get_contract_storage_service(lua_State *L)
+			{
+				return (::contract::storage::ContractStorageService*) uvm::lua::lib::get_lua_state_value(L, "storage_service").pointer_value;
+			}
+
             /**
             * check whether the contract apis limit over, in this lua_State
             * @param L the lua stack
@@ -212,7 +217,6 @@ namespace uvm {
             */
             std::shared_ptr<UvmModuleByteStream> BtcUvmChainApi::open_contract(lua_State *L, const char *name)
             {
-                // TODO
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
                 auto addr = name;
                 auto evaluator = get_evaluator(L);
@@ -229,15 +233,21 @@ namespace uvm {
                         stream->is_bytes = true;
                         stream->contract_name = name;
                         stream->contract_id = std::string(addr);
+						for (const auto& api : code_val.abi)
+							stream->contract_apis.push_back(api);
+						for (const auto& offline_api : code_val.offline_abi)
+							stream->offline_apis.push_back(offline_api);
+						for (const auto& p : code_val.storage_properties)
+							stream->contract_storage_properties[p.first] = p.second.value;
                         return stream;
                     }
                 }
+				// TODO: get from db
                 return nullptr;
             }
 
             std::shared_ptr<UvmModuleByteStream> BtcUvmChainApi::open_contract_by_address(lua_State *L, const char *address)
             {
-                // TODO
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
                 auto evaluator = get_evaluator(L);
                 for(const auto &pair : evaluator->pending_contracts_to_create) {
@@ -251,33 +261,55 @@ namespace uvm {
                         stream->is_bytes = true;
                         stream->contract_name = "";
                         stream->contract_id = std::string(address);
+						for (const auto& api : code_val.abi)
+							stream->contract_apis.push_back(api);
+						for (const auto& offline_api : code_val.offline_abi)
+							stream->offline_apis.push_back(offline_api);
+						for (const auto& p : code_val.storage_properties)
+							stream->contract_storage_properties[p.first] = p.second.value;
                         return stream;
                     }
                 }
+				// TODO: get from db
                 return nullptr;
             }
 
             UvmStorageValue BtcUvmChainApi::get_storage_value_from_uvm(lua_State *L, const char *contract_name, std::string name)
             {
-                // TODO
-                UvmStorageValue value;
-                value.type = uvm::blockchain::StorageValueTypes::storage_value_null;
-                value.value.int_value = 0;
-                return value;
+				auto contract_address = contract_name; // TODO
+				return get_storage_value_from_uvm_by_address(L, contract_address, name);
             }
 
             UvmStorageValue BtcUvmChainApi::get_storage_value_from_uvm_by_address(lua_State *L, const char *contract_address, std::string name)
             {
-                // TODO
-                UvmStorageValue value;
-                value.type = uvm::blockchain::StorageValueTypes::storage_value_null;
-                value.value.int_value = 0;
+				uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
+				auto evaluator = get_evaluator(L);
+				auto storage_service = get_contract_storage_service(L);
+				auto json_value = storage_service->get_contract_storage(std::string(contract_address), name);
+				UvmStorageValue value = json_to_uvm_storage_value(L, json_value);
                 return value;
             }
 
             bool BtcUvmChainApi::commit_storage_changes_to_uvm(lua_State *L, AllContractsChangesMap &changes)
             {
-                // TODO
+				auto evaluator = get_evaluator(L);
+				if (!evaluator)
+					return true;
+				for (const auto& pair : changes)
+				{
+					const auto& contract_id = pair.first;
+					const auto& contract_storage_changes = pair.second;
+					if (!contract_storage_changes)
+						continue;
+					jsondiff::JsonObject changes;
+					for (auto it = contract_storage_changes->begin(); it != contract_storage_changes->end(); it++)
+					{
+						const auto& storage_name = it->first;
+						const auto& storage_change = it->second;
+						changes[storage_name] = storage_change.diff.value();
+					}
+					evaluator->contract_storage_changes.push_back(std::make_pair(contract_id, std::make_shared<jsondiff::DiffResult>(changes)));
+				}
                 return true;
             }
 

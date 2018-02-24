@@ -470,7 +470,6 @@ static int searcher_uvm(lua_State *L) {
     LClosure *closure = uvm::lua::lib::luaU_undump_from_stream(L, stream.get(), uvm::lua::lib::unwrap_any_contract_name(origin_contract_name).c_str());
 	if (!closure)
 	{
-		lua_set_compile_error(L, "bytecode format error");
 		return 1;
 	}
     if (!uvm::lua::lib::check_contract_proto(L, closure->p, error))
