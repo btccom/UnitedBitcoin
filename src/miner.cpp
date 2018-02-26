@@ -182,10 +182,24 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     txGasLimit = softBlockGasLimit;
 
     nBlockMaxSize = MaxBlockSerSize;
-//    addPriorityTxs(minGasPrice); // TODO
+
+	// save old root state hash
+	fs::path storage_db_path = GetDataDir() / CONTRACT_STORAGE_DB_PATH;
+	fs::path storage_sql_db_path = GetDataDir() / CONTRACT_STORAGE_SQL_DB_PATH;
+	::contract::storage::ContractStorageService service(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
+	service.open();
+	const auto& old_root_state_hash = service.current_root_state_hash();
+	service.close();
+    // addPriorityTxs(minGasPrice); // TODO
     int nPackagesSelected = 0;
     int nDescendantsUpdated = 0;
     addPackageTxs(nPackagesSelected, nDescendantsUpdated, minGasPrice);
+
+	// rollback root state hash
+	service.open();
+	service.rollback_contract_state(old_root_state_hash);
+	service.close();
+
     //this should already be populated by AddBlock in case of contracts, but if no contracts
     //then it won't get populated
 //    RebuildRefundTransaction(); // TODO
@@ -471,7 +485,7 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
     // and modifying them for their already included ancestors
     UpdatePackagesForAdded(inBlock, mapModifiedTx);
 
-    CTxMemPool::indexed_transaction_set::index<ancestor_score>::type::iterator mi = mempool.mapTx.get<ancestor_score>().begin(); // TODO: ancestor_score_or_gas_price
+    auto mi = mempool.mapTx.get<ancestor_score_or_gas_price>().begin();
     CTxMemPool::txiter iter;
 
     // Limit the number of attempts to add transactions to the block when it is
@@ -480,14 +494,14 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
     const int64_t MAX_CONSECUTIVE_FAILURES = 1000;
     int64_t nConsecutiveFailed = 0;
 
-    while (mi != mempool.mapTx.get<ancestor_score>().end() || !mapModifiedTx.empty())
+    while (mi != mempool.mapTx.get<ancestor_score_or_gas_price>().end() || !mapModifiedTx.empty())
     {
         if (nTimeLimit != 0 && GetAdjustedTime() >= nTimeLimit) {
             //no more time to add transactions, just exit
             return;
         }
         // First try to find a new transaction in mapTx to evaluate.
-        if (mi != mempool.mapTx.get<ancestor_score>().end() &&
+        if (mi != mempool.mapTx.get<ancestor_score_or_gas_price>().end() &&
                 SkipMapTxEntry(mempool.mapTx.project<0>(mi), mapModifiedTx, failedTx)) {
             ++mi;
             continue;
@@ -497,15 +511,15 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
         // the next entry from mapTx, or the best from mapModifiedTx?
         bool fUsingModified = false;
 
-        modtxscoreiter modit = mapModifiedTx.get<ancestor_score>().begin();
-        if (mi == mempool.mapTx.get<ancestor_score>().end()) {
+        modtxscoreiter modit = mapModifiedTx.get<ancestor_score_or_gas_price>().begin();
+        if (mi == mempool.mapTx.get<ancestor_score_or_gas_price>().end()) {
             // We're out of entries in mapTx; use the entry from mapModifiedTx
             iter = modit->iter;
             fUsingModified = true;
         } else {
             // Try to compare the mapTx entry to the mapModifiedTx entry
             iter = mempool.mapTx.project<0>(mi);
-            if (modit != mapModifiedTx.get<ancestor_score>().end() &&
+            if (modit != mapModifiedTx.get<ancestor_score_or_gas_price>().end() &&
                     CompareModifiedEntry()(*modit, CTxMemPoolModifiedEntry(iter))) {
                 // The best entry in mapModifiedTx has higher score
                 // than the one from mapTx.
@@ -542,19 +556,9 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
                 // Since we always look at the best entry in mapModifiedTx,
                 // we must erase failed entries so that we can consider the
                 // next best entry on the next loop iteration
-                mapModifiedTx.get<ancestor_score>().erase(modit);
+                mapModifiedTx.get<ancestor_score_or_gas_price>().erase(modit);
                 failedTx.insert(iter);
             }
-
-            ++nConsecutiveFailed;
-
-            // TODO: change to testIfFull when try to add tx
-//            if (nConsecutiveFailed > MAX_CONSECUTIVE_FAILURES && nBlockWeight >
-//                    nBlockMaxWeight - 4000) {
-//                // Give up if we're close to full and haven't succeeded in a while
-//                break;
-//            }
-            continue;
         }
 
         CTxMemPool::setEntries ancestors;
@@ -568,7 +572,7 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
         // Test if all tx's are Final
         if (!TestPackageTransactions(ancestors)) {
             if (fUsingModified) {
-                mapModifiedTx.get<ancestor_score>().erase(modit);
+                mapModifiedTx.get<ancestor_score_or_gas_price>().erase(modit);
                 failedTx.insert(iter);
             }
             continue;
@@ -597,7 +601,7 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
                     if (!wasAdded) {
                         if (fUsingModified) {
                             //this only needs to be done once to mark the whole package (everything in sortedEntries) as failed
-                            mapModifiedTx.get<ancestor_score>().erase(modit);
+                            mapModifiedTx.get<ancestor_score_or_gas_price>().erase(modit);
                             failedTx.insert(iter);
                         }
                     }
@@ -609,6 +613,11 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
             // Erase from the modified set, if present
             mapModifiedTx.erase(sortedEntries[i]);
         }
+
+		if (!wasAdded) {
+			//skip UpdatePackages if a transaction failed to be added (match TestPackage logic)
+			continue;
+		}
 
         ++nPackagesSelected;
 

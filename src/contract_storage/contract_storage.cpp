@@ -17,23 +17,20 @@ namespace contract
 		{
 			return std::string("contract_info_key_") + contract_id;
 		}
-
+		
 		static std::string make_contract_storage_key(const std::string &contract_id, const std::string &storage_name)
 		{
 			return std::string("contract_storage_key_") + contract_id + "_" + storage_name;
 		}
 
 		ContractStorageService::ContractStorageService(uint32_t magic_number, const std::string& storage_db_path, const std::string& storage_sql_db_path)
-				: _db(nullptr), _sql_db(nullptr), _magic_number(magic_number), _storage_db_path(storage_db_path), _storage_sql_db_path(storage_sql_db_path)
+			: _db(nullptr), _sql_db(nullptr), _magic_number(magic_number), _storage_db_path(storage_db_path), _storage_sql_db_path(storage_sql_db_path)
 		{
 			open();
 		}
 		ContractStorageService::~ContractStorageService()
 		{
-			if (_db)
-				delete _db;
-			if (_sql_db)
-				sqlite3_close(_sql_db);
+			close();
 		}
 
 		void ContractStorageService::open()
@@ -54,6 +51,20 @@ namespace contract
 			}
 		}
 
+		void ContractStorageService::close()
+		{
+			if (_db)
+			{
+				delete _db;
+				_db = nullptr;
+			}
+			if (_sql_db)
+			{
+				sqlite3_close(_sql_db);
+				_sql_db = nullptr;
+			}
+		}
+
 		static int empty_sql_callback(void *notUsed, int argc, char **argv, char **colNames)
 		{
 			return 0;
@@ -64,7 +75,7 @@ namespace contract
 			char *errMsg;
 			// TODO: auto generate bigint id auto increment, maybe need use a new config table
 			auto status = sqlite3_exec(_sql_db, "CREATE TABLE IF NOT EXISTS commit_info (id INTEGER PRIMARY KEY, commit_id varchar(255) not null, change_type varchar(50) not null, contract_id varchar(255))",
-									   &empty_sql_callback, nullptr, &errMsg);
+				&empty_sql_callback, nullptr, &errMsg);
 			if (status != SQLITE_OK)
 			{
 				sqlite3_free(errMsg);
@@ -95,7 +106,7 @@ namespace contract
 			jsondiff::JsonArray records;
 			auto query_sql = std::string("select id, commit_id, change_type, contract_id from commit_info where commit_id='") + commit_id + "'";
 			auto status = sqlite3_exec(_sql_db, query_sql.c_str(),
-									   &query_records_sql_callback, &records, &errMsg);
+				&query_records_sql_callback, &records, &errMsg);
 			if (status != SQLITE_OK)
 			{
 				std::string err_msg_str(errMsg);
@@ -124,7 +135,7 @@ namespace contract
 			char *insert_err;
 			auto insert_sql = std::string("insert into commit_info (commit_id, change_type, contract_id) values ('") + commit_id + "','" + change_type + "', '" + contract_id + "')";
 			auto insert_status = sqlite3_exec(_sql_db,
-											  insert_sql.c_str(), &empty_sql_callback, nullptr, &insert_err);
+				insert_sql.c_str(), &empty_sql_callback, nullptr, &insert_err);
 			if (insert_status != SQLITE_OK)
 			{
 				sqlite3_free(insert_err);
@@ -160,12 +171,12 @@ namespace contract
 
 		fc::sha256 ContractStorageService::hash_new_contract_info_commit(ContractInfoP contract_info) const
 		{
-			return fc::sha256::hash(json_dumps(contract_info->to_json()));
+			return ordered_json_digest(contract_info->to_json());
 		}
 
 		fc::sha256 ContractStorageService::hash_contract_changes(ContractChangesP changes) const
 		{
-			return fc::sha256::hash(json_dumps(changes->to_json()));
+			return ordered_json_digest(changes->to_json());
 		}
 
 		void ContractStorageService::check_db() const
@@ -237,20 +248,6 @@ namespace contract
 			return state_hash;
 		}
 
-		template <typename T>
-		struct scope_exit
-		{
-			scope_exit(T &&t) : t_{ std::move(t) } {}
-			~scope_exit() { t_(); }
-			T t_;
-		};
-
-		template <typename T>
-		scope_exit<T> make_scope_exit(T &&t) {
-			return scope_exit<T>{
-					std::move(t)};
-		}
-
 		// TODO: only use leveldb and use leveldb transaction
 
 		ContractCommitId ContractStorageService::save_contract_info(ContractInfoP contract_info)
@@ -258,7 +255,7 @@ namespace contract
 			check_db();
 			bool success = false;
 			begin_sql_transaction();
-			auto cleanup = make_scope_exit([this, &success] {
+			BOOST_SCOPE_EXIT_ALL(this, &success) {
 				if (success)
 				{
 					commit_sql_transaction();
@@ -267,7 +264,7 @@ namespace contract
 				{
 					rollback_sql_transaction();
 				}
-			});
+			};
 			auto key = make_contract_info_key(contract_info->id);
 			leveldb::ReadOptions read_options;
 			std::string old_value;
@@ -361,7 +358,7 @@ namespace contract
 				BOOST_THROW_EXCEPTION(ContractStorageException("same commitId existed before"));
 			bool success = false;
 			begin_sql_transaction();
-			auto cleanup = make_scope_exit([this, &success] {
+			BOOST_SCOPE_EXIT_ALL(this, &success) {
 				if (success)
 				{
 					commit_sql_transaction();
@@ -370,7 +367,7 @@ namespace contract
 				{
 					rollback_sql_transaction();
 				}
-			});
+			};
 			// merge change to leveldb
 			leveldb::ReadOptions read_options;
 			leveldb::WriteOptions write_options;
@@ -449,7 +446,7 @@ namespace contract
 			jsondiff::JsonArray records;
 			auto query_sql = "select id, commit_id, change_type, contract_id from commit_info order by id desc limit 1";
 			auto status = sqlite3_exec(_sql_db, query_sql,
-									   &query_records_sql_callback, &records, &errMsg);
+				&query_records_sql_callback, &records, &errMsg);
 			if (status != SQLITE_OK)
 			{
 				std::string err_msg_str(errMsg);
@@ -475,7 +472,7 @@ namespace contract
 			// find all commits after this commit
 			bool success = false;
 			begin_sql_transaction();
-			auto cleanup = make_scope_exit([this, &success] {
+			BOOST_SCOPE_EXIT_ALL(this, &success) {
 				if (success)
 				{
 					commit_sql_transaction();
@@ -484,7 +481,7 @@ namespace contract
 				{
 					rollback_sql_transaction();
 				}
-			});
+			};
 			char *errMsg;
 			leveldb::WriteOptions write_options;
 			leveldb::ReadOptions read_options;
@@ -494,9 +491,9 @@ namespace contract
 				query_sql = "select id, commit_id, change_type, contract_id from commit_info order by id desc";
 			else
 				query_sql = std::string("select id, commit_id, change_type, contract_id from commit_info where id>") + std::to_string(commit_info->id) + " order by id desc";
-
+			
 			auto status = sqlite3_exec(_sql_db, query_sql.c_str(),
-									   &query_records_sql_callback, &records, &errMsg);
+				&query_records_sql_callback, &records, &errMsg);
 			if (status != SQLITE_OK)
 			{
 				std::string err_msg_str(errMsg);
