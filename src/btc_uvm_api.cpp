@@ -136,7 +136,22 @@ namespace uvm {
                         return 1;
                     }
                 }
-                // TODO: find in pendingState/db
+				auto service = get_contract_storage_service(L);
+				FC_ASSERT(service != nullptr);
+				auto contract = service->get_contract_info(std::string(addr));
+				if (contract)
+				{
+					for (const auto& api : contract->apis)
+					{
+						contract_info_ret->contract_apis.push_back(api);
+					}
+					for (const auto& api : contract->offline_apis)
+					{
+						if (std::find(contract_info_ret->contract_apis.begin(), contract_info_ret->contract_apis.end(), api) == contract_info_ret->contract_apis.end())
+							contract_info_ret->contract_apis.push_back(api);
+					}
+					return 1;
+				}
                 return 0;
             }
             int BtcUvmChainApi::get_stored_contract_info_by_address(lua_State *L, const char *contract_id, std::shared_ptr<UvmContractInfo> contract_info_ret)
@@ -155,12 +170,28 @@ namespace uvm {
                         }
                         for (const auto& api : code.offline_abi)
                         {
-                            contract_info_ret->contract_apis.push_back(api);
+							if (std::find(contract_info_ret->contract_apis.begin(), contract_info_ret->contract_apis.end(), api) == contract_info_ret->contract_apis.end())
+								contract_info_ret->contract_apis.push_back(api);
                         }
                         return 1;
                     }
                 }
-                // TODO: find in pendingState/db
+				auto service = get_contract_storage_service(L);
+				FC_ASSERT(service != nullptr);
+				auto contract = service->get_contract_info(std::string(contract_id));
+				if (contract)
+				{
+					for (const auto& api : contract->apis)
+					{
+						contract_info_ret->contract_apis.push_back(api);
+					}
+					for (const auto& api : contract->offline_apis)
+					{
+						if(std::find(contract_info_ret->contract_apis.begin(), contract_info_ret->contract_apis.end(), api) == contract_info_ret->contract_apis.end())
+							contract_info_ret->contract_apis.push_back(api);
+					}
+					return 1;
+				}
                 return 0;
             }
 
@@ -242,7 +273,27 @@ namespace uvm {
                         return stream;
                     }
                 }
-				// TODO: get from db
+				auto service = get_contract_storage_service(L);
+				FC_ASSERT(service != nullptr);
+				auto contract = service->get_contract_info(std::string(addr));
+				if (contract)
+				{
+					auto stream = std::make_shared<UvmModuleByteStream>();
+					if (nullptr == stream)
+						return nullptr;
+					stream->buff.resize(contract->bytecode.size());
+					memcpy(stream->buff.data(), contract->bytecode.data(), contract->bytecode.size());
+					stream->is_bytes = true;
+					stream->contract_name = "";
+					stream->contract_id = std::string(addr);
+					for (const auto& api : contract->apis)
+						stream->contract_apis.push_back(api);
+					for (const auto& offline_api : contract->offline_apis)
+						stream->offline_apis.push_back(offline_api);
+					for (const auto& p : contract->storage_types)
+						stream->contract_storage_properties[p.first] = (uvm::blockchain::StorageValueTypes) p.second;
+					return stream;
+				}
                 return nullptr;
             }
 
@@ -270,8 +321,28 @@ namespace uvm {
                         return stream;
                     }
                 }
-				// TODO: get from db
-                return nullptr;
+				auto service = get_contract_storage_service(L);
+				FC_ASSERT(service != nullptr);
+				auto contract = service->get_contract_info(std::string(address));
+				if (contract)
+				{
+					auto stream = std::make_shared<UvmModuleByteStream>();
+					if (nullptr == stream)
+						return nullptr;
+					stream->buff.resize(contract->bytecode.size());
+					memcpy(stream->buff.data(), contract->bytecode.data(), contract->bytecode.size());
+					stream->is_bytes = true;
+					stream->contract_name = "";
+					stream->contract_id = std::string(address);
+					for (const auto& api : contract->apis)
+						stream->contract_apis.push_back(api);
+					for (const auto& offline_api : contract->offline_apis)
+						stream->offline_apis.push_back(offline_api);
+					for (const auto& p : contract->storage_types)
+					 	stream->contract_storage_properties[p.first] = (uvm::blockchain::StorageValueTypes) p.second;
+					return stream;
+				}
+				return nullptr;
             }
 
             UvmStorageValue BtcUvmChainApi::get_storage_value_from_uvm(lua_State *L, const char *contract_name, std::string name)

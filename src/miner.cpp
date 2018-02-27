@@ -285,9 +285,9 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
         //therefore, this can only be triggered by using raw transactions on the staker itself
         return false;
     }
-    std::vector<ContractTransaction> qtumTransactions = resultConverter.first;
+    std::vector<ContractTransaction> contractTransactions = resultConverter.first;
     uint64_t txGas = 0;
-    for (const auto& contractTransaction : qtumTransactions) {
+    for (const auto& contractTransaction : contractTransactions) {
         txGas += contractTransaction.params.gasLimit;
         if (txGas > txGasLimit) {
             // Limit the tx gas limit by the soft limit if such a limit has been specified.
@@ -306,7 +306,7 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
 	fs::path storage_sql_db_path = GetDataDir() / CONTRACT_STORAGE_SQL_DB_PATH;
 	::contract::storage::ContractStorageService service(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
 	service.open();
-    ContractExec exec(&service, *pblock, qtumTransactions, hardBlockGasLimit);
+    ContractExec exec(&service, *pblock, contractTransactions, hardBlockGasLimit);
     if (!exec.performByteCode()) {
         //error, don't add contract
         return false;

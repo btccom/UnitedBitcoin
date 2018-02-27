@@ -1781,15 +1781,16 @@ bool ContractExec::performByteCode()
 		std::sort(contract_info.offline_apis.begin(), contract_info.offline_apis.end());
 		contract_info.code = params.code;
 		blockchain::contract::PendingState pending_state(storage_service);
-		pending_state.pending_contracts_to_create[contract_info.address] = contract_info;
+		if (tx.opcode == OP_CREATE)
+		{
+			pending_state.pending_contracts_to_create[contract_info.address] = contract_info;
+		}
+
+		engine->set_state_pointer_value("evaluator", &pending_state);
+		engine->set_state_pointer_value("storage_service", storage_service);
 
         if(tx.opcode == OP_CREATE) {
-            // save bytecode in pendingState
-            
             try {
-                engine->set_state_pointer_value("evaluator", &pending_state);
-				engine->set_state_pointer_value("storage_service", storage_service);
-                // TODO: get apis and offline_apis from contract bytecode
                 engine->execute_contract_init_by_address(params.contract_address, params.api_arg, &api_result_json_string);
             }
             catch(uvm::core::UvmException& e)
@@ -1901,7 +1902,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 stack.pop_back();
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
-                caller_address = stack.back(); // FIXME: must be same with first input's address
+                caller_address = stack.back(); // FIXME: must be same with first input's address. and this slot is caller pubkey
                 stack.pop_back();
                 bytecode = stack.back();
                 stack.pop_back();
@@ -1910,12 +1911,12 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 is_create = true;
             } break;
             case OP_CALL: {
-                // OP_CALL gasPrice gasLIMIT caller_address contract_address api_name api_arg
+                // OP_CALL gasPrice gasLimit caller_address contract_address api_name api_arg
                 gasPrice = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
-                caller_address = stack.back(); // FIXME: must be same with first input's address
+                caller_address = stack.back(); // FIXME: must be same with first input's address. and this slot is caller pubkey
                 stack.pop_back();
                 contract_address = stack.back();
                 stack.pop_back();
@@ -1956,7 +1957,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         params.api_name = ValtypeUtils::vch_to_string(api_name);
         params.api_arg = ValtypeUtils::vch_to_string(apiArg);
         params.deposit_amount = deposit_amount;
-        if(bytecode.size()>0) {
+        if(bytecode.size()>0 && is_create) {
             try {
                 params.code = ContractHelper::load_contract_from_gpc_data(bytecode);
             } catch (uvm::core::UvmException &e) {
@@ -2267,17 +2268,19 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                 new_contract_info_to_commit->id = con_tx.params.contract_address;
                 new_contract_info_to_commit->name = "";
                 new_contract_info_to_commit->bytecode = con_tx.params.code.code;
-                // sort apis and offline apis to store
 				for (const auto& api : con_tx.params.code.abi)
 				{
 					new_contract_info_to_commit->apis.push_back(api);
 				}
-				std::sort(new_contract_info_to_commit->apis.begin(), new_contract_info_to_commit->apis.end());
 				for (const auto& api : con_tx.params.code.offline_abi)
 				{
 					new_contract_info_to_commit->offline_apis.push_back(api);
 				}
-				std::sort(new_contract_info_to_commit->offline_apis.begin(), new_contract_info_to_commit->offline_apis.end());
+				for (const auto& p : con_tx.params.code.storage_properties)
+				{
+					new_contract_info_to_commit->storage_types[p.first] = p.second.value;
+				}
+				// TODO: new contract balances
                 service.save_contract_info(new_contract_info_to_commit);
             }
             // save contract invoke result

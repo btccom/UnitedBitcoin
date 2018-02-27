@@ -28,8 +28,8 @@ const char* GetTxnOutputType(txnouttype t)
     case TX_SCRIPTHASH: return "scripthash";
     case TX_MULTISIG: return "multisig";
     case TX_NULL_DATA: return "nulldata";
-        case TX_CREATE: return "createcontract";
-        case TX_CALL: return "callcontract";
+    case TX_CREATE: return "createcontract";
+    case TX_CALL: return "callcontract";
     case TX_WITNESS_V0_KEYHASH: return "witness_v0_keyhash";
     case TX_WITNESS_V0_SCRIPTHASH: return "witness_v0_scripthash";
     case TX_WITNESS_UNKNOWN: return "witness_unknown";
@@ -179,7 +179,8 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
                     uint64_t val = CScriptNum::vch_to_uint64(vch1);
                 }
                 catch (const scriptnum_error &err) {
-                    return false;
+//                    return false;
+                    break;
                 }
             }
             else if(opcode2 == OP_GAS_PRICE) {
@@ -187,7 +188,8 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
                     uint64_t val = CScriptNum::vch_to_uint64(vch1);
                 }
                 catch (const scriptnum_error &err) {
-                    return false;
+//                    return false;
+                    break;
                 }
             }
             else if(opcode2 == OP_DATA)
