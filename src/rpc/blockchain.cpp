@@ -39,8 +39,7 @@
 
 #include <contract_storage/contract_storage.hpp>
 #include <fc/crypto/base64.hpp>
-
-
+#include <boost/scope_exit.hpp>
 
 struct CUpdatedBlock
 {
@@ -1863,6 +1862,83 @@ UniValue getcreatecontractaddress(const JSONRPCRequest& request)
     return result;
 }
 
+UniValue invokecontractoffline(const JSONRPCRequest& request)
+{
+	if (request.fHelp || request.params.size() < 3)
+		throw runtime_error(
+			"invokecontractoffline \"caller_address\" \"contract_address\" \"api_name\" \"api_arg\" ( caller_address, contract_address, api_name, api_arg )\n"
+			"\nArgument:\n"
+			"1. \"caller_address\"            (string, required) The caller address\n"
+			"2. \"contract_address\"          (string, required) The contract address\n"
+			"3. \"api_name\" (string, required) The contract api name to be invoked\n"
+			"4. \"api_arg\" (string, required) The contract api argument\n"
+		);
+
+	LOCK(cs_main);
+	std::string caller_address = request.params[0].get_str();
+	if (caller_address.size()<30)
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect address");
+	// TODO: check caller_address valid, and whether has secret of it
+	std::string contract_address = request.params[1].get_str();
+	if (contract_address.size() < 40)
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect address");
+	std::string api_name = request.params[2].get_str();
+	if(api_name.empty())
+		throw JSONRPCError(RPC_INVALID_PARAMETER, "Incorrect contract api name");
+	std::string api_arg = request.params[3].get_str();
+
+	fs::path storage_db_path = GetDataDir() / CONTRACT_STORAGE_DB_PATH;
+	fs::path storage_sql_db_path = GetDataDir() / CONTRACT_STORAGE_SQL_DB_PATH;
+	::contract::storage::ContractStorageService service(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
+	service.open();
+
+	const auto& old_root_state_hash = service.current_root_state_hash();
+
+	auto contract_info = service.get_contract_info(contract_address);
+	if (!contract_info)
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Address does not exist");
+
+	BOOST_SCOPE_EXIT_ALL(&service, old_root_state_hash) {
+		service.open();
+		service.rollback_contract_state(old_root_state_hash);
+		service.close();
+	};
+
+	CBlock block;
+	CMutableTransaction tx;
+	uint64_t gas_limit = 0;
+	uint64_t gas_price = 40;
+	
+	tx.vout.push_back(CTxOut(0, CScript() << ToByteVector(api_arg) << ToByteVector(api_name) << ToByteVector(contract_address) << ToByteVector(caller_address) << gas_limit << gas_price << OP_CALL));
+	block.vtx.push_back(MakeTransactionRef(CTransaction(tx)));
+
+	std::vector<ContractTransaction> contractTransactions;
+	ContractTransaction contract_tx;
+	contract_tx.opcode = OP_CALL;
+	contract_tx.params.caller_address = caller_address;
+	contract_tx.params.caller = ""; // FIXME
+	contract_tx.params.api_name = api_name;
+	contract_tx.params.api_arg = api_arg;
+	contract_tx.params.contract_address = contract_address;
+	contract_tx.params.gasPrice = gas_price;
+	contract_tx.params.gasLimit = gas_limit;
+	contractTransactions.push_back(contract_tx);
+
+	ContractExec exec(&service, block, contractTransactions, gas_limit);
+	if (!exec.performByteCode()) {
+		//error, don't add contract
+		return false;
+	}
+	ContractExecResult execResult;
+	if (!exec.processingResults(execResult)) {
+		return false;
+	}
+
+	UniValue result(UniValue::VOBJ);
+	result.push_back(Pair("result", execResult.api_result));
+	return result;
+}
+
 /////
 
 UniValue invalidateblock(const JSONRPCRequest& request)
@@ -2067,6 +2143,7 @@ static const CRPCCommand commands[] =
 
     { "blockchain",         "getcontractinfo",        &getcontractinfo,        {"contract_address"} },
     { "blockchain",         "getcreatecontractaddress", &getcreatecontractaddress, {"contact_tx"} },
+	{ "blockchain",         "invokecontractoffline",  &invokecontractoffline,  {"caller_address", "contract_address", "api_name", "api_arg"} },
 
     /* Not shown in help */
     { "hidden",             "invalidateblock",        &invalidateblock,        {"blockhash"} },

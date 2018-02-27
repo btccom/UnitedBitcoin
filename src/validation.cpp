@@ -1832,6 +1832,7 @@ bool ContractExec::performByteCode()
         }
 
 		pending_contract_exec_result.contract_storage_changes = pending_state.contract_storage_changes;
+		pending_contract_exec_result.api_result = api_result_json_string;
 		// TODO: gas used and refund info
     }
     return true;

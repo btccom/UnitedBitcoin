@@ -148,6 +148,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "rescanblockchain", 1, "stop_height"},
     { "getcontractinfo", 1, "contract_address" },
     { "getcreatecontractaddress", 1, "tx" },
+	{ "invokecontractoffline", 4, "caller_address" },
 };
 
 class CRPCConvertTable

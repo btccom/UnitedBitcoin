@@ -610,6 +610,7 @@ struct ContractExecResult {
 //    std::vector<CTransaction> valueTransfers;
     int32_t exit_code = 0;
     std::string error_message;
+	std::string api_result;
 
     std::vector<std::pair<std::string, StorageChanges>> contract_storage_changes; // contract_id => changes
 };
