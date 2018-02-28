@@ -1748,11 +1748,9 @@ UniValue getcontractinfo(const JSONRPCRequest& request)
     std::string strAddr = request.params[0].get_str();
     if(strAddr.size() < 40)
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect address");
-    fs::path storage_db_path = GetDataDir() / CONTRACT_STORAGE_DB_PATH;
-    fs::path storage_sql_db_path = GetDataDir() / CONTRACT_STORAGE_SQL_DB_PATH;
-    ::contract::storage::ContractStorageService service(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
-    service.open();
-    auto contract_info = service.get_contract_info(strAddr);
+    auto service = get_contract_storage_service();
+    service->open();
+    auto contract_info = service->get_contract_info(strAddr);
     if(!contract_info)
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Address does not exist");
 
@@ -1887,21 +1885,19 @@ UniValue invokecontractoffline(const JSONRPCRequest& request)
 		throw JSONRPCError(RPC_INVALID_PARAMETER, "Incorrect contract api name");
 	std::string api_arg = request.params[3].get_str();
 
-	fs::path storage_db_path = GetDataDir() / CONTRACT_STORAGE_DB_PATH;
-	fs::path storage_sql_db_path = GetDataDir() / CONTRACT_STORAGE_SQL_DB_PATH;
-	::contract::storage::ContractStorageService service(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
-	service.open();
+    auto service = get_contract_storage_service();
+	service->open();
 
-	const auto& old_root_state_hash = service.current_root_state_hash();
+	const auto& old_root_state_hash = service->current_root_state_hash();
 
-	auto contract_info = service.get_contract_info(contract_address);
+	auto contract_info = service->get_contract_info(contract_address);
 	if (!contract_info)
 		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Address does not exist");
 
 	BOOST_SCOPE_EXIT_ALL(&service, old_root_state_hash) {
-		service.open();
-		service.rollback_contract_state(old_root_state_hash);
-		service.close();
+		service->open();
+		service->rollback_contract_state(old_root_state_hash);
+		service->close();
 	};
 
 	CBlock block;
@@ -1924,7 +1920,7 @@ UniValue invokecontractoffline(const JSONRPCRequest& request)
 	contract_tx.params.gasLimit = gas_limit;
 	contractTransactions.push_back(contract_tx);
 
-	ContractExec exec(&service, block, contractTransactions, gas_limit);
+	ContractExec exec(service.get(), block, contractTransactions, gas_limit);
 	if (!exec.performByteCode()) {
 		//error, don't add contract
 		return false;

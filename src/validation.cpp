@@ -2006,6 +2006,15 @@ ContractTransaction ContractTxConverter::createContractTX(const ContractTransact
     return txContract;
 }
 
+std::shared_ptr<::contract::storage::ContractStorageService> get_contract_storage_service()
+{
+	fs::path storage_db_path = GetDataDir() / CONTRACT_STORAGE_DB_PATH;
+	fs::path storage_sql_db_path = GetDataDir() / CONTRACT_STORAGE_SQL_DB_PATH;
+	auto service = std::make_shared<::contract::storage::ContractStorageService>(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
+	// TODO: set block height
+	return service;
+}
+
 static int64_t nTimeCheck = 0;
 static int64_t nTimeForks = 0;
 static int64_t nTimeVerify = 0;
@@ -2237,16 +2246,15 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
             uint256 gasAllTxs = uint256();
             uint256 sumGas = uint256();
             CAmount nTxFee = view.GetValueIn(tx) - tx.GetValueOut();
-            fs::path storage_db_path = GetDataDir() / CONTRACT_STORAGE_DB_PATH;
-            fs::path storage_sql_db_path = GetDataDir() / CONTRACT_STORAGE_SQL_DB_PATH;
-            ::contract::storage::ContractStorageService service(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
-			service.open();
-			ContractExec exec(&service, block, resultConvertContractTx.first, blockGasLimit);
-            const auto& old_root_hash = service.current_root_state_hash();
+
+            auto service = get_contract_storage_service();
+			service->open();
+			ContractExec exec(service.get(), block, resultConvertContractTx.first, blockGasLimit);
+            const auto& old_root_hash = service->current_root_state_hash();
             bool success = false;
-            BOOST_SCOPE_EXIT(&service, &old_root_hash, &success) {
+            BOOST_SCOPE_EXIT(service, &old_root_hash, &success) {
                 if(!success)
-                    service.rollback_contract_state(old_root_hash);
+                    service->rollback_contract_state(old_root_hash);
             } BOOST_SCOPE_EXIT_END
             auto execRes = exec.performByteCode();
             if(!execRes) {
@@ -2282,7 +2290,7 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
 					new_contract_info_to_commit->storage_types[p.first] = p.second.value;
 				}
 				// TODO: new contract balances
-                service.save_contract_info(new_contract_info_to_commit);
+                service->save_contract_info(new_contract_info_to_commit);
             }
             // save contract invoke result
             // save exec result transfers and storage changes
@@ -2316,7 +2324,7 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                 }
                 contract_changes->storage_changes.push_back(change);
             }
-            service.commit_contract_changes(contract_changes);
+            service->commit_contract_changes(contract_changes);
             // TODO: put balance changes
             // TODO: refund
 

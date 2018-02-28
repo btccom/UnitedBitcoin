@@ -661,6 +661,8 @@ namespace contract_utils {
     valtype contract_data_to_vch(const ContractDataValue &value);
 }
 
+std::shared_ptr<::contract::storage::ContractStorageService> get_contract_storage_service();
+
 // end contract code
 
 #endif // BITCOIN_VALIDATION_H

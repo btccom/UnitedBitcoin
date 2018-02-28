@@ -184,21 +184,19 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     nBlockMaxSize = MaxBlockSerSize;
 
 	// save old root state hash
-	fs::path storage_db_path = GetDataDir() / CONTRACT_STORAGE_DB_PATH;
-	fs::path storage_sql_db_path = GetDataDir() / CONTRACT_STORAGE_SQL_DB_PATH;
-	::contract::storage::ContractStorageService service(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
-	service.open();
-	const auto& old_root_state_hash = service.current_root_state_hash();
-	service.close();
+    auto service = get_contract_storage_service();
+	service->open();
+	const auto& old_root_state_hash = service->current_root_state_hash();
+	service->close();
     // addPriorityTxs(minGasPrice); // TODO
     int nPackagesSelected = 0;
     int nDescendantsUpdated = 0;
     addPackageTxs(nPackagesSelected, nDescendantsUpdated, minGasPrice);
 
 	// rollback root state hash
-	service.open();
-	service.rollback_contract_state(old_root_state_hash);
-	service.close();
+	service->open();
+	service->rollback_contract_state(old_root_state_hash);
+	service->close();
 
     //this should already be populated by AddBlock in case of contracts, but if no contracts
     //then it won't get populated
@@ -302,11 +300,9 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
             return false;
         }
     }
-	fs::path storage_db_path = GetDataDir() / CONTRACT_STORAGE_DB_PATH;
-	fs::path storage_sql_db_path = GetDataDir() / CONTRACT_STORAGE_SQL_DB_PATH;
-	::contract::storage::ContractStorageService service(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
-	service.open();
-    ContractExec exec(&service, *pblock, contractTransactions, hardBlockGasLimit);
+    auto service = get_contract_storage_service();
+	service->open();
+    ContractExec exec(service.get(), *pblock, contractTransactions, hardBlockGasLimit);
     if (!exec.performByteCode()) {
         //error, don't add contract
         return false;
