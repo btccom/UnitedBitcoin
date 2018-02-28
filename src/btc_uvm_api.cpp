@@ -366,6 +366,7 @@ namespace uvm {
 				auto evaluator = get_evaluator(L);
 				if (!evaluator)
 					return true;
+				jsondiff::JsonDiff differ;
 				for (const auto& pair : changes)
 				{
 					const auto& contract_id = pair.first;
@@ -377,7 +378,10 @@ namespace uvm {
 					{
 						const auto& storage_name = it->first;
 						const auto& storage_change = it->second;
-						changes[storage_name] = storage_change.diff.value();
+						if (storage_change.diff.is_undefined())
+							changes[storage_name] = differ.diff(uvm_storage_value_to_json(storage_change.before), uvm_storage_value_to_json(storage_change.after))->value();
+						else
+							changes[storage_name] = storage_change.diff.value();
 					}
 					evaluator->contract_storage_changes.push_back(std::make_pair(contract_id, std::make_shared<jsondiff::DiffResult>(changes)));
 				}

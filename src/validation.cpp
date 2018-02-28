@@ -3962,8 +3962,10 @@ bool TestBlockValidity(CValidationState& state, const CChainParams& chainparams,
         return error("%s: Consensus::CheckBlock: %s", __func__, FormatStateMessage(state));
     if (!ContextualCheckBlock(block, state, chainparams.GetConsensus(), pindexPrev))
         return error("%s: Consensus::ContextualCheckBlock: %s", __func__, FormatStateMessage(state));
-    if (!ConnectBlock(block, state, &indexDummy, viewNew, chainparams, true))
-        return false;
+	if (!ConnectBlock(block, state, &indexDummy, viewNew, chainparams, true))
+	{
+		return false;
+	}
     assert(state.IsValid());
 
     return true;
