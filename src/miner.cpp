@@ -276,7 +276,7 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
     uint64_t nBlockWeight = this->nBlockWeight;
     uint64_t nBlockSize = this->nBlockSize;
     uint64_t nBlockSigOpsCost = this->nBlockSigOpsCost;
-    ContractTxConverter convert(iter->GetTx(), NULL, &pblock->vtx);
+    ContractTxConverter convert(iter->GetTx(), nullptr, &pblock->vtx);
     ExtractContractTX resultConverter;
     if (!convert.extractionContractTransactions(resultConverter)) {
         //this check already happens when accepting txs into mempool

@@ -622,7 +622,7 @@ struct ContractExecResult {
 
 class ContractTxConverter {
 public:
-    ContractTxConverter(CTransaction tx, CCoinsViewCache *v = nullptr, const std::vector<CTransactionRef>* blockTxs=nullptr)
+    ContractTxConverter(CTransaction tx, CCoinsViewCache *v, const std::vector<CTransactionRef>* blockTxs=nullptr)
             : txBitcoin(tx), view(v), blockTransactions(blockTxs)
     {}
     // extract contract tx from bitcoin tx info

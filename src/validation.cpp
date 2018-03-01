@@ -1890,6 +1890,50 @@ bool ContractTxConverter::receiveStack(const CScript& scriptPubKey) {
     }
     return true;
 }
+
+static std::string GetSenderAddress(const CTransaction& tx, const CCoinsViewCache* coinsView, const std::vector<CTransactionRef>* blockTxs) {
+	CScript script;
+	bool scriptFilled = false; //can't use script.empty() because an empty script is technically valid
+
+							   // First check the current (or in-progress) block for zero-confirmation change spending that won't yet be in txindex
+	if (blockTxs) {
+		for (auto btx : *blockTxs) {
+			if (btx->GetHash() == tx.vin[0].prevout.hash) {
+				script = btx->vout[tx.vin[0].prevout.n].scriptPubKey;
+				scriptFilled = true;
+				break;
+			}
+		}
+	}
+	if (!scriptFilled && coinsView) {
+		script = coinsView->AccessCoin(tx.vin[0].prevout).out.scriptPubKey;
+		scriptFilled = true;
+	}
+	if (!scriptFilled)
+	{
+		CTransactionRef txPrevout;
+		uint256 hashBlock;
+		if (GetTransaction(tx.vin[0].prevout.hash, txPrevout, Params().GetConsensus(), hashBlock, true)) {
+			script = txPrevout->vout[tx.vin[0].prevout.n].scriptPubKey;
+		}
+		else {
+			LogPrintf("Error fetching transaction details of tx %s. This will probably cause more errors", tx.vin[0].prevout.hash.ToString());
+			return "";
+		}
+	}
+
+	CTxDestination addressBit;
+	if (ExtractDestination(script, addressBit)) {
+		if (addressBit.type() == typeid(CKeyID)) {
+			return EncodeDestination(addressBit);
+			// CKeyID senderAddress(boost::get<CKeyID>(addressBit));
+			// return valtype(senderAddress.begin(), senderAddress.end());
+		}
+	}
+	//prevout is not a standard transaction format, so just return 0
+	return "";
+}
+
 bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& params, size_t contract_op_vout_index) {
     try{
         uint64_t gasLimit = 0;
@@ -1970,8 +2014,29 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
             return false;
         }
 
-        // TODO: check caller_address in vin owners(signed in tx). must be same with first input's address
+        // check caller_address in vin owners(signed in tx). must be same with first input's address
+		if (txBitcoin.vin.empty())
+			return false;
+		std::string sender_address;
+		if (view)
+		{
+			Coin first_coin;
+			const auto& first_vin = txBitcoin.vin[0];
+			view->GetCoin(first_vin.prevout, first_coin);
+			const auto& first_coin_script_pub_key = first_coin.out.scriptPubKey;
+			CTxDestination first_vin_address;
+			bool fValidAddress = ExtractDestination(first_coin_script_pub_key, first_vin_address);
 
+			if (!fValidAddress)
+				return false;
+			sender_address = EncodeDestination(first_vin_address);
+		}
+		else
+		{
+			sender_address = GetSenderAddress(txBitcoin, view, blockTransactions);
+		}
+		if (sender_address != params.caller_address)
+			return false;
 
         params.caller = "";
         params.api_name = ValtypeUtils::vch_to_string(api_name);
