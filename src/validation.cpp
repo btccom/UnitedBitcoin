@@ -2017,26 +2017,29 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         // check caller_address in vin owners(signed in tx). must be same with first input's address
 		if (txBitcoin.vin.empty())
 			return false;
-		std::string sender_address;
-		if (view)
+		if (!ignore_sender_check)
 		{
-			Coin first_coin;
-			const auto& first_vin = txBitcoin.vin[0];
-			view->GetCoin(first_vin.prevout, first_coin);
-			const auto& first_coin_script_pub_key = first_coin.out.scriptPubKey;
-			CTxDestination first_vin_address;
-			bool fValidAddress = ExtractDestination(first_coin_script_pub_key, first_vin_address);
+			std::string sender_address;
+			if (view)
+			{
+				Coin first_coin;
+				const auto& first_vin = txBitcoin.vin[0];
+				view->GetCoin(first_vin.prevout, first_coin);
+				const auto& first_coin_script_pub_key = first_coin.out.scriptPubKey;
+				CTxDestination first_vin_address;
+				bool fValidAddress = ExtractDestination(first_coin_script_pub_key, first_vin_address);
 
-			if (!fValidAddress)
+				if (!fValidAddress)
+					return false;
+				sender_address = EncodeDestination(first_vin_address);
+			}
+			else
+			{
+				sender_address = GetSenderAddress(txBitcoin, view, blockTransactions);
+			}
+			if (sender_address != params.caller_address)
 				return false;
-			sender_address = EncodeDestination(first_vin_address);
 		}
-		else
-		{
-			sender_address = GetSenderAddress(txBitcoin, view, blockTransactions);
-		}
-		if (sender_address != params.caller_address)
-			return false;
 
         params.caller = "";
         params.api_name = ValtypeUtils::vch_to_string(api_name);

@@ -1830,7 +1830,7 @@ UniValue getcreatecontractaddress(const JSONRPCRequest& request)
         CBlock block;
         block.vtx.push_back(MakeTransactionRef(txConst));
         CCoinsViewCache &view = *pcoinsTip;
-        ContractTxConverter converter(txConst, &view, &block.vtx);
+        ContractTxConverter converter(txConst, &view, &block.vtx, true);
         ExtractContractTX resultConvertContractTx;
         if (!converter.extractionContractTransactions(resultConvertContractTx)) {
             throw runtime_error("decode contract tx failed");

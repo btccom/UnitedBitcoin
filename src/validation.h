@@ -622,8 +622,8 @@ struct ContractExecResult {
 
 class ContractTxConverter {
 public:
-    ContractTxConverter(CTransaction tx, CCoinsViewCache *v, const std::vector<CTransactionRef>* blockTxs=nullptr)
-            : txBitcoin(tx), view(v), blockTransactions(blockTxs)
+    ContractTxConverter(CTransaction tx, CCoinsViewCache *v, const std::vector<CTransactionRef>* blockTxs=nullptr, bool _ignore_sender_check=false)
+            : txBitcoin(tx), view(v), blockTransactions(blockTxs), ignore_sender_check(_ignore_sender_check)
     {}
     // extract contract tx from bitcoin tx info
     bool extractionContractTransactions(ExtractContractTX& contractTx);
@@ -639,6 +639,7 @@ private:
     std::vector<valtype> stack;
     opcodetype opcode;
     const std::vector<CTransactionRef> *blockTransactions;
+	bool ignore_sender_check;
 };
 
 class ContractExec {
