@@ -1764,6 +1764,12 @@ bool ContractExec::performByteCode()
     {
         blockchain::contract_engine::ContractEngineBuilder engine_builder;
         const auto &params = tx.params;
+        if(params.version != CONTRACT_MAJOR_VERSION) // now only support specific contract verion
+        {
+            pending_contract_exec_result.exit_code = 1;
+            pending_contract_exec_result.error_message = "contract version invalid";
+            return false;
+        }
         const auto &caller = params.caller;
         const auto &caller_address = params.caller_address;
         engine_builder.set_caller(caller, caller_address);
@@ -1874,11 +1880,11 @@ bool ContractTxConverter::receiveStack(const CScript& scriptPubKey) {
     CScript scriptRest(stack.back().begin(), stack.back().end());
     stack.pop_back();
     opcode = (opcodetype)(*scriptRest.begin());
-    // FIXME: check contract opcode and operands format
-    if((opcode == OP_CREATE && stack.size() < 4) || (opcode == OP_CALL && stack.size() < 6)
-       || (opcode == OP_UPGRADE && stack.size() < 6)
-       || (opcode == OP_DESTROY && stack.size() < 4)
-       || (opcode == OP_DEPOSIT_TO_CONTRACT && stack.size() < 2)){
+    // check contract opcode and operands format
+    if((opcode == OP_CREATE && stack.size() < 5) || (opcode == OP_CALL && stack.size() < 7)
+       || (opcode == OP_UPGRADE && stack.size() < 7)
+       || (opcode == OP_DESTROY && stack.size() < 5)
+       || (opcode == OP_DEPOSIT_TO_CONTRACT && stack.size() < 3)){
         stack.clear();
         return false;
     }
@@ -1886,16 +1892,17 @@ bool ContractTxConverter::receiveStack(const CScript& scriptPubKey) {
 }
 bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& params, size_t contract_op_vout_index) {
     try{
-        uint64_t gasLimit;
-        uint64_t gasPrice;
+        uint64_t gasLimit = 0;
+        uint64_t gasPrice = 0;
         valtype apiArg;
         valtype api_name;
         valtype caller_address;
         valtype bytecode;
         valtype contract_address;
-        uint64_t deposit_amount;
+        uint64_t deposit_amount = 0;
+        uint32_t version = 0;
         bool is_create = false;
-        // TODO: get contract args from stack
+        // get contract args from stack
         switch (opcode) {
             case OP_CREATE: {
                 // OP_CREATE gasPrice gasLimit caller_address contractData
@@ -1903,12 +1910,12 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 stack.pop_back();
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
-                caller_address = stack.back(); // FIXME: must be same with first input's address. and this slot is caller pubkey
+                caller_address = stack.back();
                 stack.pop_back();
                 bytecode = stack.back();
                 stack.pop_back();
-                // TODO: check caller in vin addresses
-                // TODO: generate contract address
+                version = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
                 is_create = true;
             } break;
             case OP_CALL: {
@@ -1917,7 +1924,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 stack.pop_back();
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
-                caller_address = stack.back(); // FIXME: must be same with first input's address. and this slot is caller pubkey
+                caller_address = stack.back();
                 stack.pop_back();
                 contract_address = stack.back();
                 stack.pop_back();
@@ -1925,7 +1932,8 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 stack.pop_back();
                 apiArg = stack.back();
                 stack.pop_back();
-                // TODO: check caller in vin addresses
+                version = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
             } break;
             case OP_DEPOSIT_TO_CONTRACT: {
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
@@ -1936,7 +1944,8 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 stack.pop_back();
                 caller_address = stack.back();
                 stack.pop_back();
-                // TODO: check caller in vin addresses
+                version = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
             } break;
             case OP_SPEND: {
                 // to_address = stack.back();
@@ -1944,17 +1953,27 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 stack.pop_back();
             }
             default: {
-                // TODO: set error
                 return false;
             }
         }
-//        if(stack.back().size() > 4) { // FIXME
-//            return false;
-//        }
+        params.version = version;
         params.gasLimit = gasLimit;
+        if(params.gasLimit < 0)
+            return false;
         params.gasPrice = gasPrice;
+        if(params.gasPrice <= 0)
+            return false;
         params.caller_address = ValtypeUtils::vch_to_string(caller_address);
-        // TODO: set caller
+        CBitcoinAddress caller_addr_obj(params.caller_address);
+        if(!caller_addr_obj.IsValid())
+        {
+            return false;
+        }
+
+        // TODO: check caller_address in vin owners(signed in tx). must be same with first input's address
+
+
+        params.caller = "";
         params.api_name = ValtypeUtils::vch_to_string(api_name);
         params.api_arg = ValtypeUtils::vch_to_string(apiArg);
         params.deposit_amount = deposit_amount;
@@ -1991,6 +2010,7 @@ ContractTransaction ContractTxConverter::createContractTX(const ContractTransact
     params.gasLimit = etp.gasLimit;
     params.gasPrice = etp.gasPrice;
     params.code = etp.code;
+    params.version = etp.version;
     txContract.opcode = opcode;
     // TODO: check etp by different opcode value, eg. OP_CREATE can't contains
     if (etp.contract_address == "" && opcode != OP_CALL){
@@ -2011,7 +2031,8 @@ std::shared_ptr<::contract::storage::ContractStorageService> get_contract_storag
 	fs::path storage_db_path = GetDataDir() / CONTRACT_STORAGE_DB_PATH;
 	fs::path storage_sql_db_path = GetDataDir() / CONTRACT_STORAGE_SQL_DB_PATH;
 	auto service = std::make_shared<::contract::storage::ContractStorageService>(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
-	// TODO: set block height
+	auto chain_height = chainActive.Height();
+	service->set_current_block_height(chain_height);
 	return service;
 }
 
@@ -2276,6 +2297,7 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                 auto new_contract_info_to_commit = std::make_shared<::contract::storage::ContractInfo>();
                 new_contract_info_to_commit->id = con_tx.params.contract_address;
                 new_contract_info_to_commit->name = "";
+                new_contract_info_to_commit->version = con_tx.params.version;
                 new_contract_info_to_commit->bytecode = con_tx.params.code.code;
 				for (const auto& api : con_tx.params.code.abi)
 				{

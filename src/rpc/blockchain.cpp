@@ -1904,8 +1904,10 @@ UniValue invokecontractoffline(const JSONRPCRequest& request)
 	CMutableTransaction tx;
 	uint64_t gas_limit = 0;
 	uint64_t gas_price = 40;
-	
-	tx.vout.push_back(CTxOut(0, CScript() << ToByteVector(api_arg) << ToByteVector(api_name) << ToByteVector(contract_address) << ToByteVector(caller_address) << gas_limit << gas_price << OP_CALL));
+
+	valtype version;
+	version.push_back(0x01);
+	tx.vout.push_back(CTxOut(0, CScript() << version << ToByteVector(api_arg) << ToByteVector(api_name) << ToByteVector(contract_address) << ToByteVector(caller_address) << gas_limit << gas_price << OP_CALL));
 	block.vtx.push_back(MakeTransactionRef(CTransaction(tx)));
 
 	std::vector<ContractTransaction> contractTransactions;
@@ -1918,6 +1920,7 @@ UniValue invokecontractoffline(const JSONRPCRequest& request)
 	contract_tx.params.contract_address = contract_address;
 	contract_tx.params.gasPrice = gas_price;
 	contract_tx.params.gasLimit = gas_limit;
+	contract_tx.params.version = CONTRACT_MAJOR_VERSION;
 	contractTransactions.push_back(contract_tx);
 
 	ContractExec exec(service.get(), block, contractTransactions, gas_limit);

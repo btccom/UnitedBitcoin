@@ -193,6 +193,7 @@ enum opcodetype
     OP_GAS_PRICE = 0xf5,
     OP_GAS_LIMIT = 0xf6,
     OP_DATA = 0xf7,
+    OP_VERSION = 0xf8,
 
     OP_SMALLINTEGER = 0xfa,
     OP_PUBKEYS = 0xfb,

@@ -150,6 +150,7 @@ const char* GetOpName(opcodetype opcode)
     case OP_GAS_PRICE: return "OP_GAS_PRICE";
     case OP_GAS_LIMIT: return "OP_GAS_LIMIT";
     case OP_DATA: return "OP_DATA";
+    case OP_VERSION: return "OP_VERSION";
 
     case OP_INVALIDOPCODE          : return "OP_INVALIDOPCODE";
 

@@ -7,6 +7,8 @@
 
 #include <pubkey.h>
 #include <script/script.h>
+#include <policy/policy.h>
+#include <validation.h>
 #include <util.h>
 #include <utilstrencodings.h>
 
@@ -53,9 +55,9 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
         mTemplates.insert(std::make_pair(TX_MULTISIG, CScript() << OP_SMALLINTEGER << OP_PUBKEYS << OP_SMALLINTEGER << OP_CHECKMULTISIG));
 
         // Contract creation tx
-        mTemplates.insert(std::make_pair(TX_CREATE, CScript() << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_CREATE));
+        mTemplates.insert(std::make_pair(TX_CREATE, CScript() << OP_VERSION << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_CREATE));
         // Call contract tx
-        mTemplates.insert(std::make_pair(TX_CALL, CScript() << OP_DATA << OP_DATA << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_CALL));
+        mTemplates.insert(std::make_pair(TX_CALL, CScript() << OP_VERSION << OP_DATA << OP_DATA << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_CALL));
     }
 
     vSolutionsRet.clear();
@@ -111,6 +113,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
 
         opcodetype opcode1, opcode2;
         std::vector<unsigned char> vch1, vch2;
+        uint32_t version = 0; // invalid contract version
 
         // Compare
         CScript::const_iterator pc1 = script1.begin();
@@ -174,14 +177,29 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
                 else
                     break;
             }
+            // contract code
+            else if (opcode2 == OP_VERSION)
+            {
+                if(vch1.empty() || vch1.size() > 4)
+                    break;
+                version = CScriptNum::vch_to_uint64(vch1);
+                if(version != CONTRACT_MAJOR_VERSION){
+                    // only allow standard uvm and no-exec transactions to live in mempool
+                    break;
+                }
+            }
             else if(opcode2 == OP_GAS_LIMIT) {
                 try {
                     uint64_t val = CScriptNum::vch_to_uint64(vch1);
+                    if(val > DEFAULT_BLOCK_GAS_LIMIT)
+                        break;
                 }
                 catch (const scriptnum_error &err) {
 //                    return false;
                     break;
                 }
+                if(version != CONTRACT_MAJOR_VERSION)
+                    break;
             }
             else if(opcode2 == OP_GAS_PRICE) {
                 try {
@@ -191,6 +209,8 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
 //                    return false;
                     break;
                 }
+                if(version != CONTRACT_MAJOR_VERSION)
+                    break;
             }
             else if(opcode2 == OP_DATA)
             {
@@ -200,6 +220,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
                         break;
                 }
             }
+            // end contract code
             else if (opcode1 != opcode2 || vch1 != vch2)
             {
                 // Others must match exactly

@@ -57,6 +57,10 @@ struct LockPoints;
 #define CONTRACT_STORAGE_DB_PATH "contract_storage.db"
 #define CONTRACT_STORAGE_SQL_DB_PATH "contract_storage_sql.db"
 
+#define CONTRACT_MAJOR_VERSION 1
+#define CONTRACT_MINOR_VERSION 0
+#define CONTRACT_VERSION_STRING CONTRACT_MAJOR_VERSION "." CONTRACT_MINOR_VERSION
+
 static const uint32_t CONTRACT_STORAGE_MAGIC_NUMBER = 34125;
 /** Default for -whitelistrelay. */
 static const bool DEFAULT_WHITELISTRELAY = true;
@@ -575,6 +579,7 @@ struct ContractTransactionParams {
     std::string api_name;
     std::string api_arg;
     uint64_t deposit_amount = 0;
+    uint32_t version = 0;
 };
 
 struct ContractTransaction {
