@@ -194,6 +194,7 @@ enum opcodetype
     OP_GAS_LIMIT = 0xf6,
     OP_DATA = 0xf7,
     OP_VERSION = 0xf8,
+    OP_ROOT_STATE_HASH = 0xf9,
 
     OP_SMALLINTEGER = 0xfa,
     OP_PUBKEYS = 0xfb,
@@ -746,6 +747,11 @@ public:
         std::string str(str_chars.begin(), str_chars.end());
         return str;
     }
+	static std::vector<unsigned char> string_to_vch(const std::string& str) {
+        std::vector<unsigned char> data(str.size());
+		memcpy(data.data(), str.c_str(), str.size());
+		return data;
+	}
 };
 
 #endif // BITCOIN_SCRIPT_SCRIPT_H

@@ -172,7 +172,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     coinbaseTx.vout[0].nValue = nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus());
     coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
     originalRewardTx = coinbaseTx;
-    pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
+    pblock->vtx[0] = MakeTransactionRef(coinbaseTx);
 
     //////////////////////////////////////////////////////// contract
     minGasPrice = DEFAULT_MIN_GAS_PRICE;
@@ -193,8 +193,14 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     int nDescendantsUpdated = 0;
     addPackageTxs(nPackagesSelected, nDescendantsUpdated, minGasPrice);
 
+    service->open();
+    const auto& root_state_hash_after_add_txs = service->current_root_state_hash();
+    coinbaseTx.vout.resize(2);
+    coinbaseTx.vout[1].scriptPubKey = CScript() << ValtypeUtils::string_to_vch(root_state_hash_after_add_txs) << OP_ROOT_STATE_HASH;
+    coinbaseTx.vout[1].nValue = 0;
+    pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
+
 	// rollback root state hash
-	service->open();
 	service->rollback_contract_state(old_root_state_hash);
 	service->close();
 

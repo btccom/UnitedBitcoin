@@ -68,7 +68,8 @@ enum txnouttype
 
     // contract tx
     TX_CREATE,
-    TX_CALL
+    TX_CALL,
+    TX_ROOT_STATE_HASH
 };
 
 class CNoDestination {
