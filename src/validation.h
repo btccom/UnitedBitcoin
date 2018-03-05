@@ -36,6 +36,7 @@
 #include <utility>
 #include <vector>
 #include <memory>
+#include <iostream>
 
 #include <atomic>
 
@@ -650,6 +651,7 @@ public:
     bool performByteCode();
     bool processingResults(ContractExecResult &result);
     std::vector<ResultExecute>& getResult() {return result;}
+    bool commit_changes(std::shared_ptr<::contract::storage::ContractStorageService> service);
 private:
     // TODO: build contract execute environment
 	::contract::storage::ContractStorageService* storage_service;

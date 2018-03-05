@@ -1851,6 +1851,69 @@ bool ContractExec::processingResults(ContractExecResult &result)
     return true;
 }
 
+bool ContractExec::commit_changes(std::shared_ptr<::contract::storage::ContractStorageService> service)
+{
+	if (txs.size() > 0 && txs[0].opcode == OP_CREATE)
+	{
+		// save contract info
+		const auto& con_tx = txs[0];
+		auto new_contract_info_to_commit = std::make_shared<::contract::storage::ContractInfo>();
+		new_contract_info_to_commit->id = con_tx.params.contract_address;
+		new_contract_info_to_commit->name = "";
+		new_contract_info_to_commit->version = con_tx.params.version;
+		new_contract_info_to_commit->bytecode = con_tx.params.code.code;
+		for (const auto& api : con_tx.params.code.abi)
+		{
+			new_contract_info_to_commit->apis.push_back(api);
+		}
+		for (const auto& api : con_tx.params.code.offline_abi)
+		{
+			new_contract_info_to_commit->offline_apis.push_back(api);
+		}
+		for (const auto& p : con_tx.params.code.storage_properties)
+		{
+			new_contract_info_to_commit->storage_types[p.first] = p.second.value;
+		}
+		// TODO: new contract balances
+		service->save_contract_info(new_contract_info_to_commit);
+	}
+	// save contract invoke result
+	// save exec result transfers and storage changes
+	auto contract_changes = std::make_shared<::contract::storage::ContractChanges>();
+	for (const auto& p : pending_contract_exec_result.contract_storage_changes)
+	{
+		const auto& contract_id = p.first;
+		const auto& changes = p.second;
+		if (!changes || changes->is_undefined())
+			continue;
+		const auto& changes_values = changes->value();
+		if (!changes_values.is_object())
+			continue;
+		const auto& changes_value_items = changes_values.as<jsondiff::JsonObject>();
+		::contract::storage::ContractStorageChange change;
+		change.contract_id = contract_id;
+		// ordered iterate changes_value_items keys
+		std::list<std::string> changed_storage_names;
+		for (auto it = changes_value_items.begin(); it != changes_value_items.end(); it++)
+		{
+			changed_storage_names.push_back(it->key());
+		}
+		changed_storage_names.sort();
+		for (const auto& storage_name : changed_storage_names)
+		{
+			const auto& storage_item_changes = changes_value_items[storage_name];
+			::contract::storage::ContractStorageItemChange item_change;
+			item_change.name = storage_name;
+			item_change.diff = std::make_shared<jsondiff::DiffResult>(storage_item_changes);
+			change.items.push_back(item_change);
+		}
+		contract_changes->storage_changes.push_back(change);
+	}
+	service->commit_contract_changes(contract_changes);
+	// TODO: put balance changes
+	return true;
+}
+
 bool ContractTxConverter::extractionContractTransactions(ExtractContractTX& contractTx) {
     std::vector<ContractTransaction> resultTX;
     std::vector<ContractTransactionParams> resultETP;
@@ -2249,11 +2312,49 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
     blockundo.vtxundo.reserve(block.vtx.size() - 1);
     std::vector<PrecomputedTransactionData> txdata;
     txdata.reserve(block.vtx.size()); // Required so that pointers to individual PrecomputedTransactionData don't get invalidated
+
+	CBlockIndex* pindexPrev = chainActive.Tip();
+	auto nHeight = pindexPrev->nHeight + 1;
+
+	std::string block_root_state_hash;
+	bool allow_contract = nHeight >= Params().GetConsensus().UBCONTRACT_Height;
+
+    auto service = get_contract_storage_service();
+    service->open();
+
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
         const CTransaction &tx = *(block.vtx[i]);
 
         nInputs += tx.vin.size();
+
+        // TODO: when is coinbase tx and nHeight > params.contractHeight, check root state hash
+        if(allow_contract) {
+            if(tx.IsCoinBase())
+            {
+				bool found_root_state_hash = false;
+				for (const auto& txout : tx.vout)
+				{
+					txnouttype whichType;
+					std::vector<std::vector<unsigned char> > vSolutions;
+					if (!Solver(txout.scriptPubKey, whichType, vSolutions))
+						return false;
+					if (whichType == TX_ROOT_STATE_HASH)
+					{
+						if (vSolutions.empty())
+						{
+							return state.DoS(100, error("can't find root state hash in block"), REJECT_INVALID, "invalid-block-root-state-hash");
+						}
+						block_root_state_hash = ValtypeUtils::vch_to_string(vSolutions[0]);
+						found_root_state_hash = true;
+					}
+				}
+				if (!found_root_state_hash)
+				{
+					return state.DoS(100, error("can't find root state hash in block"), REJECT_INVALID, "invalid-block-root-state-hash");
+				}
+            }
+        }
 
         if (!tx.IsCoinBase())
         {
@@ -2336,8 +2437,6 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
             uint256 sumGas = uint256();
             CAmount nTxFee = view.GetValueIn(tx) - tx.GetValueOut();
 
-            auto service = get_contract_storage_service();
-			service->open();
 			ContractExec exec(service.get(), block, resultConvertContractTx.first, blockGasLimit);
             const auto& old_root_hash = service->current_root_state_hash();
             bool success = false;
@@ -2357,65 +2456,12 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                 return state.DoS(100,
                                  error("ConnectBlock(): exec bytecode error"),
                                  REJECT_INVALID, exec.pending_contract_exec_result.error_message);
-            // if is create contract, store contract info to db(if vout is deleted, need rollback)
-            if(resultConvertContractTx.first[0].opcode == OP_CREATE)
-            {
-                // save contract info
-                const auto& con_tx = resultConvertContractTx.first[0];
-                auto new_contract_info_to_commit = std::make_shared<::contract::storage::ContractInfo>();
-                new_contract_info_to_commit->id = con_tx.params.contract_address;
-                new_contract_info_to_commit->name = "";
-                new_contract_info_to_commit->version = con_tx.params.version;
-                new_contract_info_to_commit->bytecode = con_tx.params.code.code;
-				for (const auto& api : con_tx.params.code.abi)
-				{
-					new_contract_info_to_commit->apis.push_back(api);
-				}
-				for (const auto& api : con_tx.params.code.offline_abi)
-				{
-					new_contract_info_to_commit->offline_apis.push_back(api);
-				}
-				for (const auto& p : con_tx.params.code.storage_properties)
-				{
-					new_contract_info_to_commit->storage_types[p.first] = p.second.value;
-				}
-				// TODO: new contract balances
-                service->save_contract_info(new_contract_info_to_commit);
-            }
-            // save contract invoke result
-            // save exec result transfers and storage changes
-            auto contract_changes = std::make_shared<::contract::storage::ContractChanges>();
-            for(const auto& p : contract_exec_result.contract_storage_changes)
-            {
-                const auto& contract_id = p.first;
-                const auto& changes = p.second;
-                if(!changes || changes->is_undefined())
-                    continue;
-                const auto& changes_values = changes->value();
-                if(!changes_values.is_object())
-                    continue;
-                const auto& changes_value_items = changes_values.as<jsondiff::JsonObject>();
-                ::contract::storage::ContractStorageChange change;
-                change.contract_id = contract_id;
-                // ordered iterate changes_value_items keys
-                std::list<std::string> changed_storage_names;
-                for(auto it=changes_value_items.begin();it!=changes_value_items.end();it++)
-                {
-                    changed_storage_names.push_back(it->key());
-                }
-                changed_storage_names.sort();
-                for(const auto& storage_name : changed_storage_names)
-                {
-                    const auto& storage_item_changes = changes_value_items[storage_name];
-                    ::contract::storage::ContractStorageItemChange item_change;
-                    item_change.name = storage_name;
-                    item_change.diff = std::make_shared<jsondiff::DiffResult>(storage_item_changes);
-                    change.items.push_back(item_change);
-                }
-                contract_changes->storage_changes.push_back(change);
-            }
-            service->commit_contract_changes(contract_changes);
-            // TODO: put balance changes
+
+            if(!exec.commit_changes(service))
+                return state.DoS(100,
+                                 error("ConnectBlock(): commit contract result error"),
+                                 REJECT_INVALID, exec.pending_contract_exec_result.error_message);
+
             // TODO: refund
 
             for(ContractTransaction &ctx : resultConvertContractTx.first) {
@@ -2453,6 +2499,13 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
 
     if (fJustCheck)
         return true;
+
+    const auto& end_root_state_hash = service->current_root_state_hash();
+    if(allow_contract)
+    {
+        if(end_root_state_hash != block_root_state_hash)
+            return state.DoS(100, error("block contract txs result state not matched with block root state hash"), REJECT_INVALID, "block-root-state-hash-invalid-after-contract-exec");
+    }
 
     // Write undo information to disk
     if (pindex->GetUndoPos().IsNull() || !pindex->IsValid(BLOCK_VALID_SCRIPTS))

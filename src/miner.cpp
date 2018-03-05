@@ -31,6 +31,7 @@
 #include <queue>
 #include <utility>
 
+#include <boost/scope_exit.hpp>
 #include <contract_storage/contract_storage.hpp>
 
 //////////////////////////////////////////////////////////////////////////////
@@ -194,11 +195,14 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     addPackageTxs(nPackagesSelected, nDescendantsUpdated, minGasPrice);
 
     service->open();
-    const auto& root_state_hash_after_add_txs = service->current_root_state_hash();
-    coinbaseTx.vout.resize(2);
-    coinbaseTx.vout[1].scriptPubKey = CScript() << ValtypeUtils::string_to_vch(root_state_hash_after_add_txs) << OP_ROOT_STATE_HASH;
-    coinbaseTx.vout[1].nValue = 0;
-    pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
+    if(nHeight >= Params().GetConsensus().UBCONTRACT_Height) {
+        const auto &root_state_hash_after_add_txs = service->current_root_state_hash();
+        coinbaseTx.vout.resize(2);
+        coinbaseTx.vout[1].scriptPubKey =
+                CScript() << ValtypeUtils::string_to_vch(root_state_hash_after_add_txs) << OP_ROOT_STATE_HASH;
+        coinbaseTx.vout[1].nValue = 0;
+        pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
+    }
 
 	// rollback root state hash
 	service->rollback_contract_state(old_root_state_hash);
@@ -308,7 +312,13 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
     }
     auto service = get_contract_storage_service();
 	service->open();
+	const auto& old_root_state_hash = service->current_root_state_hash();
     ContractExec exec(service.get(), *pblock, contractTransactions, hardBlockGasLimit);
+	bool success = false;
+	BOOST_SCOPE_EXIT_ALL(&service, &success, &old_root_state_hash) {
+		if(!success)
+			service->rollback_contract_state(old_root_state_hash);
+	};
     if (!exec.performByteCode()) {
         //error, don't add contract
         return false;
@@ -321,6 +331,10 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
         //if this transaction could cause block gas limit to be exceeded, then don't add it
         return false;
     }
+    // commit changes than can generate new root state hash
+    if(!exec.commit_changes(service))
+        return false;
+
     //apply contractTx costs to local state
     if (fNeedSizeAccounting) {
         nBlockSize += ::GetSerializeSize(iter->GetTx(), SER_NETWORK, PROTOCOL_VERSION);
@@ -390,6 +404,7 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
 //    RebuildRefundTransaction(); // TODO:
     this->nBlockSigOpsCost += GetLegacySigOpCount(*pblock->vtx[0]);
     // bceResult.valueTransfers.clear();
+	success = true;
     return true;
 }
 

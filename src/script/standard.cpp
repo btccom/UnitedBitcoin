@@ -190,12 +190,14 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
                     // only allow standard uvm and no-exec transactions to live in mempool
                     break;
                 }
+				vSolutionsRet.push_back(CScriptNum(version).getvch());
             }
             else if(opcode2 == OP_GAS_LIMIT) {
                 try {
                     uint64_t val = CScriptNum::vch_to_uint64(vch1);
                     if(val > DEFAULT_BLOCK_GAS_LIMIT)
                         break;
+					vSolutionsRet.push_back(CScriptNum(val).getvch());
                 }
                 catch (const scriptnum_error &err) {
 //                    return false;
@@ -207,6 +209,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
             else if(opcode2 == OP_GAS_PRICE) {
                 try {
                     uint64_t val = CScriptNum::vch_to_uint64(vch1);
+					vSolutionsRet.push_back(CScriptNum(val).getvch());
                 }
                 catch (const scriptnum_error &err) {
 //                    return false;
@@ -221,6 +224,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
                 {
                     if(vch1.empty())
                         break;
+					vSolutionsRet.push_back(vch1);
                 }
             }
             // end contract code
