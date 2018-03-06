@@ -2313,6 +2313,8 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
     std::vector<PrecomputedTransactionData> txdata;
     txdata.reserve(block.vtx.size()); // Required so that pointers to individual PrecomputedTransactionData don't get invalidated
 
+    uint64_t blockGasUsed = 0;
+    // TODO: CAmount gasRefunds = 0
 	CBlockIndex* pindexPrev = chainActive.Tip();
 	auto nHeight = pindexPrev->nHeight + 1;
 
@@ -2328,7 +2330,6 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
 
         nInputs += tx.vin.size();
 
-        // TODO: when is coinbase tx and nHeight > params.contractHeight, check root state hash
         if(allow_contract) {
             if(tx.IsCoinBase())
             {
@@ -2345,6 +2346,8 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
 						{
 							return state.DoS(100, error("can't find root state hash in block"), REJECT_INVALID, "invalid-block-root-state-hash");
 						}
+						if(txout.nValue != 0)
+							return state.DoS(100, error("can't find root state hash in block"), REJECT_INVALID, "invalid-block-root-state-hash");
 						block_root_state_hash = ValtypeUtils::vch_to_string(vSolutions[0]);
 						found_root_state_hash = true;
 					}
@@ -2426,16 +2429,29 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
         }
         uint64_t blockGasLimit = UINT64_MAX;
         if(tx.HasContractOp() && !hasOpSpend) {
-            // TODO
             ContractTxConverter converter(tx, &view, &block.vtx);
             ExtractContractTX resultConvertContractTx;
             if(!converter.extractionContractTransactions(resultConvertContractTx)) {
                return state.DoS(100, error("ConnectBlock(): Contract transaction of the wrong format"), REJECT_INVALID, "bad-tx-bad-contract-format");
             }
-            // TODO: check min gas price
-            uint256 gasAllTxs = uint256();
-            uint256 sumGas = uint256();
+            uint64_t gasAllTxs = 0;
+            uint64_t sumGas = 0;
             CAmount nTxFee = view.GetValueIn(tx) - tx.GetValueOut();
+
+            for(ContractTransaction &ctx : resultConvertContractTx.first) {
+                sumGas += ctx.params.gasLimit * ctx.params.gasPrice;
+                if(sumGas > UINT64_MAX)
+                    return state.DoS(100, error("ConnectBlock(): Transaction's gas stipend overflows"), REJECT_INVALID, "bad-tx-gas-stipend-overflow");
+                if(sumGas > nTxFee)
+                    return state.DoS(100, error("ConnectBlock(): Transaction fee does not cover the gas stipend"), REJECT_INVALID, "bad-txns-fee-notenough");
+                if(ctx.params.gasLimit > UINT32_MAX)
+                    return state.DoS(100, error("ConnectBlock(): Contract execution can not specify greater gas limit than can fit in 32-bits"), REJECT_INVALID, "bad-tx-too-much-gas");
+                gasAllTxs += ctx.params.gasLimit;
+                if(gasAllTxs > blockGasLimit)
+                    return state.DoS(1, false, REJECT_INVALID, "bad-txns-gas-exceeds-blockgaslimit");
+                if((uint64_t)ctx.params.gasPrice < DEFAULT_MIN_GAS_PRICE)
+                    return state.DoS(100, error("ConnectBlock(): Contract execution has lower gas price than allowed"), REJECT_INVALID, "bad-tx-low-gas-price");
+            }
 
 			ContractExec exec(service.get(), block, resultConvertContractTx.first, blockGasLimit);
             const auto& old_root_hash = service->current_root_state_hash();
@@ -2462,12 +2478,12 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                                  error("ConnectBlock(): commit contract result error"),
                                  REJECT_INVALID, exec.pending_contract_exec_result.error_message);
 
+            blockGasUsed += contract_exec_result.usedGas;
+            if(blockGasUsed > blockGasLimit){
+                return state.DoS(1000, error("ConnectBlock(): Block exceeds gas limit"), REJECT_INVALID, "bad-blk-gaslimit");
+            }
             // TODO: refund
 
-            for(ContractTransaction &ctx : resultConvertContractTx.first) {
-//                sumGas += ctx.gas() * ctx.gasPrice(); // FIXME
-                // TODO
-            }
             // TODO
             success = true;
         }

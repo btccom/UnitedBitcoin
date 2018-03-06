@@ -18,6 +18,7 @@ class CTxOut;
 
 static const uint64_t DEFAULT_MIN_GAS_PRICE = 40;
 static const uint64_t DEFAULT_BLOCK_GAS_LIMIT = 40000000;
+static const uint64_t DEFAULT_MIN_GAS_LIMIT = 1000;
 static const uint64_t MaxBlockSerSize = 8000000;
 
 /** Default for -blockmaxsize, which controls the maximum size of block the mining code will create **/

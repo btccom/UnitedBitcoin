@@ -219,6 +219,12 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 
     LogPrintf("CreateNewBlock(): block weight: %u txs: %u fees: %ld sigops %d\n", GetBlockWeight(*pblock), nBlockTx, nFees, nBlockSigOpsCost);
 
+    // The total fee is the Fees minus the Refund
+    if (pTotalFees) {
+//        *pTotalFees = nFees - bceResult.refundSender; // TODO
+        *pTotalFees = nFees;
+    }
+
     // Fill in header
     pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
     UpdateTime(pblock, chainparams.GetConsensus(), pindexPrev);
@@ -295,8 +301,13 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
     }
     std::vector<ContractTransaction> contractTransactions = resultConverter.first;
     uint64_t txGas = 0;
+	CAmount gasAllTxs = 0;
     for (const auto& contractTransaction : contractTransactions) {
         txGas += contractTransaction.params.gasLimit;
+		if (contractTransaction.params.gasLimit < DEFAULT_MIN_GAS_LIMIT) {
+			// connect in block must have min gas to avoid mini-contract-tx DDoS
+			return false;
+		}
         if (txGas > txGasLimit) {
             // Limit the tx gas limit by the soft limit if such a limit has been specified.
             return false;
@@ -309,7 +320,16 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
             //if this transaction's gasPrice is less than the current DGP minGasPrice don't add it
             return false;
         }
+		gasAllTxs += contractTransaction.params.gasLimit * contractTransaction.params.gasPrice;
     }
+	// check tx fee can over gas
+	{
+		CCoinsViewCache view(pcoinsTip.get());
+		CAmount nTxFee = view.GetValueIn(iter->GetTx()) - iter->GetTx().GetValueOut();
+		if (nTxFee < gasAllTxs)
+			return false;
+	}
+
     auto service = get_contract_storage_service();
 	service->open();
 	const auto& old_root_state_hash = service->current_root_state_hash();

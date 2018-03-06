@@ -63,6 +63,7 @@ struct LockPoints;
 #define CONTRACT_VERSION_STRING CONTRACT_MAJOR_VERSION "." CONTRACT_MINOR_VERSION
 
 static const uint32_t CONTRACT_STORAGE_MAGIC_NUMBER = 34125;
+
 /** Default for -whitelistrelay. */
 static const bool DEFAULT_WHITELISTRELAY = true;
 /** Default for -whitelistforcerelay. */
