@@ -80,12 +80,55 @@ struct modifiedentry_iter {
 struct CompareModifiedEntry {
     bool operator()(const CTxMemPoolModifiedEntry &a, const CTxMemPoolModifiedEntry &b)
     {
-        double f1 = (double)a.nModFeesWithAncestors * b.nSizeWithAncestors;
-        double f2 = (double)b.nModFeesWithAncestors * a.nSizeWithAncestors;
-        if (f1 == f2) {
-            return CTxMemPool::CompareIteratorByHash()(a.iter, b.iter);
-        }
-        return f1 > f2;
+		bool fAHasContractCall = a.iter->GetTx().HasContractOp() && !a.iter->GetTx().HasOpSpend();
+		bool fBHasContractCall = b.iter->GetTx().HasContractOp() && !b.iter->GetTx().HasOpSpend();
+
+		// If either of the two entries that we are comparing has a contract scriptPubKey, the comparison here takes precedence
+		if (fAHasContractCall || fBHasContractCall) {
+
+			// Prioritze non-contract txs
+			if (fAHasContractCall != fBHasContractCall) {
+				return fAHasContractCall ? false : true;
+			}
+
+			// Prioritize the contract txs that have the least number of ancestors
+			// The reason for this is that otherwise it is possible to send one tx with a
+			// high gas limit but a low gas price which has a child with a low gas limit but a high gas price
+			// Without this condition that transaction chain would get priority in being included into the block.
+			// The two next checks are to see if all our ancestors have been added.
+			if (a.nSizeWithAncestors == a.iter->GetTxSize() && b.nSizeWithAncestors != b.iter->GetTxSize()) {
+				return true;
+			}
+
+			if (b.nSizeWithAncestors == b.iter->GetTxSize() && a.nSizeWithAncestors != a.iter->GetTxSize()) {
+				return false;
+			}
+
+			// Otherwise, prioritize the contract tx with the highest (minimum among its outputs) gas price
+			// The reason for using the gas price of the output that sets the minimum gas price is that
+			// otherwise it may be possible to game the prioritization by setting a large gas price in one output
+			// that does no execution, while the real execution has a very low gas price
+			if (a.iter->GetMinGasPrice() != b.iter->GetMinGasPrice()) {
+				return a.iter->GetMinGasPrice() > b.iter->GetMinGasPrice();
+			}
+
+			// Otherwise, prioritize the tx with the min size
+			if (a.iter->GetTxSize() != b.iter->GetTxSize()) {
+				return a.iter->GetTxSize() < b.iter->GetTxSize();
+			}
+
+			// If the txs are identical in their minimum gas prices and tx size
+			// order based on the tx hash for consistency.
+			return CTxMemPool::CompareIteratorByHash()(a.iter, b.iter);
+		}
+
+
+		double f1 = (double)a.nModFeesWithAncestors * b.nSizeWithAncestors;
+		double f2 = (double)b.nModFeesWithAncestors * a.nSizeWithAncestors;
+		if (f1 == f2) {
+			return CTxMemPool::CompareIteratorByHash()(a.iter, b.iter);
+		}
+		return f1 > f2;
     }
 };
 

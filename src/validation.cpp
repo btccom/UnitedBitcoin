@@ -478,6 +478,7 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 {
     const CTransaction& tx = *ptx;
     const uint256 hash = tx.GetHash();
+	CAmount nValueIn = 0;
     AssertLockHeld(cs_main);
     if (pfMissingInputs)
         *pfMissingInputs = false;
@@ -593,6 +594,7 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 
         // Bring the best block into scope
         view.GetBestBlock();
+		nValueIn = view.GetValueIn(tx);
 
         // we have all inputs cached now, so switch back to dummy, so we don't need to keep lock on mempool
         view.SetBackend(dummy);
@@ -622,6 +624,49 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 
         int64_t nSigOpsCost = GetTransactionSigOpCost(tx, view, STANDARD_SCRIPT_VERIFY_FLAGS);
 
+		CAmount nValueOut = tx.GetValueOut();
+		CAmount txMinGasPrice = 0;
+
+		// contract
+		if (tx.HasContractOp() && !tx.HasOpSpend()) {
+			ContractTxConverter converter(tx, &view, nullptr);
+			ExtractContractTX resultConvertContractTx;
+			if (!converter.extractionContractTransactions(resultConvertContractTx)) {
+				return state.DoS(100, error("ConnectBlock(): Contract transaction of the wrong format"), REJECT_INVALID, "bad-tx-bad-contract-format");
+			}
+			uint64_t gasAllTxs = 0;
+			uint64_t sumGas = 0;
+			CAmount nTxFee = view.GetValueIn(tx) - tx.GetValueOut();
+
+			uint64_t blockGasLimit = UINT64_MAX;
+			size_t count = 0;
+			for (const CTxOut& o : tx.vout)
+				count += o.scriptPubKey.HasContractOp() ? 1 : 0;
+			for (ContractTransaction &ctx : resultConvertContractTx.first) {
+				sumGas += ctx.params.gasLimit * ctx.params.gasPrice;
+				if (sumGas > UINT64_MAX)
+					return state.DoS(100, error("ConnectBlock(): Transaction's gas stipend overflows"), REJECT_INVALID, "bad-tx-gas-stipend-overflow");
+				if (sumGas > nTxFee)
+					return state.DoS(100, error("ConnectBlock(): Transaction fee does not cover the gas stipend"), REJECT_INVALID, "bad-txns-fee-notenough");
+				if (ctx.params.gasLimit > UINT32_MAX)
+					return state.DoS(100, error("ConnectBlock(): Contract execution can not specify greater gas limit than can fit in 32-bits"), REJECT_INVALID, "bad-tx-too-much-gas");
+				gasAllTxs += ctx.params.gasLimit;
+				if (gasAllTxs > blockGasLimit)
+					return state.DoS(1, false, REJECT_INVALID, "bad-txns-gas-exceeds-blockgaslimit");
+				if ((uint64_t)ctx.params.gasPrice < DEFAULT_MIN_GAS_PRICE)
+					return state.DoS(100, error("ConnectBlock(): Contract execution has lower gas price than allowed"), REJECT_INVALID, "bad-tx-low-gas-price");
+				if (txMinGasPrice != 0) {
+					txMinGasPrice = std::min(txMinGasPrice, (CAmount) ctx.params.gasPrice);
+				}
+				else {
+					txMinGasPrice = ctx.params.gasPrice;
+				}
+			}
+			if (count > resultConvertContractTx.first.size())
+				return state.DoS(100, false, REJECT_INVALID, "bad-txns-incorrect-format");
+		}
+		// end contract
+
         // nModifiedFees includes any fee deltas from PrioritiseTransaction
         CAmount nModifiedFees = nFees;
         pool.ApplyDelta(hash, nModifiedFees);
@@ -638,7 +683,7 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
         }
 
         CTxMemPoolEntry entry(ptx, nFees, nAcceptTime, chainActive.Height(),
-                              fSpendsCoinbase, nSigOpsCost, lp);
+                              fSpendsCoinbase, nSigOpsCost, lp, txMinGasPrice);
         unsigned int nSize = entry.GetTxSize();
 
         // Check that the transaction doesn't have an excessive number of
@@ -2323,6 +2368,7 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
 
     auto service = get_contract_storage_service();
     service->open();
+	const auto& old_root_state_hash_before_connect_block = service->current_root_state_hash();
 
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
@@ -2513,15 +2559,21 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
     int64_t nTime4 = GetTimeMicros(); nTimeVerify += nTime4 - nTime2;
     LogPrint(BCLog::BENCH, "    - Verify %u txins: %.2fms (%.3fms/txin) [%.2fs (%.2fms/blk)]\n", nInputs - 1, MILLI * (nTime4 - nTime2), nInputs <= 1 ? 0 : MILLI * (nTime4 - nTime2) / (nInputs-1), nTimeVerify * MICRO, nTimeVerify * MILLI / nBlocksTotal);
 
-    if (fJustCheck)
-        return true;
+	if (fJustCheck) {
+		service->rollback_contract_state(old_root_state_hash_before_connect_block);
+		return true;
+	}
 
     const auto& end_root_state_hash = service->current_root_state_hash();
-    if(allow_contract)
-    {
-        if(end_root_state_hash != block_root_state_hash)
-            return state.DoS(100, error("block contract txs result state not matched with block root state hash"), REJECT_INVALID, "block-root-state-hash-invalid-after-contract-exec");
-    }
+	if (allow_contract)
+	{
+		if (end_root_state_hash != block_root_state_hash) {
+			std::cout << "current root state hash before connect block: " << old_root_state_hash_before_connect_block << std::endl; // FIXME
+			std::cout << "end_root_state_hash(when connect block): " << end_root_state_hash << std::endl;
+			std::cout << "block_root_state_hash(when connect block): " << block_root_state_hash << std::endl;
+			return state.DoS(100, error("block contract txs result state not matched with block root state hash"), REJECT_INVALID, "block-root-state-hash-invalid-after-contract-exec");
+		}
+	}
 
     // Write undo information to disk
     if (pindex->GetUndoPos().IsNull() || !pindex->IsValid(BLOCK_VALID_SCRIPTS))

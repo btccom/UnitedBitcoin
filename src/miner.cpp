@@ -339,6 +339,7 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
 		if(!success)
 			service->rollback_contract_state(old_root_state_hash);
 	};
+
     if (!exec.performByteCode()) {
         //error, don't add contract
         return false;
@@ -556,13 +557,19 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
         } else {
             // Try to compare the mapTx entry to the mapModifiedTx entry
             iter = mempool.mapTx.project<0>(mi);
-            if (modit != mapModifiedTx.get<ancestor_score_or_gas_price>().end() &&
-                    CompareModifiedEntry()(*modit, CTxMemPoolModifiedEntry(iter))) {
-                // The best entry in mapModifiedTx has higher score
-                // than the one from mapTx.
-                // Switch which transaction (package) to consider
-                iter = modit->iter;
-                fUsingModified = true;
+            if (modit != mapModifiedTx.get<ancestor_score_or_gas_price>().end()) {
+				if (CompareModifiedEntry()(*modit, CTxMemPoolModifiedEntry(iter))) {
+					// The best entry in mapModifiedTx has higher score
+					// than the one from mapTx.
+					// Switch which transaction (package) to consider
+					iter = modit->iter;
+					fUsingModified = true;
+				}
+				else {
+					// it's worse than mapTx
+					// Increment mi for the next loop iteration.
+					++mi;
+				}
             } else {
                 // Either no entry in mapModifiedTx, or it's worse than mapTx.
                 // Increment mi for the next loop iteration.
@@ -633,7 +640,7 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
             }
             const CTransaction& tx = sortedEntries[i]->GetTx();
             if (wasAdded) {
-                if (tx.HasContractOp() && !tx.HasOpSpend()) {
+                if (tx.HasContractOp()) {
                     wasAdded = AttemptToAddContractToBlock(sortedEntries[i], minGasPrice);
                     if (!wasAdded) {
                         if (fUsingModified) {
