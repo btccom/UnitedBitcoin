@@ -15,7 +15,10 @@ namespace blockchain {
 
             std::unordered_map<std::string, ContractInfo> pending_contracts_to_create;
 			std::vector<std::pair<std::string, StorageChanges>> contract_storage_changes; // contract_id => changes
-			// TODO: balance changes, events, etc.
+            std::vector<ContractResultTransferInfo> balance_changes;
+			// TODO: events, etc.
+
+            void add_balance_change(const std::string& address, bool is_contract, bool add, uint64_t amount);
         };
     }
 }

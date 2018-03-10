@@ -644,6 +644,10 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 				count += o.scriptPubKey.HasContractOp() ? 1 : 0;
 			for (ContractTransaction &ctx : resultConvertContractTx.first) {
 				sumGas += ctx.params.gasLimit * ctx.params.gasPrice;
+                if(ctx.params.deposit_amount >= nTxFee)
+                    return state.DoS(100, error("ConnectBlock(): Transaction fee does not cover the gas stipend"), REJECT_INVALID, "bad-txns-fee-notenough");
+                nTxFee -= ctx.params.deposit_amount;
+                // TODO: withdraw from contract
 				if (sumGas > UINT64_MAX)
 					return state.DoS(100, error("ConnectBlock(): Transaction's gas stipend overflows"), REJECT_INVALID, "bad-tx-gas-stipend-overflow");
 				if (sumGas > nTxFee)
@@ -1866,9 +1870,19 @@ bool ContractExec::performByteCode()
                 return false;
             }
         } else if(tx.opcode == OP_DEPOSIT_TO_CONTRACT) {
-            std::string deposit_arg = "0"; // FIXME: change to deposit amount
+            std::string deposit_arg = std::to_string(params.deposit_amount);
             try {
-                engine->execute_contract_api_by_address(params.contract_address, "on_deposit", deposit_arg, &api_result_json_string);
+				auto contract_info = storage_service->get_contract_info(params.contract_address);
+				if (!contract_info) {
+					auto error_msg = std::string("Can't find thiscontract ") + params.contract_address;
+					throw uvm::core::UvmException(error_msg.c_str());
+				}
+				if (std::find(contract_info->apis.begin(), contract_info->apis.end(), "on_deposit") != contract_info->apis.end())
+				{
+					engine->execute_contract_api_by_address(params.contract_address, "on_deposit", deposit_arg, &api_result_json_string);
+				}
+                // add balance to contract in storage service
+                pending_state.add_balance_change(params.contract_address, true, true, params.deposit_amount);
             }
             catch(uvm::core::UvmException &e)
             {
@@ -1883,6 +1897,7 @@ bool ContractExec::performByteCode()
         }
 
 		pending_contract_exec_result.contract_storage_changes = pending_state.contract_storage_changes;
+        pending_contract_exec_result.balance_changes = pending_state.balance_changes;
 		pending_contract_exec_result.api_result = api_result_json_string;
 		// TODO: gas used and refund info
     }
@@ -1919,7 +1934,6 @@ bool ContractExec::commit_changes(std::shared_ptr<::contract::storage::ContractS
 		{
 			new_contract_info_to_commit->storage_types[p.first] = p.second.value;
 		}
-		// TODO: new contract balances
 		service->save_contract_info(new_contract_info_to_commit);
 	}
 	// save contract invoke result
@@ -1954,8 +1968,19 @@ bool ContractExec::commit_changes(std::shared_ptr<::contract::storage::ContractS
 		}
 		contract_changes->storage_changes.push_back(change);
 	}
+    // put balance changes
+    for(const auto& transfer_info : pending_contract_exec_result.balance_changes)
+    {
+        ::contract::storage::ContractBalanceChange change;
+        change.asset_id = 0;
+        change.address = transfer_info.address;
+        change.amount = transfer_info.amount;
+        change.add = transfer_info.add;
+        change.is_contract = transfer_info.is_contract;
+        change.memo = "";
+        contract_changes->balance_changes.push_back(change);
+    }
 	service->commit_contract_changes(contract_changes);
-	// TODO: put balance changes
 	return true;
 }
 
@@ -1992,7 +2017,7 @@ bool ContractTxConverter::receiveStack(const CScript& scriptPubKey) {
     if((opcode == OP_CREATE && stack.size() < 5) || (opcode == OP_CALL && stack.size() < 7)
        || (opcode == OP_UPGRADE && stack.size() < 7)
        || (opcode == OP_DESTROY && stack.size() < 5)
-       || (opcode == OP_DEPOSIT_TO_CONTRACT && stack.size() < 3)){
+       || (opcode == OP_DEPOSIT_TO_CONTRACT && stack.size() < 6)){
         stack.clear();
         return false;
     }
@@ -2051,6 +2076,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         valtype caller_address;
         valtype bytecode;
         valtype contract_address;
+        valtype deposit_memo; // deposit to contract memo
         uint64_t deposit_amount = 0;
         uint32_t version = 0;
         bool is_create = false;
@@ -2088,16 +2114,23 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 stack.pop_back();
             } break;
             case OP_DEPOSIT_TO_CONTRACT: {
+                // OP_DEPOSIT_TO_CONTRACT gasPrice gasLimit caller_address contract_address amount deposit_arg
+                gasPrice = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
-                stack.pop_back();
-                deposit_amount = CScriptNum::vch_to_uint64(stack.back());
-                stack.pop_back();
-                contract_address = stack.back();
                 stack.pop_back();
                 caller_address = stack.back();
                 stack.pop_back();
+                contract_address = stack.back();
+                stack.pop_back();
+                deposit_amount = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                deposit_memo = stack.back();
+                stack.pop_back();
                 version = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
+                if(deposit_memo.size()>DEPOSIT_TO_CONTRACT_MEMO_MAX_LENGTH)
+                    return false;
             } break;
             case OP_SPEND: {
                 // to_address = stack.back();
@@ -2153,6 +2186,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         params.api_name = ValtypeUtils::vch_to_string(api_name);
         params.api_arg = ValtypeUtils::vch_to_string(apiArg);
         params.deposit_amount = deposit_amount;
+        params.deposit_memo = ValtypeUtils::vch_to_string(deposit_memo);
         if(bytecode.size()>0 && is_create) {
             try {
                 params.code = ContractHelper::load_contract_from_gpc_data(bytecode);
@@ -2486,6 +2520,10 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
 
             for(ContractTransaction &ctx : resultConvertContractTx.first) {
                 sumGas += ctx.params.gasLimit * ctx.params.gasPrice;
+                if(ctx.params.deposit_amount >= nTxFee)
+                    return state.DoS(100, error("ConnectBlock(): Transaction fee does not cover the gas stipend"), REJECT_INVALID, "bad-txns-fee-notenough");
+                nTxFee -= ctx.params.deposit_amount;
+                // TODO: withdraw from contract
                 if(sumGas > UINT64_MAX)
                     return state.DoS(100, error("ConnectBlock(): Transaction's gas stipend overflows"), REJECT_INVALID, "bad-tx-gas-stipend-overflow");
                 if(sumGas > nTxFee)

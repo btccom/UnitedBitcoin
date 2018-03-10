@@ -337,6 +337,7 @@ public:
 
     bool HasOpSpend() const;
     bool HasContractOp() const;
+	bool HasOpDepositToContract() const;
 
     friend bool operator==(const CTransaction& a, const CTransaction& b)
     {

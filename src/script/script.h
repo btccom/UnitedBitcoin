@@ -700,6 +700,10 @@ public:
         return Find(OP_CREATE) == 1 || Find(OP_UPGRADE) == 1 || Find(OP_DESTROY) == 1
                || Find(OP_CALL) == 1 || Find(OP_DEPOSIT_TO_CONTRACT) == 1;
     }
+	bool HasOpDepositToContract() const
+	{
+		return Find(OP_DEPOSIT_TO_CONTRACT) == 1;
+	}
     bool HasOpSpend() const
     {
         return size()==1 && *begin() == OP_SPEND;

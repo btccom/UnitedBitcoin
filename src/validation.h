@@ -62,6 +62,8 @@ struct LockPoints;
 #define CONTRACT_MINOR_VERSION 0
 #define CONTRACT_VERSION_STRING CONTRACT_MAJOR_VERSION "." CONTRACT_MINOR_VERSION
 
+static const uint32_t DEPOSIT_TO_CONTRACT_MEMO_MAX_LENGTH = 128;
+
 static const uint32_t CONTRACT_STORAGE_MAGIC_NUMBER = 34125;
 
 /** Default for -whitelistrelay. */
@@ -581,6 +583,7 @@ struct ContractTransactionParams {
     std::string api_name;
     std::string api_arg;
     uint64_t deposit_amount = 0;
+    std::string deposit_memo;
     uint32_t version = 0;
 };
 
@@ -596,9 +599,10 @@ typedef jsondiff::DiffResultP StorageChanges;
 using ExtractContractTX = std::pair<std::vector<ContractTransaction>, std::vector<ContractTransactionParams>>;
 
 struct ContractResultTransferInfo {
-    std::string from_address;
-    std::string to_address;
-    uint64_t amount;
+    std::string address;
+    bool add = true; // true: + amount, false: - amount
+    bool is_contract = false;
+    uint64_t amount = 0;
 };
 
 // contract execute result for uvm
@@ -620,6 +624,7 @@ struct ContractExecResult {
 	std::string api_result;
 
     std::vector<std::pair<std::string, StorageChanges>> contract_storage_changes; // contract_id => changes
+    std::vector<ContractResultTransferInfo> balance_changes;
 };
 
 class ContractTxConverter {

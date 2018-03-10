@@ -110,6 +110,8 @@ namespace uvm {
             */
             int BtcUvmChainApi::check_contract_api_instructions_over_limit(lua_State *L)
             {
+                auto evaluator = get_evaluator(L);
+                // TODO: check gas_limit and gas used. if gas_limit == 0, return 0(not over limit)
                 return 0; // TODO
             }
 

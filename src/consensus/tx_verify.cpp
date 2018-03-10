@@ -8,6 +8,7 @@
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
 #include <consensus/validation.h>
+#include <validation.h>
 
 // TODO remove the following dependencies
 #include <chain.h>
@@ -214,6 +215,7 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, CValidationState& state, c
     }
 
     CAmount nValueIn = 0;
+    CAmount allTxDepositToContract = 0;
     for (unsigned int i = 0; i < tx.vin.size(); ++i) {
         const COutPoint &prevout = tx.vin[i].prevout;
         const Coin& coin = inputs.AccessCoin(prevout);
@@ -232,6 +234,17 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, CValidationState& state, c
             return state.DoS(100, false, REJECT_INVALID, "bad-txns-inputvalues-outofrange");
         }
     }
+	if (tx.HasOpDepositToContract()) {
+		ContractTxConverter converter(tx, nullptr, nullptr);
+		ExtractContractTX resultConvertContractTx;
+		if (!converter.extractionContractTransactions(resultConvertContractTx)) {
+			return state.Invalid(false, REJECT_INVALID, "bad-tx-bad-contract-format", "extract contract params failed");
+		}
+		for (ContractTransaction &ctx : resultConvertContractTx.first) {
+			allTxDepositToContract += ctx.params.deposit_amount;
+		}
+	}
+	// TODO: withdraw from contract
 
     const CAmount value_out = tx.GetValueOut();
     if (nValueIn < value_out) {
@@ -240,11 +253,10 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, CValidationState& state, c
     }
 
     // Tally transaction fees
-    const CAmount txfee_aux = nValueIn - value_out;
+    const CAmount txfee_aux = nValueIn - value_out - allTxDepositToContract; // TODO: + withdraw-from-contract-amount
     if (!MoneyRange(txfee_aux)) {
         return state.DoS(100, false, REJECT_INVALID, "bad-txns-fee-outofrange");
     }
-
     txfee = txfee_aux;
     return true;
 }

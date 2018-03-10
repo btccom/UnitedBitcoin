@@ -115,6 +115,16 @@ bool CTransaction::HasContractOp() const
     return false;
 }
 
+bool CTransaction::HasOpDepositToContract() const
+{
+	for (const CTxOut& v : vout) {
+		if (v.scriptPubKey.HasOpDepositToContract()) {
+			return true;
+		}
+	}
+	return false;
+}
+
 std::string CTransaction::ToString() const
 {
     std::string str;

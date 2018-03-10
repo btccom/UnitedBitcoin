@@ -302,6 +302,7 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
     std::vector<ContractTransaction> contractTransactions = resultConverter.first;
     uint64_t txGas = 0;
 	CAmount gasAllTxs = 0;
+    uint64_t allDepositAmount = 0;
     for (const auto& contractTransaction : contractTransactions) {
         txGas += contractTransaction.params.gasLimit;
 		if (contractTransaction.params.gasLimit < DEFAULT_MIN_GAS_LIMIT) {
@@ -321,11 +322,17 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
             return false;
         }
 		gasAllTxs += contractTransaction.params.gasLimit * contractTransaction.params.gasPrice;
+        allDepositAmount += contractTransaction.params.deposit_amount;
+        // TODO: withdraw from contract
     }
 	// check tx fee can over gas
 	{
 		CCoinsViewCache view(pcoinsTip.get());
 		CAmount nTxFee = view.GetValueIn(iter->GetTx()) - iter->GetTx().GetValueOut();
+        if(nTxFee <= allDepositAmount)
+            return false;
+        nTxFee -= allDepositAmount;
+        // TODO: withdraw from contract
 		if (nTxFee < gasAllTxs)
 			return false;
 	}

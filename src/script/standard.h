@@ -69,6 +69,7 @@ enum txnouttype
     // contract tx
     TX_CREATE,
     TX_CALL,
+    TX_DEPOSIT_TO_CONTRACT,
     TX_ROOT_STATE_HASH
 };
 
