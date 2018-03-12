@@ -14,6 +14,7 @@ namespace jsondiff
 	{
 		bool string_ends_with(std::string str, std::string end);
 
+		// 找到一个字符串str取出后缀ext后剩余的字符串
 		std::string string_without_ext(std::string str, std::string ext);
 	}
 }

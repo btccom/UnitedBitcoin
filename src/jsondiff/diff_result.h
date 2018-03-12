@@ -17,7 +17,7 @@ namespace jsondiff
 		bool _is_undefined;
 	public:
 		DiffResult();
-		DiffResult(JsonValue diff_json);
+		DiffResult(const JsonValue& diff_json);
 		virtual ~DiffResult();
 
 		std::string str() const;
@@ -26,6 +26,7 @@ namespace jsondiff
 
 		JsonValue value() const;
 
+		// 把 json diff转成友好可读的字符串
 		std::string pretty_diff_str(size_t indent_count=0) const;
 
 	public:
