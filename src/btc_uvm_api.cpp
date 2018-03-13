@@ -17,6 +17,7 @@
 #include <uvm/uvm_lutil.h>
 #include <uvm/lobject.h>
 #include <uvm/lstate.h>
+#include <amount.h>
 
 #include <validation.h>
 #include <contract_engine/pending_state.hpp>
@@ -484,10 +485,30 @@ namespace uvm {
             }
 
             lua_Integer BtcUvmChainApi::transfer_from_contract_to_address(lua_State *L, const char *contract_address, const char *to_address,
-                                                                            const char *asset_type, int64_t amount_str)
+                                                                            const char *asset_type, int64_t amount)
             {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
-                printf("contract transfer from %s to %s, asset[%s] amount %ld\n", contract_address, to_address, asset_type, amount_str);
+				std::string contract_addr_str(contract_address);
+				std::string to_addr_str(to_address);
+				if (amount <= 0) {
+					return -6;
+				}
+				else if (!is_valid_address(L, to_address)) {
+					return -4;
+				}
+				else if (!is_valid_contract_address(L, contract_address)) {
+					return -3;
+				}
+				else if (std::string(asset_type) != get_system_asset_symbol(L)) {
+					return -2;
+				}
+                auto evaluator = get_evaluator(L);
+				// check contract balance enough
+				auto contract_balance = evaluator->get_contract_balance(contract_addr_str);
+				if (contract_balance < amount)
+					return -5;
+				evaluator->add_balance_change(contract_addr_str, true, false, amount);
+				evaluator->add_balance_change(to_addr_str, is_valid_contract_address(L, to_address), true, amount);
                 return 0;
             }
 
@@ -496,6 +517,7 @@ namespace uvm {
             {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
                 printf("contract transfer from %s to %s, asset[%s] amount %ld\n", contract_address, to_account_name, asset_type, amount);
+                // TODO
                 return 0;
             }
 
@@ -550,7 +572,8 @@ namespace uvm {
             void BtcUvmChainApi::emit(lua_State *L, const char* contract_id, const char* event_name, const char* event_param)
             {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
-                printf("emit called\n");
+//                printf("emit called\n");
+                // TODO
             }
 
             bool BtcUvmChainApi::is_valid_address(lua_State *L, const char *address_str)
@@ -570,7 +593,7 @@ namespace uvm {
 
             uint64_t BtcUvmChainApi::get_system_asset_precision(lua_State *L)
             {
-                return 100000000; // TODO
+                return COIN;
             }
 
         }

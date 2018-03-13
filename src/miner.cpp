@@ -299,10 +299,14 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
         //therefore, this can only be triggered by using raw transactions on the staker itself
         return false;
     }
-    std::vector<ContractTransaction> contractTransactions = resultConverter.first;
+    std::vector<ContractTransaction> contractTransactions = resultConverter.txs;
     uint64_t txGas = 0;
 	CAmount gasAllTxs = 0;
     uint64_t allDepositAmount = 0;
+    uint64_t allWithdrawFromContractAmount = 0;
+    for(const auto& withdrawInfo : resultConverter.contract_withdraw_infos) {
+        allWithdrawFromContractAmount += withdrawInfo.amount;
+    }
     for (const auto& contractTransaction : contractTransactions) {
         txGas += contractTransaction.params.gasLimit;
 		if (contractTransaction.params.gasLimit < DEFAULT_MIN_GAS_LIMIT) {
@@ -323,16 +327,14 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
         }
 		gasAllTxs += contractTransaction.params.gasLimit * contractTransaction.params.gasPrice;
         allDepositAmount += contractTransaction.params.deposit_amount;
-        // TODO: withdraw from contract
     }
 	// check tx fee can over gas
 	{
 		CCoinsViewCache view(pcoinsTip.get());
-		CAmount nTxFee = view.GetValueIn(iter->GetTx()) - iter->GetTx().GetValueOut();
+		CAmount nTxFee = view.GetValueIn(iter->GetTx()) + allWithdrawFromContractAmount - iter->GetTx().GetValueOut();
         if(nTxFee <= allDepositAmount)
             return false;
         nTxFee -= allDepositAmount;
-        // TODO: withdraw from contract
 		if (nTxFee < gasAllTxs)
 			return false;
 	}
@@ -357,6 +359,10 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
     }
     if (bceResult.usedGas + testExecResult.usedGas > softBlockGasLimit) {
         //if this transaction could cause block gas limit to be exceeded, then don't add it
+        return false;
+    }
+    // check withdraw-from-info correct
+    if(!testExecResult.match_contract_withdraw_infos(resultConverter.contract_withdraw_infos)) {
         return false;
     }
     // commit changes than can generate new root state hash
@@ -384,13 +390,13 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
     nBlockSigOpsCost -= GetLegacySigOpCount(*pblock->vtx[0]);
     // manually rebuild refundtx
     CMutableTransaction contrTx(*pblock->vtx[0]);
-    //note, this will need changed for MPoS
     int i = contrTx.vout.size();
     contrTx.vout.resize(contrTx.vout.size() + testExecResult.refundOutputs.size());
     for (CTxOut& vout : testExecResult.refundOutputs) {
         contrTx.vout[i] = vout;
         i++;
     }
+
     nBlockSigOpsCost += GetLegacySigOpCount(contrTx);
     //all contract costs now applied to local state
     //Check if block will be too big or too expensive with this contract execution

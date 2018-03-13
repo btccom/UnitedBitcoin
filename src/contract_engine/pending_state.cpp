@@ -9,7 +9,6 @@ namespace blockchain {
 
         void PendingState::add_balance_change(const std::string& address, bool is_contract, bool add, uint64_t amount)
         {
-
             for(auto it=balance_changes.begin(); it!=balance_changes.end();it++) {
                 auto& transfer_info = *it;
                 if(transfer_info.address == address && transfer_info.is_contract == is_contract) {
@@ -36,5 +35,33 @@ namespace blockchain {
             transfer_info.amount = amount;
             balance_changes.push_back(transfer_info);
         }
+
+		uint64_t PendingState::get_contract_balance(const std::string& address) const
+		{
+			const auto& balances = storage_service->get_contract_balances(address);
+			uint64_t balance = 0;
+			for (const auto& p : balances) {
+				if (p.asset_id == 0) {
+					balance = p.amount;
+					break;
+				}
+			}
+			for (const auto& transfer_info : balance_changes) {
+				if (transfer_info.is_contract && transfer_info.address == address) {
+					if (transfer_info.add) {
+						balance += transfer_info.amount;
+					}
+					else {
+						if (balance < transfer_info.amount)
+						{
+							return 0;
+						}
+						balance -= transfer_info.amount;
+					}
+				}
+			}
+			return balance;
+		}
+
     }
 }

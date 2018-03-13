@@ -216,6 +216,7 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, CValidationState& state, c
 
     CAmount nValueIn = 0;
     CAmount allTxDepositToContract = 0;
+    CAmount allTxWithdrawFromContract = 0;
     for (unsigned int i = 0; i < tx.vin.size(); ++i) {
         const COutPoint &prevout = tx.vin[i].prevout;
         const Coin& coin = inputs.AccessCoin(prevout);
@@ -234,26 +235,28 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, CValidationState& state, c
             return state.DoS(100, false, REJECT_INVALID, "bad-txns-inputvalues-outofrange");
         }
     }
-	if (tx.HasOpDepositToContract()) {
+	if (tx.HasOpDepositToContract() || tx.HasOpSpend()) {
 		ContractTxConverter converter(tx, nullptr, nullptr);
 		ExtractContractTX resultConvertContractTx;
 		if (!converter.extractionContractTransactions(resultConvertContractTx)) {
 			return state.Invalid(false, REJECT_INVALID, "bad-tx-bad-contract-format", "extract contract params failed");
 		}
-		for (ContractTransaction &ctx : resultConvertContractTx.first) {
+		for (ContractTransaction &ctx : resultConvertContractTx.txs) {
 			allTxDepositToContract += ctx.params.deposit_amount;
 		}
+        for (const auto& withdrawInfo : resultConvertContractTx.contract_withdraw_infos) {
+            allTxWithdrawFromContract += withdrawInfo.amount;
+        }
 	}
-	// TODO: withdraw from contract
 
     const CAmount value_out = tx.GetValueOut();
-    if (nValueIn < value_out) {
+    if (nValueIn + allTxWithdrawFromContract < value_out + allTxDepositToContract) {
         return state.DoS(100, false, REJECT_INVALID, "bad-txns-in-belowout", false,
             strprintf("value in (%s) < value out (%s)", FormatMoney(nValueIn), FormatMoney(value_out)));
     }
 
     // Tally transaction fees
-    const CAmount txfee_aux = nValueIn - value_out - allTxDepositToContract; // TODO: + withdraw-from-contract-amount
+    const CAmount txfee_aux = nValueIn + allTxWithdrawFromContract - value_out - allTxDepositToContract;
     if (!MoneyRange(txfee_aux)) {
         return state.DoS(100, false, REJECT_INVALID, "bad-txns-fee-outofrange");
     }

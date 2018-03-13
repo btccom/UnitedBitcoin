@@ -628,7 +628,7 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 		CAmount txMinGasPrice = 0;
 
 		// contract
-		if (tx.HasContractOp() && !tx.HasOpSpend()) {
+		if (tx.HasContractOp()) {
 			ContractTxConverter converter(tx, &view, nullptr);
 			ExtractContractTX resultConvertContractTx;
 			if (!converter.extractionContractTransactions(resultConvertContractTx)) {
@@ -639,15 +639,18 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 			CAmount nTxFee = view.GetValueIn(tx) - tx.GetValueOut();
 
 			uint64_t blockGasLimit = UINT64_MAX;
-			size_t count = 0;
+			size_t contract_call_vout_count = 0;
 			for (const CTxOut& o : tx.vout)
-				count += o.scriptPubKey.HasContractOp() ? 1 : 0;
-			for (ContractTransaction &ctx : resultConvertContractTx.first) {
+                contract_call_vout_count += o.scriptPubKey.HasContractOp() ? 1 : 0;
+            for(const auto& withdrawInfo : resultConvertContractTx.contract_withdraw_infos)
+            {
+                nTxFee += withdrawInfo.amount;
+            }
+			for (ContractTransaction &ctx : resultConvertContractTx.txs) {
 				sumGas += ctx.params.gasLimit * ctx.params.gasPrice;
                 if(ctx.params.deposit_amount >= nTxFee)
                     return state.DoS(100, error("ConnectBlock(): Transaction fee does not cover the gas stipend"), REJECT_INVALID, "bad-txns-fee-notenough");
                 nTxFee -= ctx.params.deposit_amount;
-                // TODO: withdraw from contract
 				if (sumGas > UINT64_MAX)
 					return state.DoS(100, error("ConnectBlock(): Transaction's gas stipend overflows"), REJECT_INVALID, "bad-tx-gas-stipend-overflow");
 				if (sumGas > nTxFee)
@@ -666,7 +669,7 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 					txMinGasPrice = ctx.params.gasPrice;
 				}
 			}
-			if (count > resultConvertContractTx.first.size())
+			if (contract_call_vout_count > resultConvertContractTx.txs.size())
 				return state.DoS(100, false, REJECT_INVALID, "bad-txns-incorrect-format");
 		}
 		// end contract
@@ -1971,6 +1974,8 @@ bool ContractExec::commit_changes(std::shared_ptr<::contract::storage::ContractS
     // put balance changes
     for(const auto& transfer_info : pending_contract_exec_result.balance_changes)
     {
+		if (transfer_info.is_contract)
+			continue;
         ::contract::storage::ContractBalanceChange change;
         change.asset_id = 0;
         change.address = transfer_info.address;
@@ -1980,13 +1985,20 @@ bool ContractExec::commit_changes(std::shared_ptr<::contract::storage::ContractS
         change.memo = "";
         contract_changes->balance_changes.push_back(change);
     }
-	service->commit_contract_changes(contract_changes);
+	try {
+		service->commit_contract_changes(contract_changes);
+	}
+	catch (const ::contract::storage::ContractStorageException& e)
+	{
+		return false;
+	}
 	return true;
 }
 
 bool ContractTxConverter::extractionContractTransactions(ExtractContractTX& contractTx) {
     std::vector<ContractTransaction> resultTX;
     std::vector<ContractTransactionParams> resultETP;
+
     for(size_t i = 0; i < txBitcoin.vout.size(); i++) {
         if(txBitcoin.vout[i].scriptPubKey.HasContractOp()){
             if(receiveStack(txBitcoin.vout[i].scriptPubKey)){
@@ -2001,8 +2013,30 @@ bool ContractTxConverter::extractionContractTransactions(ExtractContractTX& cont
                 return false;
             }
         }
+        else if(txBitcoin.vout[i].scriptPubKey.HasOpSpend()) {
+            // get withdraw from contract balance info
+            if(receiveStack(txBitcoin.vout[i].scriptPubKey)){
+                ContractTransactionParams params;
+                if(parseContractTXParams(params, i)){
+                    ContractWithdrawInfo withdrawInfo;
+                    withdrawInfo.from_contract_address = params.withdraw_from_contract_address;
+                    withdrawInfo.amount = params.withdraw_amount;
+                    for(const auto& item : contractTx.contract_withdraw_infos) {
+                        if(item.from_contract_address == withdrawInfo.from_contract_address) {
+                            return false; // withdraw from contract sources must be unique
+                        }
+                    }
+                    contractTx.contract_withdraw_infos.push_back(withdrawInfo);
+                }else{
+                    return false;
+                }
+            }else{
+                return false;
+            }
+        }
     }
-    contractTx = std::make_pair(resultTX, resultETP);
+    contractTx.txs = resultTX;
+    contractTx.txs_params = resultETP;
     return true;
 }
 
@@ -2017,7 +2051,8 @@ bool ContractTxConverter::receiveStack(const CScript& scriptPubKey) {
     if((opcode == OP_CREATE && stack.size() < 5) || (opcode == OP_CALL && stack.size() < 7)
        || (opcode == OP_UPGRADE && stack.size() < 7)
        || (opcode == OP_DESTROY && stack.size() < 5)
-       || (opcode == OP_DEPOSIT_TO_CONTRACT && stack.size() < 6)){
+       || (opcode == OP_DEPOSIT_TO_CONTRACT && stack.size() < 6)
+       || (opcode == OP_SPEND && stack.size() < 2)){
         stack.clear();
         return false;
     }
@@ -2076,8 +2111,10 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         valtype caller_address;
         valtype bytecode;
         valtype contract_address;
+        valtype withdraw_from_contract_address;
         valtype deposit_memo; // deposit to contract memo
         uint64_t deposit_amount = 0;
+        uint64_t withdraw_amount = 0;
         uint32_t version = 0;
         bool is_create = false;
         // get contract args from stack
@@ -2133,10 +2170,16 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                     return false;
             } break;
             case OP_SPEND: {
-                // to_address = stack.back();
-                // TODO
-                stack.pop_back();
-            }
+				withdraw_from_contract_address = stack.back();
+				stack.pop_back();
+				withdraw_amount = CScriptNum::vch_to_uint64(stack.back());
+				stack.pop_back();
+                if(withdraw_amount <= 0)
+                    return false;
+                if(withdraw_from_contract_address.empty())
+                    return false;
+                ignore_sender_check = true;
+			} break;
             default: {
                 return false;
             }
@@ -2146,14 +2189,17 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         if(params.gasLimit < 0)
             return false;
         params.gasPrice = gasPrice;
-        if(params.gasPrice <= 0)
+        if(params.gasPrice <= 0 && opcode != OP_SPEND)
             return false;
         params.caller_address = ValtypeUtils::vch_to_string(caller_address);
-        CBitcoinAddress caller_addr_obj(params.caller_address);
-        if(!caller_addr_obj.IsValid())
-        {
-            return false;
+        if(opcode != OP_SPEND) {
+            CBitcoinAddress caller_addr_obj(params.caller_address);
+            if (!caller_addr_obj.IsValid()) {
+                return false;
+            }
         }
+        params.withdraw_amount = withdraw_amount;
+        params.withdraw_from_contract_address = ValtypeUtils::vch_to_string(withdraw_from_contract_address);
 
         // check caller_address in vin owners(signed in tx). must be same with first input's address
 		if (txBitcoin.vin.empty())
@@ -2182,6 +2228,8 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
 				return false;
 		}
 
+        // TODO: check withdraw amount and spend info
+
         params.caller = "";
         params.api_name = ValtypeUtils::vch_to_string(api_name);
         params.api_arg = ValtypeUtils::vch_to_string(apiArg);
@@ -2195,11 +2243,13 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 return false;
             }
         }
-
-        if(!is_create)
-            params.contract_address = ValtypeUtils::vch_to_string(contract_address);
-        else
-            params.contract_address = ContractHelper::generate_contract_address(params.code, params.caller_address, txBitcoin, contract_op_vout_index);
+		if (opcode != OP_SPEND)
+		{
+			if (!is_create)
+				params.contract_address = ValtypeUtils::vch_to_string(contract_address);
+			else
+				params.contract_address = ContractHelper::generate_contract_address(params.code, params.caller_address, txBitcoin, contract_op_vout_index);
+		}
         return true;
     }
     catch(const scriptnum_error& err){
@@ -2234,6 +2284,32 @@ ContractTransaction ContractTxConverter::createContractTX(const ContractTransact
 //    txContract.setHashWith(uintToh256(txBitcoin.GetHash()));
 //    txContract.setNVout(nOut);
     return txContract;
+}
+
+bool ContractExecResult::match_contract_withdraw_infos(const std::vector<ContractWithdrawInfo> withdraw_infos) const
+{
+    uint32_t withdraw_from_contract_count = 0;
+    for(const auto& transfer_info : balance_changes) {
+        if(transfer_info.is_contract && !transfer_info.add) {
+            // this is withdraw from contract transfer info
+            bool found = false;
+            for(const auto& withdrawInfo : withdraw_infos) {
+                if(withdrawInfo.from_contract_address == transfer_info.address) {
+                    found = true;
+                    if(withdrawInfo.amount != transfer_info.amount)
+                        return false;
+                    break;
+                }
+            }
+            if(!found)
+                return false;
+            withdraw_from_contract_count++;
+        }
+    }
+    if(withdraw_from_contract_count != withdraw_infos.size()) {
+        return false;
+    }
+    return true;
 }
 
 std::shared_ptr<::contract::storage::ContractStorageService> get_contract_storage_service()
@@ -2508,7 +2584,7 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
             // TODO
         }
         uint64_t blockGasLimit = UINT64_MAX;
-        if(tx.HasContractOp() && !hasOpSpend) {
+        if(tx.HasContractOp()) {
             ContractTxConverter converter(tx, &view, &block.vtx);
             ExtractContractTX resultConvertContractTx;
             if(!converter.extractionContractTransactions(resultConvertContractTx)) {
@@ -2517,13 +2593,14 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
             uint64_t gasAllTxs = 0;
             uint64_t sumGas = 0;
             CAmount nTxFee = view.GetValueIn(tx) - tx.GetValueOut();
-
-            for(ContractTransaction &ctx : resultConvertContractTx.first) {
+            for(const auto& withdrawInfo : resultConvertContractTx.contract_withdraw_infos) {
+                nTxFee += withdrawInfo.amount;
+            }
+            for(ContractTransaction &ctx : resultConvertContractTx.txs) {
                 sumGas += ctx.params.gasLimit * ctx.params.gasPrice;
                 if(ctx.params.deposit_amount >= nTxFee)
                     return state.DoS(100, error("ConnectBlock(): Transaction fee does not cover the gas stipend"), REJECT_INVALID, "bad-txns-fee-notenough");
                 nTxFee -= ctx.params.deposit_amount;
-                // TODO: withdraw from contract
                 if(sumGas > UINT64_MAX)
                     return state.DoS(100, error("ConnectBlock(): Transaction's gas stipend overflows"), REJECT_INVALID, "bad-tx-gas-stipend-overflow");
                 if(sumGas > nTxFee)
@@ -2537,7 +2614,7 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                     return state.DoS(100, error("ConnectBlock(): Contract execution has lower gas price than allowed"), REJECT_INVALID, "bad-tx-low-gas-price");
             }
 
-			ContractExec exec(service.get(), block, resultConvertContractTx.first, blockGasLimit);
+			ContractExec exec(service.get(), block, resultConvertContractTx.txs, blockGasLimit);
             const auto& old_root_hash = service->current_root_state_hash();
             bool success = false;
             BOOST_SCOPE_EXIT(service, &old_root_hash, &success) {
@@ -2566,6 +2643,11 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
             if(blockGasUsed > blockGasLimit){
                 return state.DoS(1000, error("ConnectBlock(): Block exceeds gas limit"), REJECT_INVALID, "bad-blk-gaslimit");
             }
+            // check withdraw-from-contract info correct
+            if(!contract_exec_result.match_contract_withdraw_infos(resultConvertContractTx.contract_withdraw_infos)) {
+                return state.DoS(1000, error("ConnectBlock(): Contract tx withdraw info error"), REJECT_INVALID, "bad-tx-contractwithdrawinfo");
+            }
+
             // TODO: refund
 
             // TODO

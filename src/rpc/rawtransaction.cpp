@@ -316,6 +316,8 @@ UniValue createrawtransaction(const JSONRPCRequest& request)
             "    {\n"
             "      \"address\": x.xxx,    (numeric or string, required) The key is the bitcoin address, the numeric value (can be string) is the " + CURRENCY_UNIT + " amount\n"
             "      \"data\": \"hex\"      (string, required) The key is \"data\", the value is hex encoded data\n"
+                "      \"contract\": \"hex\"   (string, optional) The key is \"contract\", the value is hex encoded contract-related script\n"
+                    "      \"spend_contract\": \"hex\"   (string, optional) The key is \"spend_contract\", the value is spend contract balance script\n"
             "      ,...\n"
             "    }\n"
             "3. locktime                  (numeric, optional, default=0) Raw locktime. Non-0 value also locktime-activates inputs\n"
@@ -402,8 +404,21 @@ UniValue createrawtransaction(const JSONRPCRequest& request)
             for(const auto item : data) {
                 data_script.push_back(item);
             }
-            CTxOut out(0, data_script); // FIXME: CScript() << data will insert 3 opcodes before
+            CTxOut out(0, data_script);
             rawTx.vout.push_back(out);
+        } else if(name_ == "spend_contract") {
+            // parse array of spend contract balance scripts
+            const auto& spend_contract_scripts = sendTo[name_].get_array();
+            for(auto script_idx = 0; script_idx < spend_contract_scripts.size(); script_idx++) {
+                const auto& spend_contract_script = spend_contract_scripts[script_idx];
+                std::vector<unsigned char> data = ParseHexV(spend_contract_script.getValStr(),"Data");
+                CScript data_script;
+                for(const auto item : data) {
+                    data_script.push_back(item);
+                }
+                CTxOut out(0, data_script);
+                rawTx.vout.push_back(out);
+            }
         } else {
             CTxDestination destination = DecodeDestination(name_);
             if (!IsValidDestination(destination)) {

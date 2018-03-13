@@ -1835,13 +1835,13 @@ UniValue getcreatecontractaddress(const JSONRPCRequest& request)
         if (!converter.extractionContractTransactions(resultConvertContractTx)) {
             throw runtime_error("decode contract tx failed");
         }
-        if(resultConvertContractTx.first.size() < 1)
+        if(resultConvertContractTx.txs.size() < 1)
         {
             throw runtime_error("decode contract tx failed");
         }
         else
         {
-            const auto& con_tx = resultConvertContractTx.first[0];
+            const auto& con_tx = resultConvertContractTx.txs[0];
             if(con_tx.opcode == OP_CREATE)
             {
                 contract_address = con_tx.params.contract_address;

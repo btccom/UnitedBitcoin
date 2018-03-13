@@ -706,7 +706,7 @@ public:
 	}
     bool HasOpSpend() const
     {
-        return size()==1 && *begin() == OP_SPEND;
+		return Find(OP_SPEND) == 1;
     }
     // end contract op check
 

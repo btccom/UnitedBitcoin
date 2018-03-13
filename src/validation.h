@@ -20,6 +20,7 @@
 #include <versionbits.h>
 #include <contract_engine/contract_engine_builder.hpp>
 #include <contract_storage/contract_storage.hpp>
+#include <contract_storage/exceptions.hpp>
 #include <jsondiff/jsondiff.h>
 #include <fc/io/enum_type.hpp>
 #include <fc/io/varint.hpp>
@@ -585,6 +586,8 @@ struct ContractTransactionParams {
     uint64_t deposit_amount = 0;
     std::string deposit_memo;
     uint32_t version = 0;
+    uint64_t withdraw_amount = 0;
+    std::string withdraw_from_contract_address;
 };
 
 struct ContractTransaction {
@@ -596,7 +599,15 @@ typedef jsondiff::JsonValue StorageValue;
 typedef jsondiff::JsonValue ContractDataValue; // data in contract vm's value type
 typedef jsondiff::DiffResultP StorageChanges;
 
-using ExtractContractTX = std::pair<std::vector<ContractTransaction>, std::vector<ContractTransactionParams>>;
+struct ContractWithdrawInfo {
+    std::string from_contract_address;
+    uint64_t amount = 0;
+};
+struct ExtractContractTX {
+    std::vector<ContractTransaction> txs;
+    std::vector<ContractTransactionParams> txs_params;
+    std::vector<ContractWithdrawInfo> contract_withdraw_infos;
+};
 
 struct ContractResultTransferInfo {
     std::string address;
@@ -625,6 +636,8 @@ struct ContractExecResult {
 
     std::vector<std::pair<std::string, StorageChanges>> contract_storage_changes; // contract_id => changes
     std::vector<ContractResultTransferInfo> balance_changes;
+
+    bool match_contract_withdraw_infos(const std::vector<ContractWithdrawInfo> withdraw_infos) const;
 };
 
 class ContractTxConverter {

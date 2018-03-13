@@ -19,6 +19,8 @@ namespace blockchain {
 			// TODO: events, etc.
 
             void add_balance_change(const std::string& address, bool is_contract, bool add, uint64_t amount);
+
+			uint64_t get_contract_balance(const std::string& address) const;
         };
     }
 }

@@ -31,8 +31,10 @@ const char* GetTxnOutputType(txnouttype t)
     case TX_MULTISIG: return "multisig";
     case TX_NULL_DATA: return "nulldata";
     case TX_CREATE: return "createcontract";
+    case TX_UPGRADE: return "upgradecontract";
     case TX_CALL: return "callcontract";
     case TX_DEPOSIT_TO_CONTRACT: return "deposit_to_contract";
+    case TX_SPEND: return "spend_contract_balance";
     case TX_ROOT_STATE_HASH: return "root_state_hash";
     case TX_WITNESS_V0_KEYHASH: return "witness_v0_keyhash";
     case TX_WITNESS_V0_SCRIPTHASH: return "witness_v0_scripthash";
@@ -62,6 +64,8 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
         mTemplates.insert(std::make_pair(TX_CALL, CScript() << OP_VERSION << OP_DATA << OP_DATA << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_CALL));
         // Deposit to contract tx
         mTemplates.insert(std::make_pair(TX_DEPOSIT_TO_CONTRACT, CScript() << OP_VERSION << OP_DATA << OP_DATA << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_DEPOSIT_TO_CONTRACT));
+        // Spend contract balance
+        mTemplates.insert(std::make_pair(TX_SPEND, CScript() << OP_DATA << OP_DATA << OP_SPEND));
         // root state hash tx(in coinbase vout)
         mTemplates.insert(std::make_pair(TX_ROOT_STATE_HASH, CScript() << OP_DATA << OP_ROOT_STATE_HASH));
     }

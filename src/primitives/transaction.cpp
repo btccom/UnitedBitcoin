@@ -98,8 +98,8 @@ unsigned int CTransaction::GetTotalSize() const
 
 bool CTransaction::HasOpSpend() const
 {
-    for(const CTxIn& i : vin){
-        if(i.scriptSig.HasOpSpend()){
+    for(const CTxOut& i : vout){
+        if(i.scriptPubKey.HasOpSpend()){
             return true;
         }
     }

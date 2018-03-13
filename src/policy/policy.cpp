@@ -128,7 +128,7 @@ bool IsStandardTx(const CTransaction& tx, std::string& reason, const bool witnes
         else if ((whichType == TX_MULTISIG) && (!fIsBareMultisigStd)) {
             reason = "bare-multisig";
             return false;
-        } else if (IsDust(txout, ::dustRelayFee) && !txout.scriptPubKey.HasContractOp()) {
+        } else if (IsDust(txout, ::dustRelayFee) && !txout.scriptPubKey.HasContractOp() && !txout.scriptPubKey.HasOpSpend()) {
             reason = "dust";
             return false;
         }
