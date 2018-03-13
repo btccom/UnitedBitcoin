@@ -583,7 +583,7 @@ namespace uvm {
 
             bool BtcUvmChainApi::is_valid_contract_address(lua_State *L, const char *address_str)
             {
-                return true; // TODO
+                return strlen(address_str) > 34; // TODO
             }
 
             const char * BtcUvmChainApi::get_system_asset_symbol(lua_State *L)

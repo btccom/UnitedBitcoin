@@ -1974,7 +1974,7 @@ bool ContractExec::commit_changes(std::shared_ptr<::contract::storage::ContractS
     // put balance changes
     for(const auto& transfer_info : pending_contract_exec_result.balance_changes)
     {
-		if (transfer_info.is_contract)
+		if (!transfer_info.is_contract)
 			continue;
         ::contract::storage::ContractBalanceChange change;
         change.asset_id = 0;
@@ -2001,6 +2001,8 @@ bool ContractTxConverter::extractionContractTransactions(ExtractContractTX& cont
 
     for(size_t i = 0; i < txBitcoin.vout.size(); i++) {
         if(txBitcoin.vout[i].scriptPubKey.HasContractOp()){
+            if(txBitcoin.vout[i].nValue != 0)
+                return false;
             if(receiveStack(txBitcoin.vout[i].scriptPubKey)){
                 ContractTransactionParams params;
                 if(parseContractTXParams(params, i)){
@@ -2014,6 +2016,8 @@ bool ContractTxConverter::extractionContractTransactions(ExtractContractTX& cont
             }
         }
         else if(txBitcoin.vout[i].scriptPubKey.HasOpSpend()) {
+            if(txBitcoin.vout[i].nValue != 0)
+                return false;
             // get withdraw from contract balance info
             if(receiveStack(txBitcoin.vout[i].scriptPubKey)){
                 ContractTransactionParams params;
