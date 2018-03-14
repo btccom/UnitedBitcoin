@@ -554,18 +554,21 @@ namespace uvm {
             uint32_t BtcUvmChainApi::get_header_block_num(lua_State *L)
             {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
+                // TODO
                 return 0;
             }
 
             uint32_t BtcUvmChainApi::wait_for_future_random(lua_State *L, int next)
             {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
+                // TODO
                 return 0;
             }
 
             int32_t BtcUvmChainApi::get_waited(lua_State *L, uint32_t num)
             {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
+                // TODO
                 return num;
             }
 
