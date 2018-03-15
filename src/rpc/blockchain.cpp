@@ -1757,6 +1757,7 @@ UniValue getcontractinfo(const JSONRPCRequest& request)
     UniValue result(UniValue::VOBJ);
     result.push_back(Pair("id", contract_info->id));
     result.push_back(Pair("name", contract_info->name));
+    result.push_back(Pair("description", contract_info->description));
 	jsondiff::JsonArray apis;
 	for (const auto& api : contract_info->apis)
 	{

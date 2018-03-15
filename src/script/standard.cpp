@@ -62,6 +62,8 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
         mTemplates.insert(std::make_pair(TX_CREATE, CScript() << OP_VERSION << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_CREATE));
         // Call contract tx
         mTemplates.insert(std::make_pair(TX_CALL, CScript() << OP_VERSION << OP_DATA << OP_DATA << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_CALL));
+        // Upgrade contract tx
+        mTemplates.insert(std::make_pair(TX_UPGRADE, CScript() << OP_VERSION << OP_DATA << OP_DATA << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_UPGRADE));
         // Deposit to contract tx
         mTemplates.insert(std::make_pair(TX_DEPOSIT_TO_CONTRACT, CScript() << OP_VERSION << OP_DATA << OP_DATA << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_DEPOSIT_TO_CONTRACT));
         // Spend contract balance

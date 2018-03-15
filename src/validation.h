@@ -574,6 +574,12 @@ struct ContractInfo {
     uvm::blockchain::Code code;
 };
 
+struct ContractBaseInfoForUpdate {
+    std::string address;
+    std::string name;
+    std::string description;
+};
+
 struct ContractTransactionParams {
     uint64_t gasLimit = 0;
     uint64_t gasPrice = 0;
@@ -583,6 +589,8 @@ struct ContractTransactionParams {
     std::string contract_address;
     std::string api_name;
     std::string api_arg;
+    std::string contract_name;
+    std::string contract_desc;
     uint64_t deposit_amount = 0;
     std::string deposit_memo;
     uint32_t version = 0;
@@ -616,6 +624,7 @@ struct ContractResultTransferInfo {
     uint64_t amount = 0;
 };
 
+// FIXME: not use it now
 // contract execute result for uvm
 struct ResultExecute {
     uint64_t usedGas = 0;
@@ -623,6 +632,7 @@ struct ResultExecute {
     std::string error_message;
     std::vector<ContractResultTransferInfo> balance_changes;
     std::vector<std::pair<std::string, StorageChanges>> contract_storage_changes; // contract_id => changes
+    std::vector<ContractBaseInfoForUpdate> contract_upgrade_infos;
 };
 
 // contract result for bitcoin
@@ -636,6 +646,7 @@ struct ContractExecResult {
 
     std::vector<std::pair<std::string, StorageChanges>> contract_storage_changes; // contract_id => changes
     std::vector<ContractResultTransferInfo> balance_changes;
+    std::vector<ContractBaseInfoForUpdate> contract_upgrade_infos;
 
     bool match_contract_withdraw_infos(const std::vector<ContractWithdrawInfo> withdraw_infos) const;
 };
@@ -686,6 +697,8 @@ namespace contract_utils {
     std::string storage_to_json_string(const StorageValue &storage_value);
     ContractDataValue vch_to_contract_data(const valtype &vch_value);
     valtype contract_data_to_vch(const ContractDataValue &value);
+    bool is_valid_contract_name_format(const std::string& name);
+    bool is_valid_contract_desc_format(const std::string& desc);
 }
 
 std::shared_ptr<::contract::storage::ContractStorageService> get_contract_storage_service();

@@ -1829,18 +1829,18 @@ bool ContractExec::performByteCode()
         engine->set_gas_limit(params.gasLimit);
         std::string api_result_json_string;
 
-		ContractInfo contract_info;
-		contract_info.address = params.contract_address;
-		for (const auto& item : params.code.abi)
-			contract_info.apis.push_back(item);
-		std::sort(contract_info.apis.begin(), contract_info.apis.end());
-		for (const auto& item : params.code.offline_abi)
-			contract_info.offline_apis.push_back(item);
-		std::sort(contract_info.offline_apis.begin(), contract_info.offline_apis.end());
-		contract_info.code = params.code;
 		blockchain::contract::PendingState pending_state(storage_service);
 		if (tx.opcode == OP_CREATE)
 		{
+            ContractInfo contract_info;
+            contract_info.address = params.contract_address;
+            for (const auto& item : params.code.abi)
+                contract_info.apis.push_back(item);
+            std::sort(contract_info.apis.begin(), contract_info.apis.end());
+            for (const auto& item : params.code.offline_abi)
+                contract_info.offline_apis.push_back(item);
+            std::sort(contract_info.offline_apis.begin(), contract_info.offline_apis.end());
+            contract_info.code = params.code;
 			pending_state.pending_contracts_to_create[contract_info.address] = contract_info;
 		}
 
@@ -1872,12 +1872,47 @@ bool ContractExec::performByteCode()
                 pending_contract_exec_result.error_message = e.what();
                 return false;
             }
+        } else if(tx.opcode == OP_UPGRADE) {
+            // 查找合约名是否存在
+            const auto& exist_contract_with_name = storage_service->find_contract_id_by_name(params.contract_name);
+            if(!exist_contract_with_name.empty())
+            {
+                pending_contract_exec_result.exit_code = 1;
+                pending_contract_exec_result.error_message = "contract name duplicate";
+                return false;
+            }
+            try {
+                auto contract_info = storage_service->get_contract_info(params.contract_address);
+                if (!contract_info) {
+                    auto error_msg = std::string("Can't find this contract ") + params.contract_address;
+                    throw uvm::core::UvmException(error_msg.c_str());
+                }
+                if(contract_info->name.size() > 0) {
+                    auto error_msg = std::string("Can't upgrade contract ") + params.contract_address + " again";
+                    throw uvm::core::UvmException(error_msg.c_str());
+                }
+                if (std::find(contract_info->apis.begin(), contract_info->apis.end(), "on_upgrade") != contract_info->apis.end()) {
+                    engine->execute_contract_api_by_address(params.contract_address, "on_upgrade", "",
+                                                            &api_result_json_string);
+                }
+                ContractBaseInfoForUpdate upgrade_info;
+                upgrade_info.address = params.contract_address;
+                upgrade_info.name = params.contract_name;
+                upgrade_info.description = params.contract_desc;
+                pending_state.contract_upgrade_infos.push_back(upgrade_info);
+            }
+            catch(uvm::core::UvmException &e)
+            {
+                pending_contract_exec_result.exit_code = 1;
+                pending_contract_exec_result.error_message = e.what();
+                return false;
+            }
         } else if(tx.opcode == OP_DEPOSIT_TO_CONTRACT) {
             std::string deposit_arg = std::to_string(params.deposit_amount);
             try {
 				auto contract_info = storage_service->get_contract_info(params.contract_address);
 				if (!contract_info) {
-					auto error_msg = std::string("Can't find thiscontract ") + params.contract_address;
+					auto error_msg = std::string("Can't find this contract ") + params.contract_address;
 					throw uvm::core::UvmException(error_msg.c_str());
 				}
 				if (std::find(contract_info->apis.begin(), contract_info->apis.end(), "on_deposit") != contract_info->apis.end())
@@ -1901,6 +1936,7 @@ bool ContractExec::performByteCode()
 
 		pending_contract_exec_result.contract_storage_changes = pending_state.contract_storage_changes;
         pending_contract_exec_result.balance_changes = pending_state.balance_changes;
+        pending_contract_exec_result.contract_upgrade_infos = pending_state.contract_upgrade_infos;
 		pending_contract_exec_result.api_result = api_result_json_string;
 		// TODO: gas used and refund info
     }
@@ -1916,6 +1952,7 @@ bool ContractExec::processingResults(ContractExecResult &result)
 
 bool ContractExec::commit_changes(std::shared_ptr<::contract::storage::ContractStorageService> service)
 {
+    jsondiff::JsonDiff differ;
 	if (txs.size() > 0 && txs[0].opcode == OP_CREATE)
 	{
 		// save contract info
@@ -1984,6 +2021,17 @@ bool ContractExec::commit_changes(std::shared_ptr<::contract::storage::ContractS
         change.is_contract = transfer_info.is_contract;
         change.memo = "";
         contract_changes->balance_changes.push_back(change);
+    }
+    for(const auto& info : pending_contract_exec_result.contract_upgrade_infos)
+    {
+        ::contract::storage::ContractUpgradeInfo upgrade_info;
+        upgrade_info.contract_id = info.address;
+        if(!contract_utils::is_valid_contract_name_format(info.name))
+            return false;
+        upgrade_info.name_diff = differ.diff("", info.name);
+        if(info.description != "")
+            upgrade_info.description_diff = differ.diff("", info.description);
+        contract_changes->upgrade_infos.push_back(upgrade_info);
     }
 	try {
 		service->commit_contract_changes(contract_changes);
@@ -2115,6 +2163,8 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         valtype caller_address;
         valtype bytecode;
         valtype contract_address;
+        valtype contract_name;
+        valtype contract_desc;
         valtype withdraw_from_contract_address;
         valtype deposit_memo; // deposit to contract memo
         uint64_t deposit_amount = 0;
@@ -2124,7 +2174,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         // get contract args from stack
         switch (opcode) {
             case OP_CREATE: {
-                // OP_CREATE gasPrice gasLimit caller_address contractData
+                // OP_CREATE gasPrice gasLimit caller_address contractData version
                 gasPrice = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
@@ -2138,7 +2188,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 is_create = true;
             } break;
             case OP_CALL: {
-                // OP_CALL gasPrice gasLimit caller_address contract_address api_name api_arg
+                // OP_CALL gasPrice gasLimit caller_address contract_address api_name api_arg version
                 gasPrice = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
@@ -2154,8 +2204,25 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 version = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
             } break;
+            case OP_UPGRADE: {
+                // OP_UPGRADE gasPrice gasLimit caller_address contract_address contract_name contract_description version
+                gasPrice = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                gasLimit = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                caller_address = stack.back();
+                stack.pop_back();
+                contract_address = stack.back();
+                stack.pop_back();
+                contract_name = stack.back();
+                stack.pop_back();
+                contract_desc = stack.back();
+                stack.pop_back();
+                version = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+            } break;
             case OP_DEPOSIT_TO_CONTRACT: {
-                // OP_DEPOSIT_TO_CONTRACT gasPrice gasLimit caller_address contract_address amount deposit_arg
+                // OP_DEPOSIT_TO_CONTRACT gasPrice gasLimit caller_address contract_address amount deposit_arg version
                 gasPrice = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
@@ -2174,6 +2241,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                     return false;
             } break;
             case OP_SPEND: {
+                // OP_SPEND contract_address withdraw_amount
 				withdraw_from_contract_address = stack.back();
 				stack.pop_back();
 				withdraw_amount = CScriptNum::vch_to_uint64(stack.back());
@@ -2202,8 +2270,20 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 return false;
             }
         }
-        params.withdraw_amount = withdraw_amount;
-        params.withdraw_from_contract_address = ValtypeUtils::vch_to_string(withdraw_from_contract_address);
+        if(opcode == OP_SPEND) {
+            if(withdraw_amount <= 0)
+                return false;
+            params.withdraw_amount = withdraw_amount;
+            params.withdraw_from_contract_address = ValtypeUtils::vch_to_string(withdraw_from_contract_address);
+        }
+        if(opcode == OP_UPGRADE) {
+            params.contract_name = ValtypeUtils::vch_to_string(contract_name);
+            if(!contract_utils::is_valid_contract_name_format(params.contract_name))
+                return false;
+            params.contract_desc = ValtypeUtils::vch_to_string(contract_desc);
+            if(!contract_utils::is_valid_contract_desc_format(params.contract_desc))
+                return false;
+        }
 
         // check caller_address in vin owners(signed in tx). must be same with first input's address
 		if (txBitcoin.vin.empty())
@@ -2264,17 +2344,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
 ContractTransaction ContractTxConverter::createContractTX(const ContractTransactionParams& etp, const uint32_t nOut) {
     ContractTransaction txContract;
     auto &params = txContract.params;
-    params.contract_address = etp.contract_address;
-    params.api_name = etp.api_name;
-    params.api_arg = etp.api_arg;
-    params.caller_address = etp.caller_address;
-    params.caller = etp.caller;
-    // params.to_address = etp.to_address;
-    params.deposit_amount = etp.deposit_amount;
-    params.gasLimit = etp.gasLimit;
-    params.gasPrice = etp.gasPrice;
-    params.code = etp.code;
-    params.version = etp.version;
+	params = etp;
     txContract.opcode = opcode;
     // TODO: check etp by different opcode value, eg. OP_CREATE can't contains
     if (etp.contract_address == "" && opcode != OP_CALL){
@@ -5538,5 +5608,29 @@ namespace contract_utils {
         memcpy(data.data(), str.c_str(), str.size());
         data[str.size()] = '\0';
         return data;
+    }
+    bool is_valid_contract_name_format(const std::string& name)
+    {
+        if(name.size() < 2 || name.size() > 30)
+            return false;
+        // first char must be ascii character or '_'
+        if(!(std::isalpha(name[0]) || name[0] == '_'))
+            return false;
+        // other position chars must be ascii character or '_' or digit
+        for(size_t i=1;i<name.size();i++) {
+            if(!(std::isalpha(name[i]) || name[i] == '_' || std::isdigit(name[i])))
+                return false;
+        }
+        return true;
+    }
+    bool is_valid_contract_desc_format(const std::string& desc)
+    {
+        if(desc.size() > 100)
+            return false;
+        for(size_t i=0;i<desc.size();i++) {
+            if(!(std::isalpha(desc[i]) || desc[i] == '_' || std::isdigit(desc[i])))
+                return false;
+        }
+        return true;
     }
 }
