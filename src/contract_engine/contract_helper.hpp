@@ -31,4 +31,5 @@ public:
     static uvm::blockchain::Code load_contract_from_gpc_data(const std::vector<unsigned char>& gpc_data);
 
     static std::string generate_contract_address(const uvm::blockchain::Code& code, const std::string& caller_address, const CTransaction& txBitcoin, size_t contract_op_vout_index);
+    static bool is_valid_contract_address_format(const std::string& address);
 };

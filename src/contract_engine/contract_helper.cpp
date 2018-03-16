@@ -1,9 +1,12 @@
 #include <contract_engine/contract_helper.hpp>
+#include <cstdlib>
+#include <vector>
 #include <fc/array.hpp>
 #include <fc/crypto/ripemd160.hpp>
 #include <fc/crypto/elliptic.hpp>
 #include <fc/crypto/base58.hpp>
 #include <fc/crypto/sha256.hpp>
+#include <fc/crypto/ripemd160.hpp>
 #include <boost/uuid/sha1.hpp>
 #include <exception>
 
@@ -221,14 +224,78 @@ struct ContractCreateDigestInfo
 
 FC_REFLECT(::ContractCreateDigestInfo, (caller_address)(tx_hash)(contract_op_vout_index));
 
+template <typename T> std::vector<char> encoder_result_to_vector(const T& item)
+{
+	std::vector<char> result;
+	result.resize(item.data_size());
+	memcpy(result.data(), item.data(), result.size());
+	return result;
+}
+
 std::string ContractHelper::generate_contract_address(const uvm::blockchain::Code& code, const std::string& caller_address, const CTransaction& txBitcoin, size_t contract_op_vout_index)
 {
-    fc::sha512::encoder enc;
+	// contract address = CON + base58(ripemd160(sha256(info)) + prefix_4_bytes(sha256(ripemd160(sha256(info))))
+    fc::sha256::encoder enc;
     ContractCreateDigestInfo info;
     info.caller_address = caller_address;
     info.tx_hash = txBitcoin.GetHash().GetHex();
     info.contract_op_vout_index = contract_op_vout_index;
     fc::raw::pack(enc, info);
-    const auto& addr = fc::ripemd160::hash(enc.result()).str();
+	const auto& info2_result = enc.result(); //  info160 = sha256(info)
+	const auto& info2 = encoder_result_to_vector(info2_result);
+    fc::ripemd160::encoder info2_encoder;
+    fc::raw::pack(info2_encoder, info2);
+    const auto& a_result = info2_encoder.result(); // a = ripemd160(sha256(info))
+	const std::vector<char> a = encoder_result_to_vector(a_result);
+	fc::sha256::encoder enc_of_a;
+	fc::raw::pack(enc_of_a, a);
+	const auto& b = enc_of_a.result(); // b = sha256(a)
+	std::vector<char> first_4_bytes_of_b;
+	first_4_bytes_of_b.resize(4);
+	memcpy(first_4_bytes_of_b.data(), b.data(), 4);
+	std::vector<char> c;
+	c.resize(a.size() + first_4_bytes_of_b.size());
+	memcpy(c.data(), a.data(), a.size());
+	memcpy(c.data() + a.size(), first_4_bytes_of_b.data(), first_4_bytes_of_b.size());
+	std::string addr = std::string("CON") + fc::to_base58(c.data(), c.size());
     return addr;
+}
+
+bool ContractHelper::is_valid_contract_address_format(const std::string& address)
+{
+    if(address.empty() || address.size() > CONTRACT_ID_MAX_LENGTH)
+        return false;
+	std::vector<char> c;
+	c.resize(100);
+	size_t decoded_size = 0;
+	std::string prefix("CON");
+	if (address.length() < prefix.length())
+		return false;
+	try {
+		decoded_size = fc::from_base58(address.substr(prefix.length()), c.data(), c.size());
+		if (decoded_size > c.size() || decoded_size <= 4 + prefix.length())
+			return false;
+		c.resize(decoded_size);
+	}
+	catch (const fc::parse_error_exception& e)
+	{
+		return false;
+	}
+	if (c.size() <= 4)
+		return false;
+	std::vector<char> a;
+	a.resize(c.size() - 4);
+	memcpy(a.data(), c.data(), a.size());
+	std::vector<char> first_4_bytes_of_b;
+	first_4_bytes_of_b.resize(4);
+	memcpy(first_4_bytes_of_b.data(), c.data() + a.size(), c.size() - a.size());
+	fc::sha256::encoder enc_of_a;
+	fc::raw::pack(enc_of_a, a);
+	auto b = enc_of_a.result();
+	if (b.data_size() < 4)
+		return false;
+	std::vector<char> first_4_bytes_of_b_calculated;
+	first_4_bytes_of_b_calculated.resize(4);
+	memcpy(first_4_bytes_of_b_calculated.data(), b.data(), 4);
+	return first_4_bytes_of_b_calculated == first_4_bytes_of_b;
 }

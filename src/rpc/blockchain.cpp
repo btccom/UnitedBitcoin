@@ -38,6 +38,7 @@
 #include <fstream>
 
 #include <contract_storage/contract_storage.hpp>
+#include <contract_engine/contract_helper.hpp>
 #include <fc/crypto/base64.hpp>
 #include <boost/scope_exit.hpp>
 
@@ -1734,25 +1735,95 @@ UniValue preciousblock(const JSONRPCRequest& request)
 }
 
 ///// contract
-UniValue getcontractinfo(const JSONRPCRequest& request)
+UniValue getsimplecontractinfo(const JSONRPCRequest& request)
 {
     if (request.fHelp || request.params.size() < 1)
         throw runtime_error(
-                "getcontractinfo \"address\" ( address )\n"
+                "getsimplecontractinfo \"addressOrName\" ( string )\n"
                         "\nArgument:\n"
-                        "1. \"address\"          (string, required) The contract address\n"
+                        "1. \"addressOrName\"          (string, required) The contract address or contract name\n"
         );
 
     LOCK(cs_main);
 
     std::string strAddr = request.params[0].get_str();
-    if(strAddr.size() < 40)
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect address");
     auto service = get_contract_storage_service();
     service->open();
-    auto contract_info = service->get_contract_info(strAddr);
-    if(!contract_info)
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Address does not exist");
+	::contract::storage::ContractInfoP contract_info;
+	if (ContractHelper::is_valid_contract_address_format(strAddr)) {
+		contract_info = service->get_contract_info(strAddr);
+	} else {
+		if (!contract_utils::is_valid_contract_name_format) {
+			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Address does not exist");
+		}
+		auto contract_addr = service->find_contract_id_by_name(strAddr);
+		if (contract_addr.empty())
+			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Contract address or name does not exist");
+		contract_info = service->get_contract_info(contract_addr);
+	}
+	if(!contract_info)
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Contract address or name does not exist");
+
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("id", contract_info->id));
+    result.push_back(Pair("name", contract_info->name));
+    result.push_back(Pair("description", contract_info->description));
+    jsondiff::JsonArray apis;
+    for (const auto& api : contract_info->apis)
+    {
+        apis.push_back(api);
+    }
+    result.push_back(Pair("apis", jsondiff::json_pretty_dumps(apis)));
+    jsondiff::JsonArray offline_apis;
+    for (const auto& api : contract_info->offline_apis)
+    {
+        offline_apis.push_back(api);
+    }
+    result.push_back(Pair("offline_apis", jsondiff::json_pretty_dumps(offline_apis)));
+    jsondiff::JsonArray storages;
+    for (const auto& p : contract_info->storage_types)
+    {
+        storages.push_back(p.first);
+    }
+    result.push_back(Pair("storages", jsondiff::json_pretty_dumps(storages)));
+    jsondiff::JsonArray balances;
+    for (const auto& b : contract_info->balances)
+    {
+        balances.push_back(b.to_json());
+    }
+    result.push_back(Pair("balances", jsondiff::json_pretty_dumps(balances)));
+
+    return result;
+}
+
+UniValue getcontractinfo(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 1)
+        throw runtime_error(
+                "getcontractinfo \"addressOrName\" ( string )\n"
+                        "\nArgument:\n"
+                        "1. \"addressOrName\"          (string, required) The contract address or name\n"
+        );
+
+    LOCK(cs_main);
+
+    std::string strAddr = request.params[0].get_str();
+    auto service = get_contract_storage_service();
+    service->open();
+	::contract::storage::ContractInfoP contract_info;
+	if (ContractHelper::is_valid_contract_address_format(strAddr)) {
+		contract_info = service->get_contract_info(strAddr);
+	} else {
+		if (!contract_utils::is_valid_contract_name_format) {
+			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Address does not exist");
+		}
+		auto contract_addr = service->find_contract_id_by_name(strAddr);
+		if (contract_addr.empty())
+			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Contract address or name does not exist");
+		contract_info = service->get_contract_info(contract_addr);
+	}
+	if (!contract_info)
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Contract address or name does not exist");
 
     UniValue result(UniValue::VOBJ);
     result.push_back(Pair("id", contract_info->id));
@@ -1879,7 +1950,7 @@ UniValue invokecontractoffline(const JSONRPCRequest& request)
 		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect address");
 	// TODO: check caller_address valid, and whether has secret of it
 	std::string contract_address = request.params[1].get_str();
-	if (contract_address.size() < 40)
+	if (!ContractHelper::is_valid_contract_address_format(contract_address))
 		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect address");
 	std::string api_name = request.params[2].get_str();
 	if(api_name.empty())
@@ -2142,6 +2213,7 @@ static const CRPCCommand commands[] =
     { "blockchain",         "preciousblock",          &preciousblock,          {"blockhash"} },
 
     { "blockchain",         "getcontractinfo",        &getcontractinfo,        {"contract_address"} },
+    { "blockchain",         "getsimplecontractinfo",  &getsimplecontractinfo,  {"contract_address"} },
     { "blockchain",         "getcreatecontractaddress", &getcreatecontractaddress, {"contact_tx"} },
 	{ "blockchain",         "invokecontractoffline",  &invokecontractoffline,  {"caller_address", "contract_address", "api_name", "api_arg"} },
 

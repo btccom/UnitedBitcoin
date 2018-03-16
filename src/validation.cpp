@@ -2329,8 +2329,11 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         }
 		if (opcode != OP_SPEND)
 		{
-			if (!is_create)
+			if (!is_create) {
 				params.contract_address = ValtypeUtils::vch_to_string(contract_address);
+				if (!ContractHelper::is_valid_contract_address_format(params.contract_address))
+					return false;
+			}
 			else
 				params.contract_address = ContractHelper::generate_contract_address(params.code, params.caller_address, txBitcoin, contract_op_vout_index);
 		}
@@ -5609,6 +5612,7 @@ namespace contract_utils {
         data[str.size()] = '\0';
         return data;
     }
+
     bool is_valid_contract_name_format(const std::string& name)
     {
         if(name.size() < 2 || name.size() > 30)

@@ -229,9 +229,12 @@ namespace uvm {
             {
                 // TODO
                 std::string contract_name = uvm::lua::lib::unwrap_any_contract_name(name);
-                strncpy(address, contract_name.c_str(), contract_name.size() + 1);
+                if(contract_name.size() > CONTRACT_ID_MAX_LENGTH-1)
+                    return;
+                strncpy(address, contract_name.c_str(), CONTRACT_ID_MAX_LENGTH-1);
+                address[CONTRACT_ID_MAX_LENGTH-1] = '\0';
                 if(address_size)
-                    *address_size = strlen(address) + 1;
+                    *address_size = strlen(address);
             }
 
             bool BtcUvmChainApi::check_contract_exist_by_address(lua_State *L, const char *address)

@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <string>
 #include <memory>
+#include <uvm/uvm_api.h>
 #include <uvm/uvm_lib.h>
 
 namespace blockchain

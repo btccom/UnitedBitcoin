@@ -146,7 +146,8 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "echojson", 9, "arg9" },
     { "rescanblockchain", 0, "start_height"},
     { "rescanblockchain", 1, "stop_height"},
-    { "getcontractinfo", 1, "contract_address" },
+    { "getcontractinfo", 1, "contract_address_or_name" },
+    { "getsimplecontractinfo", 1, "contract_address_or_name" },
     { "getcreatecontractaddress", 1, "tx" },
 	{ "invokecontractoffline", 4, "caller_address" },
 };
