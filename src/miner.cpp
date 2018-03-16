@@ -299,6 +299,9 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
         //therefore, this can only be triggered by using raw transactions on the staker itself
         return false;
     }
+    auto service = get_contract_storage_service();
+    service->open();
+
     std::vector<ContractTransaction> contractTransactions = resultConverter.txs;
     uint64_t txGas = 0;
 	CAmount gasAllTxs = 0;
@@ -325,6 +328,9 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
             //if this transaction's gasPrice is less than the current DGP minGasPrice don't add it
             return false;
         }
+        if(!contractTransaction.params.check_upgrade_contract_caller(contractTransaction.opcode, service)) {
+            return false;
+        }
 		gasAllTxs += contractTransaction.params.gasLimit * contractTransaction.params.gasPrice;
         allDepositAmount += contractTransaction.params.deposit_amount;
     }
@@ -339,8 +345,6 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
 			return false;
 	}
 
-    auto service = get_contract_storage_service();
-	service->open();
 	const auto& old_root_state_hash = service->current_root_state_hash();
     ContractExec exec(service.get(), *pblock, contractTransactions, hardBlockGasLimit);
 	bool success = false;

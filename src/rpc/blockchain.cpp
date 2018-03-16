@@ -1766,6 +1766,7 @@ UniValue getsimplecontractinfo(const JSONRPCRequest& request)
 
     UniValue result(UniValue::VOBJ);
     result.push_back(Pair("id", contract_info->id));
+    result.push_back(Pair("creator_address", contract_info->creator_address));
     result.push_back(Pair("name", contract_info->name));
     result.push_back(Pair("description", contract_info->description));
     jsondiff::JsonArray apis;
@@ -1827,6 +1828,7 @@ UniValue getcontractinfo(const JSONRPCRequest& request)
 
     UniValue result(UniValue::VOBJ);
     result.push_back(Pair("id", contract_info->id));
+    result.push_back(Pair("creator_address", contract_info->creator_address));
     result.push_back(Pair("name", contract_info->name));
     result.push_back(Pair("description", contract_info->description));
 	jsondiff::JsonArray apis;

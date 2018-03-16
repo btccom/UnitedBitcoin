@@ -596,6 +596,8 @@ struct ContractTransactionParams {
     uint32_t version = 0;
     uint64_t withdraw_amount = 0;
     std::string withdraw_from_contract_address;
+
+    bool check_upgrade_contract_caller(opcodetype opcode, std::shared_ptr<::contract::storage::ContractStorageService> service) const;
 };
 
 struct ContractTransaction {

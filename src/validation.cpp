@@ -1960,6 +1960,7 @@ bool ContractExec::commit_changes(std::shared_ptr<::contract::storage::ContractS
 		auto new_contract_info_to_commit = std::make_shared<::contract::storage::ContractInfo>();
 		new_contract_info_to_commit->id = con_tx.params.contract_address;
 		new_contract_info_to_commit->name = "";
+        new_contract_info_to_commit->creator_address = con_tx.params.caller_address;
 		new_contract_info_to_commit->version = con_tx.params.version;
 		new_contract_info_to_commit->bytecode = con_tx.params.code.code;
 		for (const auto& api : con_tx.params.code.abi)
@@ -2154,6 +2155,20 @@ static std::string GetSenderAddress(const CTransaction& tx, const CCoinsViewCach
 	return "";
 }
 
+bool ContractTransactionParams::check_upgrade_contract_caller(opcodetype opcode, std::shared_ptr<::contract::storage::ContractStorageService> service) const
+{
+    if(opcode != OP_UPGRADE)
+        return true;
+    auto contract_info = service->get_contract_info(contract_address);
+    if(!contract_info)
+        return false;
+    if(contract_info->creator_address != caller_address)
+        return false;
+    if(!contract_info->name.empty())
+        return false;
+    return true;
+}
+
 bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& params, size_t contract_op_vout_index) {
     try{
         uint64_t gasLimit = 0;
@@ -2264,25 +2279,19 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         if(params.gasPrice <= 0 && opcode != OP_SPEND)
             return false;
         params.caller_address = ValtypeUtils::vch_to_string(caller_address);
+
         if(opcode != OP_SPEND) {
             CBitcoinAddress caller_addr_obj(params.caller_address);
             if (!caller_addr_obj.IsValid()) {
                 return false;
             }
         }
+
         if(opcode == OP_SPEND) {
             if(withdraw_amount <= 0)
                 return false;
             params.withdraw_amount = withdraw_amount;
             params.withdraw_from_contract_address = ValtypeUtils::vch_to_string(withdraw_from_contract_address);
-        }
-        if(opcode == OP_UPGRADE) {
-            params.contract_name = ValtypeUtils::vch_to_string(contract_name);
-            if(!contract_utils::is_valid_contract_name_format(params.contract_name))
-                return false;
-            params.contract_desc = ValtypeUtils::vch_to_string(contract_desc);
-            if(!contract_utils::is_valid_contract_desc_format(params.contract_desc))
-                return false;
         }
 
         // check caller_address in vin owners(signed in tx). must be same with first input's address
@@ -2337,6 +2346,15 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
 			else
 				params.contract_address = ContractHelper::generate_contract_address(params.code, params.caller_address, txBitcoin, contract_op_vout_index);
 		}
+
+        if(opcode == OP_UPGRADE) {
+            params.contract_name = ValtypeUtils::vch_to_string(contract_name);
+            if(!contract_utils::is_valid_contract_name_format(params.contract_name))
+                return false;
+            params.contract_desc = ValtypeUtils::vch_to_string(contract_desc);
+            if(!contract_utils::is_valid_contract_desc_format(params.contract_desc))
+                return false;
+        }
         return true;
     }
     catch(const scriptnum_error& err){
@@ -2689,6 +2707,8 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                     return state.DoS(1, false, REJECT_INVALID, "bad-txns-gas-exceeds-blockgaslimit");
                 if((uint64_t)ctx.params.gasPrice < DEFAULT_MIN_GAS_PRICE)
                     return state.DoS(100, error("ConnectBlock(): Contract execution has lower gas price than allowed"), REJECT_INVALID, "bad-tx-low-gas-price");
+                if(!ctx.params.check_upgrade_contract_caller(ctx.opcode, service))
+                    return state.DoS(100, error("ConnectBlock(): Only contract creator can upgrade it"), REJECT_INVALID, "bad-contract-upgrader");
             }
 
 			ContractExec exec(service.get(), block, resultConvertContractTx.txs, blockGasLimit);
