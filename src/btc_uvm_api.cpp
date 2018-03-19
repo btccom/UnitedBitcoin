@@ -18,22 +18,21 @@
 #include <uvm/lobject.h>
 #include <uvm/lstate.h>
 #include <amount.h>
+#include <base58.h>
+#include <chainparams.h>
+#include <script/standard.h>
 
 #include <validation.h>
 #include <contract_engine/pending_state.hpp>
+#include <contract_engine/contract_helper.hpp>
+
+extern CChain chainActive;
 
 namespace uvm {
     namespace lua {
         namespace api {
 
             static int has_error = 0;
-
-            static std::string get_file_name_str_from_contract_module_name(std::string name)
-            {
-                std::stringstream ss;
-                ss << "uvm_contract_" << name;
-                return ss.str();
-            }
 
             /**
             * whether exception happen in L
@@ -112,8 +111,11 @@ namespace uvm {
             int BtcUvmChainApi::check_contract_api_instructions_over_limit(lua_State *L)
             {
                 auto evaluator = get_evaluator(L);
-                // TODO: check gas_limit and gas used. if gas_limit == 0, return 0(not over limit)
-                return 0; // TODO
+                auto gas_limit = uvm::lua::lib::get_lua_state_instructions_limit(L);
+                auto gas_count = uvm::lua::lib::get_lua_state_instructions_executed_count(L);
+                if(gas_limit <= 0)
+                    return 0;
+                return gas_count > gas_limit;
             }
 
             int BtcUvmChainApi::get_stored_contract_info(lua_State *L, const char *name, std::shared_ptr<UvmContractInfo> contract_info_ret)
@@ -483,7 +485,6 @@ namespace uvm {
 
             bool BtcUvmChainApi::register_storage(lua_State *L, const char *contract_name, const char *name)
             {
-                // printf("registered storage %s[%s] to uvm\n", contract_name, name);
                 return true;
             }
 
@@ -518,61 +519,100 @@ namespace uvm {
             lua_Integer BtcUvmChainApi::transfer_from_contract_to_public_account(lua_State *L, const char *contract_address, const char *to_account_name,
                                                                                    const char *asset_type, int64_t amount)
             {
+                // not supported
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
-                printf("contract transfer from %s to %s, asset[%s] amount %ld\n", contract_address, to_account_name, asset_type, amount);
-                // TODO
-                return 0;
+                return 1;
             }
 
             int64_t BtcUvmChainApi::get_contract_balance_amount(lua_State *L, const char *contract_address, const char* asset_symbol)
             {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
+                auto service = get_contract_storage_service(L);
+                if(!service)
+                    return 0;
+                if(std::string(asset_symbol) != get_system_asset_symbol(L))
+                    return 0;
+                const auto& balances = service->get_contract_balances(std::string(contract_address));
+                for(const auto& balance : balances) {
+                    if(balance.asset_id==0) {
+                        return balance.amount;
+                    }
+                }
                 return 0;
             }
 
             int64_t BtcUvmChainApi::get_transaction_fee(lua_State *L)
             {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
-                return 0;
+                auto pending_state = get_evaluator(L);
+                return pending_state->nTxFee;
             }
 
             uint32_t BtcUvmChainApi::get_chain_now(lua_State *L)
             {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
-                return 0;
+                auto bindex = chainActive.Tip();
+                return bindex->nTime;
             }
 
             uint32_t BtcUvmChainApi::get_chain_random(lua_State *L)
             {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
-                return 0;
+                auto bindex = chainActive.Tip();
+                CBlock block;
+                auto res = ReadBlockFromDisk(block, bindex, Params().GetConsensus());
+                if(!res)
+                    return 0;
+				auto hash = block.GetHash();
+				return uint32_t(hash.GetUint64(2)) % (1 << 31 - 1);
             }
 
             std::string BtcUvmChainApi::get_transaction_id(lua_State *L)
             {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
-                return "";
+				auto pending_state = get_evaluator(L);
+				uint256 tx_id = pending_state->tx_id;
+				return tx_id.ToString();
             }
 
             uint32_t BtcUvmChainApi::get_header_block_num(lua_State *L)
             {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
-                // TODO
-                return 0;
+				auto bindex = chainActive.Tip();
+				return bindex->nHeight;
             }
 
             uint32_t BtcUvmChainApi::wait_for_future_random(lua_State *L, int next)
             {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
-                // TODO
-                return 0;
+				auto bindex = chainActive.Tip();
+				auto target = bindex->nHeight + next;
+				if (target < next)
+					return 0;
+				else
+					return target;
             }
 
             int32_t BtcUvmChainApi::get_waited(lua_State *L, uint32_t num)
             {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
-                // TODO
-                return num;
+				auto bindex = chainActive.Tip();
+				if (bindex->nHeight < num || num < 1)
+					return 0;
+				CBlockIndex* cur_index = bindex;
+				while (true) {
+					if (!cur_index)
+						return 0;
+					if (cur_index->nHeight == num)
+						break;
+					cur_index = cur_index->pprev;
+				}
+				CBlock block;
+				auto res = ReadBlockFromDisk(block, cur_index, Params().GetConsensus());
+				if (!res)
+					return 0;
+				auto hash = block.GetHash();
+				return int32_t(hash.GetUint64(2)) % (1 << 31 - 1);
             }
 
             void BtcUvmChainApi::emit(lua_State *L, const char* contract_id, const char* event_name, const char* event_param)
@@ -584,17 +624,25 @@ namespace uvm {
 
             bool BtcUvmChainApi::is_valid_address(lua_State *L, const char *address_str)
             {
-                return true; // TODO
+                try {
+                    if(is_valid_contract_address(L, address_str))
+                        return true;
+					CTxDestination dest = DecodeDestination(std::string(address_str));
+					bool isValid = IsValidDestination(dest);
+					return isValid;
+                }catch(...) {
+                    return false;
+                }
             }
 
             bool BtcUvmChainApi::is_valid_contract_address(lua_State *L, const char *address_str)
             {
-                return strlen(address_str) > 34; // TODO
+                return ContractHelper::is_valid_contract_address_format(address_str);
             }
 
             const char * BtcUvmChainApi::get_system_asset_symbol(lua_State *L)
             {
-                return "COIN";
+                return "UBTC";
             }
 
             uint64_t BtcUvmChainApi::get_system_asset_precision(lua_State *L)

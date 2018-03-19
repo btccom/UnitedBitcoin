@@ -2,6 +2,7 @@
 
 #include <validation.h>
 #include <contract_storage/contract_storage.hpp>
+#include <amount.h>
 
 
 namespace blockchain {
@@ -12,6 +13,8 @@ namespace blockchain {
             ~PendingState(){}
 
 			::contract::storage::ContractStorageService* storage_service;
+            uint256 tx_id;
+            CAmount nTxFee;
 
             std::unordered_map<std::string, ContractInfo> pending_contracts_to_create;
 			std::vector<std::pair<std::string, StorageChanges>> contract_storage_changes; // contract_id => changes

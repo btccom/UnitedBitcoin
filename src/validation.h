@@ -602,6 +602,7 @@ struct ContractTransactionParams {
 
 struct ContractTransaction {
     opcodetype opcode; // bitcoin script opcode(contract op)
+    uint256 tx_id;
     ContractTransactionParams params;
 };
 
@@ -677,8 +678,8 @@ private:
 
 class ContractExec {
 public:
-    ContractExec(::contract::storage::ContractStorageService* _storage_service, const CBlock& _block, std::vector<ContractTransaction> _txs, const uint64_t _blockGasLimit)
-            : storage_service(_storage_service), block(_block), txs(_txs), blockGasLimit(_blockGasLimit)
+    ContractExec(::contract::storage::ContractStorageService* _storage_service, const CBlock& _block, std::vector<ContractTransaction> _txs, const uint64_t _blockGasLimit, CAmount _nTxFee)
+            : storage_service(_storage_service), block(_block), txs(_txs), blockGasLimit(_blockGasLimit), nTxFee(_nTxFee)
     {}
     bool performByteCode();
     bool processingResults(ContractExecResult &result);
@@ -692,6 +693,7 @@ public:
     std::vector<ResultExecute> result;
     const CBlock &block;
     const uint64_t blockGasLimit;
+    const CAmount nTxFee;
     ContractExecResult pending_contract_exec_result; // pending contract exec changes not committed
 };
 

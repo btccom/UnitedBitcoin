@@ -1593,39 +1593,47 @@ static DisconnectResult DisconnectBlock(const CBlock& block, const CBlockIndex* 
     // contract storage service rollback
     if(pindex->nHeight >= Params().GetConsensus().UBCONTRACT_Height) {
         auto prev_block_index = pindex->pprev;
-        // TODO: use prev block
-        const auto& coinbase_tx = *(block.vtx[0]);
-        // get root state hash from coinbase vout
-        std::string block_root_state_hash;
-        bool found_root_state_hash = false;
-        for (const auto& txout : coinbase_tx.vout)
-        {
-            txnouttype whichType;
-            std::vector<std::vector<unsigned char> > vSolutions;
-            if (!Solver(txout.scriptPubKey, whichType, vSolutions))
-                return DISCONNECT_FAILED;
-            if (whichType == TX_ROOT_STATE_HASH)
-            {
-                if (vSolutions.empty())
-                {
-                    return DISCONNECT_FAILED;
-                }
-                if(txout.nValue != 0)
-                    return DISCONNECT_FAILED;
-                block_root_state_hash = ValtypeUtils::vch_to_string(vSolutions[0]);
-                found_root_state_hash = true;
-            }
-        }
-        if (!found_root_state_hash)
-        {
-            return DISCONNECT_FAILED;
-        }
-        auto service = get_contract_storage_service();
-        service->open();
-        if(found_root_state_hash)
-            service->rollback_contract_state(block_root_state_hash);
-        else
-            service->rollback_contract_state(EMPTY_COMMIT_ID);
+		if (prev_block_index) {
+			CBlock prev_block;
+			auto res = ReadBlockFromDisk(prev_block, prev_block_index, Params().GetConsensus());
+			if(!res)
+				return DISCONNECT_FAILED;
+			const auto& coinbase_tx = *(prev_block.vtx[0]);
+			// get root state hash from prev_block coinbase vout
+			std::string block_root_state_hash;
+			bool found_root_state_hash = false;
+			for (const auto& txout : coinbase_tx.vout)
+			{
+				txnouttype whichType;
+				std::vector<std::vector<unsigned char> > vSolutions;
+				if (!Solver(txout.scriptPubKey, whichType, vSolutions))
+					return DISCONNECT_FAILED;
+				if (whichType == TX_ROOT_STATE_HASH)
+				{
+					if (vSolutions.empty())
+					{
+						return DISCONNECT_FAILED;
+					}
+					if (txout.nValue != 0)
+						return DISCONNECT_FAILED;
+					block_root_state_hash = ValtypeUtils::vch_to_string(vSolutions[0]);
+					found_root_state_hash = true;
+				}
+			}
+			if (!found_root_state_hash)
+			{
+				return DISCONNECT_FAILED;
+			}
+			auto service = get_contract_storage_service();
+			service->open();
+			if (found_root_state_hash)
+				service->rollback_contract_state(block_root_state_hash);
+			else
+				service->rollback_contract_state(EMPTY_COMMIT_ID);
+		}
+		else {
+			return DISCONNECT_FAILED;
+		}
     }
 
     return fClean ? DISCONNECT_OK : DISCONNECT_UNCLEAN;
@@ -1868,6 +1876,8 @@ bool ContractExec::performByteCode()
         std::string api_result_json_string;
 
 		blockchain::contract::PendingState pending_state(storage_service);
+        pending_state.tx_id = tx.tx_id;
+        pending_state.nTxFee = nTxFee;
 		if (tx.opcode == OP_CREATE)
 		{
             ContractInfo contract_info;
@@ -2405,13 +2415,7 @@ ContractTransaction ContractTxConverter::createContractTX(const ContractTransact
     auto &params = txContract.params;
 	params = etp;
     txContract.opcode = opcode;
-    // TODO: check etp by different opcode value, eg. OP_CREATE can't contains
-    if (etp.contract_address == "" && opcode != OP_CALL){
-//        txContract = ContractTransaction(txBitcoin.vout[nOut].nValue, etp.gasPrice, etp.gasLimit, etp.code, 0);
-    }
-    else{
-//        txContract = ContractTransaction(txBitcoin.vout[nOut].nValue, etp.gasPrice, etp.gasLimit, etp.contract_address, etp.code, 0);
-    }
+    txContract.tx_id = txBitcoin.GetHash();
     // FIXME: dev::Address sender(GetSenderAddress(txBit, view, blockTransactions));
     // txContract.forceSender(sender);
 //    txContract.setHashWith(uintToh256(txBitcoin.GetHash()));
@@ -2749,7 +2753,7 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                     return state.DoS(100, error("ConnectBlock(): Only contract creator can upgrade it"), REJECT_INVALID, "bad-contract-upgrader");
             }
 
-			ContractExec exec(service.get(), block, resultConvertContractTx.txs, blockGasLimit);
+			ContractExec exec(service.get(), block, resultConvertContractTx.txs, blockGasLimit, nTxFee);
             const auto& old_root_hash = service->current_root_state_hash();
             bool success = false;
             BOOST_SCOPE_EXIT(service, &old_root_hash, &success) {

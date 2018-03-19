@@ -335,9 +335,10 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
         allDepositAmount += contractTransaction.params.deposit_amount;
     }
 	// check tx fee can over gas
+    CAmount nTxFee = 0;
 	{
 		CCoinsViewCache view(pcoinsTip.get());
-		CAmount nTxFee = view.GetValueIn(iter->GetTx()) + allWithdrawFromContractAmount - iter->GetTx().GetValueOut();
+		nTxFee = view.GetValueIn(iter->GetTx()) + allWithdrawFromContractAmount - iter->GetTx().GetValueOut();
         if(nTxFee <= allDepositAmount)
             return false;
         nTxFee -= allDepositAmount;
@@ -346,7 +347,7 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
 	}
 
 	const auto& old_root_state_hash = service->current_root_state_hash();
-    ContractExec exec(service.get(), *pblock, contractTransactions, hardBlockGasLimit);
+    ContractExec exec(service.get(), *pblock, contractTransactions, hardBlockGasLimit, nTxFee);
 	bool success = false;
 	BOOST_SCOPE_EXIT_ALL(&service, &success, &old_root_state_hash) {
 		if(!success)

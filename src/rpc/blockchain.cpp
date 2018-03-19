@@ -1997,7 +1997,7 @@ UniValue invokecontractoffline(const JSONRPCRequest& request)
 	contract_tx.params.version = CONTRACT_MAJOR_VERSION;
 	contractTransactions.push_back(contract_tx);
 
-	ContractExec exec(service.get(), block, contractTransactions, gas_limit);
+	ContractExec exec(service.get(), block, contractTransactions, gas_limit, 0);
 	if (!exec.performByteCode()) {
 		//error, don't add contract
 		return false;
