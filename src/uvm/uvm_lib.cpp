@@ -45,8 +45,9 @@ namespace uvm
 		namespace lib
 		{
 
-			std::vector<std::string> contract_special_api_names = { "init", "on_deposit", "on_destroy", "on_upgrade" };
+			std::vector<std::string> contract_special_api_names = { "init", "on_deposit", "on_deposit_asset", "on_destroy", "on_upgrade" };
 			std::vector<std::string> contract_int_argument_special_api_names = { "on_deposit" };
+			std::vector<std::string> contract_string_argument_special_api_names = { "on_deposit_asset" };
 
 #define LUA_IN_SANDBOX_STATE_KEY "lua_in_sandbox"
             // storagecontract idstate key
@@ -54,7 +55,8 @@ namespace uvm
 
             static const char *globalvar_whitelist[] = {
                 "print", "pprint", "table", "string", "time", "math", "json", "type", "require", "Array", "Stream",
-                "import_contract_from_address", "import_contract", "emit", "is_valid_address", "is_valid_contract_address", "get_prev_call_frame_contract_address",
+                "import_contract_from_address", "import_contract", "emit", "is_valid_address", "is_valid_contract_address",
+				"get_prev_call_frame_contract_address", "get_prev_call_frame_api_name",
                 "uvm", "storage", "exit", "self", "debugger", "exit_debugger",
                 "caller", "caller_address",
                 "contract_transfer", "contract_transfer_to", "transfer_from_contract_to_address",
@@ -169,36 +171,67 @@ namespace uvm
                 return 1;
             }
 
-            std::string get_prev_call_frame_contract_id(lua_State *L)
-            {
-                auto contract_id_stack = get_using_contract_id_stack(L, true);
-                if (!contract_id_stack || contract_id_stack->size()<2)
-                    return "";
-                auto top = contract_id_stack->top();
-                contract_id_stack->pop();
-                auto prev = contract_id_stack->top();
-                contract_id_stack->push(top);
-                return prev;
-            }
+			static std::string get_prev_call_frame_contract_id(lua_State *L)
+			{
+				auto contract_id_stack = get_using_contract_id_stack(L, true);
+				if (!contract_id_stack || contract_id_stack->size()<2)
+					return "";
+				auto top = contract_id_stack->top();
+				contract_id_stack->pop();
+				auto prev = contract_id_stack->top();
+				contract_id_stack->push(top);
+				return prev.contract_id;
+			}
 
-            const char *get_prev_call_frame_contract_id_in_api(lua_State *L)
-            {
-                const auto &contract_id = get_prev_call_frame_contract_id(L);
-                auto contract_id_str = malloc_and_copy_string(L, contract_id.c_str());
-                return contract_id_str;
-            }
+			static std::string get_prev_call_frame_api_name(lua_State *L)
+			{
+				auto contract_id_stack = get_using_contract_id_stack(L, true);
+				if (!contract_id_stack || contract_id_stack->size()<2)
+					return "";
+				auto top = contract_id_stack->top();
+				contract_id_stack->pop();
+				auto prev = contract_id_stack->top();
+				contract_id_stack->push(top);
+				return prev.api_name;
+			}
 
-            static int get_prev_call_frame_contract_address_lua_api(lua_State *L)
-            {
-                auto prev_contract_id = get_prev_call_frame_contract_id_in_api(L);
-                if (!prev_contract_id || strlen(prev_contract_id)< 1)
-                {
-                    lua_pushnil(L);
-                    return 1;
-                }
-                lua_pushstring(L, prev_contract_id);
-                return 1;
-            }
+			static const char *get_prev_call_frame_contract_id_in_api(lua_State *L)
+			{
+				const auto &contract_id = get_prev_call_frame_contract_id(L);
+				auto contract_id_str = malloc_and_copy_string(L, contract_id.c_str());
+				return contract_id_str;
+			}
+
+			static const char *get_prev_call_frame_api_name_in_api(lua_State *L)
+			{
+				const auto &api_name = get_prev_call_frame_api_name(L);
+				auto api_name_str = malloc_and_copy_string(L, api_name.c_str());
+				return api_name_str;
+			}
+
+			static int get_prev_call_frame_contract_address_lua_api(lua_State *L)
+			{
+				auto prev_contract_id = get_prev_call_frame_contract_id_in_api(L);
+				if (!prev_contract_id || strlen(prev_contract_id)< 1)
+				{
+					lua_pushnil(L);
+					return 1;
+				}
+				lua_pushstring(L, prev_contract_id);
+				return 1;
+			}
+
+			static int get_prev_call_frame_api_name_lua_api(lua_State *L)
+			{
+				auto prev_api_name = get_prev_call_frame_api_name_in_api(L);
+				if (!prev_api_name || strlen(prev_api_name)< 1)
+				{
+					lua_pushnil(L);
+					return 1;
+				}
+				lua_pushstring(L, prev_api_name);
+				return 1;
+			}
 
 			static int get_system_asset_symbol(lua_State *L)
 			{
@@ -930,7 +963,8 @@ end
                     add_global_c_function(L, "emit", emit_uvm_event);
 					add_global_c_function(L, "is_valid_address", is_valid_address);
 					add_global_c_function(L, "is_valid_contract_address", is_valid_contract_address);
-                    add_global_c_function(L, "get_prev_call_frame_contract_address", get_prev_call_frame_contract_address_lua_api);
+					add_global_c_function(L, "get_prev_call_frame_contract_address", get_prev_call_frame_contract_address_lua_api);
+					add_global_c_function(L, "get_prev_call_frame_api_name", get_prev_call_frame_api_name_lua_api);
 					add_global_c_function(L, "get_system_asset_symbol", get_system_asset_symbol);
 					add_global_c_function(L, "get_system_asset_precision", get_system_asset_precision);
                 }
@@ -1382,6 +1416,11 @@ end
                         // when instack=1, find in parent localvars, when instack=0, find in parent upval pool
                         if (a == 0)
                             break;
+						if (b >= proto->sizeupvalues || b < 0)
+						{
+							lcompile_error_set(L, error, "upvalue error");
+							return false;
+						}
                         const char *upvalue_name = UPVALNAME_OF_PROTO(proto, b);
                         int cidx = MYK(INDEXK(b));
                         if (nullptr == proto->k)
@@ -1417,6 +1456,11 @@ end
                     }	 break;
                     case UOP_SETUPVAL:
                     {
+						if (b >= proto->sizeupvalues || b < 0)
+						{
+							lcompile_error_set(L, error, "upvalue error");
+							return false;
+						}
                         const char *upvalue_name = UPVALNAME_OF_PROTO(proto, b);
                         // not support change _ENV or _G
                         if (strcmp("_ENV", upvalue_name) == 0
@@ -1429,7 +1473,11 @@ end
                     }
                     case UOP_GETTABUP:
                     {
-                        // FIXME
+						if (b >= proto->sizeupvalues || b < 0)
+						{
+							lcompile_error_set(L, error, "upvalue error");
+							return false;
+						}
                         const char *upvalue_name = UPVALNAME_OF_PROTO(proto, b);
                         if (ISK(c)){
                             int cidx = MYK(INDEXK(c));
@@ -1461,6 +1509,11 @@ end
                     break;
                     case UOP_SETTABUP:
                     {
+						if (a >= proto->sizeupvalues || a < 0)
+						{
+							lcompile_error_set(L, error, "upvalue error");
+							return false;
+						}
                         const char *upvalue_name = UPVALNAME_OF_PROTO(proto, a);
                         // not support change _ENV or _G
                         if (strcmp("_ENV", upvalue_name) == 0
@@ -1531,15 +1584,15 @@ end
                 return check_contract_proto(L, closure->p, error);
             }
 
-			std::stack<std::string> *get_using_contract_id_stack(lua_State *L, bool init_if_not_exist)
+			std::stack<contract_info_stack_entry> *get_using_contract_id_stack(lua_State *L, bool init_if_not_exist)
             {
-				std::stack<std::string> *contract_id_stack = nullptr;
+				std::stack<contract_info_stack_entry> *contract_id_stack = nullptr;
 				auto contract_id_stack_value_in_state_map = uvm::lua::lib::get_lua_state_value(L, GLUA_CONTRACT_API_CALL_STACK_STATE_MAP_KEY);
 				if (!contract_id_stack_value_in_state_map.pointer_value)
 				{
 					if (!init_if_not_exist)
 						return nullptr;
-					contract_id_stack = new std::stack<std::string>();
+					contract_id_stack = new std::stack<contract_info_stack_entry>();
 					if (!contract_id_stack)
 					{
 						lua_set_run_error(L, "allocate contract id stack memory error");
@@ -1549,7 +1602,7 @@ end
 					uvm::lua::lib::set_lua_state_value(L, GLUA_CONTRACT_API_CALL_STACK_STATE_MAP_KEY, contract_id_stack_value_in_state_map, UvmStateValueType::LUA_STATE_VALUE_POINTER);
 				}
 				else
-					contract_id_stack = (std::stack<std::string>*) (contract_id_stack_value_in_state_map.pointer_value);
+					contract_id_stack = (std::stack<contract_info_stack_entry>*) (contract_id_stack_value_in_state_map.pointer_value);
 				return contract_id_stack;
             }
 
@@ -1558,7 +1611,7 @@ end
 				auto contract_id_stack = get_using_contract_id_stack(L, true);
 				if (!contract_id_stack || contract_id_stack->size()<1)
 					return "";
-				return contract_id_stack->top();
+				return contract_id_stack->top().contract_id;
             }
 
             UvmTableMapP create_managed_lua_table_map(lua_State *L)

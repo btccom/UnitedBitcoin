@@ -20,8 +20,6 @@
 #include <memory>
 
 #include <uvm/lua.h>
-#include <jsondiff/jsondiff.h>
-#include <jsondiff/exceptions.h>
 
 #define LOG_INFO(...)  fprintf(stderr, "[INFO] " ##__VA_ARGS__)
 
@@ -403,7 +401,6 @@ typedef struct UvmStorageChangeItem
 {
     std::string contract_id;
     std::string key;
-	jsondiff::DiffResult diff;
     struct UvmStorageValue before;
     struct UvmStorageValue after;
 } UvmStorageChangeItem;
@@ -419,9 +416,6 @@ struct UvmStorageValue lua_type_to_storage_value_type(lua_State *L, int index);
 bool luaL_commit_storage_changes(lua_State *L);
 
 bool lua_push_storage_value(lua_State *L, const UvmStorageValue &value);
-
-UvmStorageValue json_to_uvm_storage_value(lua_State *L, jsondiff::JsonValue json_value);
-jsondiff::JsonValue uvm_storage_value_to_json(UvmStorageValue value);
 
 typedef std::unordered_map<std::string, UvmStorageChangeItem> ContractChangesMap;
 

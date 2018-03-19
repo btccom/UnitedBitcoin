@@ -99,6 +99,7 @@ public:
         // hard fork
         consensus.UBCHeight = 498777 ;
 		consensus.UBCInitBlockCount = 500;
+        consensus.UBCONTRACT_Height = 501000; // FIXME
 
 		// UnionBitcoin foundation multisig address
 		consensus.UBCfoundationAddress = "31rZdrTpN57Wbfhg7xTPxeFGjEQaMBjxoo";

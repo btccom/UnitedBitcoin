@@ -77,6 +77,8 @@ namespace uvm
 			extern std::vector<std::string> contract_special_api_names;
 			// special contract api names with int argument
 			extern std::vector<std::string> contract_int_argument_special_api_names;
+			// special contract api names with string argument
+			extern std::vector<std::string> contract_string_argument_special_api_names;
 
             class UvmStateScope
             {
@@ -390,8 +392,12 @@ namespace uvm
 			// get the head contract address of call stack
 			std::string get_starting_contract_address(lua_State *L);
 
+			struct contract_info_stack_entry {
+				std::string contract_id;
+				std::string api_name;
+			};
 			// contract id stack of API call stack
-			std::stack<std::string> *get_using_contract_id_stack(lua_State *L, bool init_if_not_exist=true);
+			std::stack<contract_info_stack_entry> *get_using_contract_id_stack(lua_State *L, bool init_if_not_exist=true);
 
 			// get top contract address of call stack
 			std::string get_current_using_contract_id(lua_State *L);

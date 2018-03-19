@@ -231,6 +231,11 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
             {
                 if(0 <= opcode1 && opcode1 <= OP_PUSHDATA4)
                 {
+                    if(script2.size()==2 && script2[1] == OP_ROOT_STATE_HASH && script1.size()==2 && script1[1] == OP_ROOT_STATE_HASH && vch1.empty())
+                    {
+                        vSolutionsRet.push_back(vch1);
+                        continue;
+                    }
                     if(vch1.empty())
                         break;
 					vSolutionsRet.push_back(vch1);
