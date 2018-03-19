@@ -1590,6 +1590,39 @@ static DisconnectResult DisconnectBlock(const CBlock& block, const CBlockIndex* 
     // move best block pointer to prevout block
     view.SetBestBlock(pindex->pprev->GetBlockHash());
 
+    // contract storage service rollback
+    if(pindex->nHeight >= Params().GetConsensus().UBCONTRACT_Height) {
+        const auto& coinbase_tx = *(block.vtx[0]);
+        // get root state hash from coinbase vout
+        std::string block_root_state_hash;
+        bool found_root_state_hash = false;
+        for (const auto& txout : coinbase_tx.vout)
+        {
+            txnouttype whichType;
+            std::vector<std::vector<unsigned char> > vSolutions;
+            if (!Solver(txout.scriptPubKey, whichType, vSolutions))
+                return DISCONNECT_FAILED;
+            if (whichType == TX_ROOT_STATE_HASH)
+            {
+                if (vSolutions.empty())
+                {
+                    return DISCONNECT_FAILED;
+                }
+                if(txout.nValue != 0)
+                    return DISCONNECT_FAILED;
+                block_root_state_hash = ValtypeUtils::vch_to_string(vSolutions[0]);
+                found_root_state_hash = true;
+            }
+        }
+        if (!found_root_state_hash)
+        {
+            return DISCONNECT_FAILED;
+        }
+        auto service = get_contract_storage_service();
+        service->open();
+        service->rollback_contract_state(block_root_state_hash);
+    }
+
     return fClean ? DISCONNECT_OK : DISCONNECT_UNCLEAN;
 }
 
