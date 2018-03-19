@@ -1592,6 +1592,8 @@ static DisconnectResult DisconnectBlock(const CBlock& block, const CBlockIndex* 
 
     // contract storage service rollback
     if(pindex->nHeight >= Params().GetConsensus().UBCONTRACT_Height) {
+        auto prev_block_index = pindex->pprev;
+        // TODO: use prev block
         const auto& coinbase_tx = *(block.vtx[0]);
         // get root state hash from coinbase vout
         std::string block_root_state_hash;
@@ -1620,7 +1622,10 @@ static DisconnectResult DisconnectBlock(const CBlock& block, const CBlockIndex* 
         }
         auto service = get_contract_storage_service();
         service->open();
-        service->rollback_contract_state(block_root_state_hash);
+        if(found_root_state_hash)
+            service->rollback_contract_state(block_root_state_hash);
+        else
+            service->rollback_contract_state(EMPTY_COMMIT_ID);
     }
 
     return fClean ? DISCONNECT_OK : DISCONNECT_UNCLEAN;
