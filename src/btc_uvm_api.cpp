@@ -120,14 +120,18 @@ namespace uvm {
 
             int BtcUvmChainApi::get_stored_contract_info(lua_State *L, const char *name, std::shared_ptr<UvmContractInfo> contract_info_ret)
             {
-                auto addr =  name;
+                auto service = get_contract_storage_service(L);
+                FC_ASSERT(service != nullptr);
+                auto&& addr = service->find_contract_id_by_name(std::string(name));
+                if(addr.empty())
+                    return 0;
                 if(!contract_info_ret)
                     return 0;
                 auto evaluator = get_evaluator(L);
                 // find in contract create op
                 for(const auto &pair : evaluator->pending_contracts_to_create)
                 {
-                    if(pair.first == std::string(addr))
+                    if(pair.first == addr)
                     {
                         const auto &code = pair.second.code;
                         for(const auto& api : code.abi)
@@ -141,9 +145,7 @@ namespace uvm {
                         return 1;
                     }
                 }
-				auto service = get_contract_storage_service(L);
-				FC_ASSERT(service != nullptr);
-				auto contract = service->get_contract_info(std::string(addr));
+				auto contract = service->get_contract_info(addr);
 				if (contract)
 				{
 					for (const auto& api : contract->apis)
@@ -229,26 +231,52 @@ namespace uvm {
 
             void BtcUvmChainApi::get_contract_address_by_name(lua_State *L, const char *name, char *address, size_t *address_size)
             {
-                // TODO
-                std::string contract_name = uvm::lua::lib::unwrap_any_contract_name(name);
-                if(contract_name.size() > CONTRACT_ID_MAX_LENGTH-1)
+                auto service = get_contract_storage_service(L);
+                if(!service)
                     return;
-                strncpy(address, contract_name.c_str(), CONTRACT_ID_MAX_LENGTH-1);
-                address[CONTRACT_ID_MAX_LENGTH-1] = '\0';
-                if(address_size)
-                    *address_size = strlen(address);
+                auto&& contract_id = service->find_contract_id_by_name(name);
+                if(contract_id.empty())
+                {
+                    memset(address, 0x0, CONTRACT_ID_MAX_LENGTH);
+                    if(address_size)
+                        *address_size = 0;
+                } else {
+                    strncpy(address, contract_id.c_str(), CONTRACT_ID_MAX_LENGTH - 1);
+                    address[CONTRACT_ID_MAX_LENGTH - 1] = '\0';
+                    if (address_size)
+                        *address_size = strlen(address);
+                }
             }
 
             bool BtcUvmChainApi::check_contract_exist_by_address(lua_State *L, const char *address)
             {
-                // TODO
+                auto evaluator = get_evaluator(L);
+                for(const auto &pair : evaluator->pending_contracts_to_create)
+                {
+                    if(pair.first == std::string(address))
+                    {
+                        return true;
+                    }
+                }
+                auto service = get_contract_storage_service(L);
+                if(!service)
+                    return false;
+                auto contract = service->get_contract_info(std::string(address));
+                if(!contract)
+                    return false;
                 return true;
             }
 
             bool BtcUvmChainApi::check_contract_exist(lua_State *L, const char *name)
             {
-                // TODO
-                return true;
+                auto service = get_contract_storage_service(L);
+                if(!service)
+                    return false;
+                auto&& contract_id = service->find_contract_id_by_name(std::string(name));
+                if(contract_id.empty())
+                    return false;
+                else
+                    return true;
             }
 
             /**
@@ -257,11 +285,13 @@ namespace uvm {
             std::shared_ptr<UvmModuleByteStream> BtcUvmChainApi::open_contract(lua_State *L, const char *name)
             {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
-                auto addr = name;
+                auto service = get_contract_storage_service(L);
+                FC_ASSERT(service != nullptr);
+                auto&& addr = service->find_contract_id_by_name(std::string(name));
                 auto evaluator = get_evaluator(L);
                 for(const auto &pair : evaluator->pending_contracts_to_create)
                 {
-                    if(pair.first == std::string(addr))
+                    if(pair.first == addr)
                     {
                         const auto &code_val = pair.second.code;
                         auto stream = std::make_shared<UvmModuleByteStream>();
@@ -271,7 +301,7 @@ namespace uvm {
                         memcpy(stream->buff.data(), code_val.code.data(), code_val.code.size());
                         stream->is_bytes = true;
                         stream->contract_name = name;
-                        stream->contract_id = std::string(addr);
+                        stream->contract_id = addr;
 						for (const auto& api : code_val.abi)
 							stream->contract_apis.push_back(api);
 						for (const auto& offline_api : code_val.offline_abi)
@@ -281,9 +311,7 @@ namespace uvm {
                         return stream;
                     }
                 }
-				auto service = get_contract_storage_service(L);
-				FC_ASSERT(service != nullptr);
-				auto contract = service->get_contract_info(std::string(addr));
+				auto contract = service->get_contract_info(addr);
 				if (contract)
 				{
 					auto stream = std::make_shared<UvmModuleByteStream>();
@@ -292,8 +320,8 @@ namespace uvm {
 					stream->buff.resize(contract->bytecode.size());
 					memcpy(stream->buff.data(), contract->bytecode.data(), contract->bytecode.size());
 					stream->is_bytes = true;
-					stream->contract_name = "";
-					stream->contract_id = std::string(addr);
+					stream->contract_name = name;
+					stream->contract_id = addr;
 					for (const auto& api : contract->apis)
 						stream->contract_apis.push_back(api);
 					for (const auto& offline_api : contract->offline_apis)
@@ -355,8 +383,11 @@ namespace uvm {
 
             UvmStorageValue BtcUvmChainApi::get_storage_value_from_uvm(lua_State *L, const char *contract_name, std::string name)
             {
-				auto contract_address = contract_name; // TODO
-				return get_storage_value_from_uvm_by_address(L, contract_address, name);
+                auto service = get_contract_storage_service(L);
+                FC_ASSERT(service != nullptr);
+				auto&& contract_address = service->find_contract_id_by_name(std::string(contract_name));
+                FC_ASSERT(!contract_address.empty());
+				return get_storage_value_from_uvm_by_address(L, contract_address.c_str(), name);
             }
 
             UvmStorageValue BtcUvmChainApi::get_storage_value_from_uvm_by_address(lua_State *L, const char *contract_address, std::string name)
