@@ -4996,6 +4996,12 @@ bool ReplayBlocks(const CChainParams& params, CCoinsView* view)
 
     cache.SetBestBlock(pindexNew->GetBlockHash());
     cache.Flush();
+    
+    // reset contract storage service's root state hash
+	auto service = get_contract_storage_service();
+	service->open();
+	service->rollback_contract_state(EMPTY_COMMIT_ID);
+
     uiInterface.ShowProgress("", 100, false);
     return true;
 }
