@@ -176,6 +176,8 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     pblock->vtx[0] = MakeTransactionRef(coinbaseTx);
 
     //////////////////////////////////////////////////////// contract
+	auto allow_contract = nHeight >= Params().GetConsensus().UBCONTRACT_Height;
+
     minGasPrice = DEFAULT_MIN_GAS_PRICE;
     hardBlockGasLimit = DEFAULT_BLOCK_GAS_LIMIT;
     softBlockGasLimit = hardBlockGasLimit;
@@ -185,17 +187,23 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     nBlockMaxSize = MaxBlockSerSize;
 
 	// save old root state hash
-    auto service = get_contract_storage_service();
-	service->open();
-	const auto& old_root_state_hash = service->current_root_state_hash();
-	service->close();
+	std::shared_ptr<::contract::storage::ContractStorageService> service;
+	std::string old_root_state_hash;
+	if (allow_contract) {
+		service = get_contract_storage_service();
+		service->open();
+		old_root_state_hash = service->current_root_state_hash();
+		service->close();
+	}
     // addPriorityTxs(minGasPrice); // TODO
     int nPackagesSelected = 0;
     int nDescendantsUpdated = 0;
-    addPackageTxs(nPackagesSelected, nDescendantsUpdated, minGasPrice);
+    addPackageTxs(nPackagesSelected, nDescendantsUpdated, minGasPrice, allow_contract);
 
-    service->open();
-    if(nHeight >= Params().GetConsensus().UBCONTRACT_Height) {
+	if(allow_contract)
+		service->open();
+
+    if(allow_contract) {
         const auto &root_state_hash_after_add_txs = service->current_root_state_hash();
         coinbaseTx.vout.resize(2);
         coinbaseTx.vout[1].scriptPubKey =
@@ -205,8 +213,10 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     }
 
 	// rollback root state hash
-	service->rollback_contract_state(old_root_state_hash);
-	service->close();
+	if (allow_contract) {
+		service->rollback_contract_state(old_root_state_hash);
+		service->close();
+	}
 
     //this should already be populated by AddBlock in case of contracts, but if no contracts
     //then it won't get populated
@@ -529,7 +539,7 @@ void BlockAssembler::SortForBlock(const CTxMemPool::setEntries& package, CTxMemP
 // Each time through the loop, we compare the best transaction in
 // mapModifiedTxs with the next transaction in the mempool to decide what
 // transaction package to work on next.
-void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpdated, uint64_t minGasPrice)
+void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpdated, uint64_t minGasPrice, bool allow_contract)
 {
     // mapModifiedTx will store sorted packages after they are modified
     // because some of their txs are already in the block
@@ -658,6 +668,11 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
             }
             const CTransaction& tx = sortedEntries[i]->GetTx();
             if (wasAdded) {
+				if (!allow_contract && (tx.HasContractOp() || tx.HasOpSpend())) {
+					mapModifiedTx.erase(sortedEntries[i]);
+					wasAdded = false;
+					continue;
+				}
                 if (tx.HasContractOp()) {
                     wasAdded = AttemptToAddContractToBlock(sortedEntries[i], minGasPrice);
                     if (!wasAdded) {

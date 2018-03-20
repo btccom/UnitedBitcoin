@@ -1,10 +1,17 @@
 #include <contract_engine/uvm_contract_engine.hpp>
+#include <util.h>
 
 namespace uvm
 {
 	UvmContractEngine::UvmContractEngine(bool use_contract)
 	{
+        auto allow_print = gArgs.GetBoolArg("-contractprint", false);
 		_scope = std::make_shared<lua::lib::UvmStateScope>(use_contract);
+        if(!allow_print)
+        {
+			_scope->L()->out = nullptr;
+			_scope->L()->err = nullptr;
+        }
 	}
 	UvmContractEngine::~UvmContractEngine()
 	{

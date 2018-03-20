@@ -2618,7 +2618,7 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
 	auto nHeight = pindexPrev->nHeight + 1;
 
 	std::string block_root_state_hash;
-	bool allow_contract = nHeight >= (Params().GetConsensus().UBCONTRACT_Height-1);
+	bool allow_contract = nHeight >= Params().GetConsensus().UBCONTRACT_Height;
 
     std::shared_ptr<::contract::storage::ContractStorageService> service;
     std::string old_root_state_hash_before_connect_block;
