@@ -671,7 +671,9 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 			}
 			if (contract_call_vout_count > resultConvertContractTx.txs.size())
 				return state.DoS(100, false, REJECT_INVALID, "bad-txns-incorrect-format");
-		}
+		} else if(tx.HasOpSpend()) {
+            return state.DoS(100, false, REJECT_INVALID, "bad-contracttx-incorrect-format");
+        }
 		// end contract
 
         // nModifiedFees includes any fee deltas from PrioritiseTransaction
@@ -2095,11 +2097,14 @@ bool ContractExec::commit_changes(std::shared_ptr<::contract::storage::ContractS
 bool ContractTxConverter::extractionContractTransactions(ExtractContractTX& contractTx) {
     std::vector<ContractTransaction> resultTX;
     std::vector<ContractTransactionParams> resultETP;
+    size_t contract_op_count = 0;
+    size_t spend_op_count = 0;
 
     for(size_t i = 0; i < txBitcoin.vout.size(); i++) {
         if(txBitcoin.vout[i].scriptPubKey.HasContractOp()){
             if(txBitcoin.vout[i].nValue != 0)
                 return false;
+            contract_op_count++;
             if(receiveStack(txBitcoin.vout[i].scriptPubKey)){
                 ContractTransactionParams params;
                 if(parseContractTXParams(params, i)){
@@ -2115,6 +2120,7 @@ bool ContractTxConverter::extractionContractTransactions(ExtractContractTX& cont
         else if(txBitcoin.vout[i].scriptPubKey.HasOpSpend()) {
             if(txBitcoin.vout[i].nValue != 0)
                 return false;
+            spend_op_count++;
             // get withdraw from contract balance info
             if(receiveStack(txBitcoin.vout[i].scriptPubKey)){
                 ContractTransactionParams params;
@@ -2136,6 +2142,8 @@ bool ContractTxConverter::extractionContractTransactions(ExtractContractTX& cont
             }
         }
     }
+    if(contract_op_count<1)
+        return false;
     contractTx.txs = resultTX;
     contractTx.txs_params = resultETP;
     return true;
@@ -2606,20 +2614,25 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
     txdata.reserve(block.vtx.size()); // Required so that pointers to individual PrecomputedTransactionData don't get invalidated
 
     uint64_t blockGasUsed = 0;
-    // TODO: CAmount gasRefunds = 0
 	CBlockIndex* pindexPrev = chainActive.Tip();
 	auto nHeight = pindexPrev->nHeight + 1;
 
 	std::string block_root_state_hash;
-	bool allow_contract = nHeight >= Params().GetConsensus().UBCONTRACT_Height-1;
+	bool allow_contract = nHeight >= (Params().GetConsensus().UBCONTRACT_Height-1);
 
-    auto service = get_contract_storage_service();
-    service->open();
-	const auto& old_root_state_hash_before_connect_block = service->current_root_state_hash();
+    std::shared_ptr<::contract::storage::ContractStorageService> service;
+    std::string old_root_state_hash_before_connect_block;
+    if(allow_contract) {
+        service = get_contract_storage_service();
+        service->open();
+        old_root_state_hash_before_connect_block = service->current_root_state_hash();
+    }
 
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
         const CTransaction &tx = *(block.vtx[i]);
+        if(!allow_contract && (tx.HasContractOp() || tx.HasOpSpend()))
+            return false;
 
         nInputs += tx.vin.size();
 
@@ -2689,7 +2702,6 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
 
         txdata.emplace_back(tx);
 
-        // TODO: check BIP of contract feature
         auto hasOpSpend = tx.HasOpSpend();
 
         if (!tx.IsCoinBase())
@@ -2700,99 +2712,95 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                 return error("ConnectBlock(): CheckInputs on %s failed with %s",
                     tx.GetHash().ToString(), FormatStateMessage(state));
             control.Add(vChecks);
+        }
 
-            // OP_SPEND can only spend from contract address
-            for(const CTxIn& j : tx.vin){
-                if(!j.scriptSig.HasOpSpend()){
-                    const CTxOut& prevout = view.AccessCoin(j.prevout).out;
-                    if((prevout.scriptPubKey.HasContractOp())){
-                        return state.DoS(100, error("ConnectBlock(): Contract spend without OP_SPEND in scriptSig"),
-                                         REJECT_INVALID, "bad-txns-invalid-contract-spend");
-                    }
+        if(allow_contract) {
+            uint64_t blockGasLimit = UINT64_MAX;
+            if (tx.HasContractOp()) {
+                ContractTxConverter converter(tx, &view, &block.vtx);
+                ExtractContractTX resultConvertContractTx;
+                if (!converter.extractionContractTransactions(resultConvertContractTx)) {
+                    return state.DoS(100, error("ConnectBlock(): Contract transaction of the wrong format"),
+                                     REJECT_INVALID, "bad-tx-bad-contract-format");
                 }
+                uint64_t gasAllTxs = 0;
+                uint64_t sumGas = 0;
+                CAmount nTxFee = view.GetValueIn(tx) - tx.GetValueOut();
+                for (const auto &withdrawInfo : resultConvertContractTx.contract_withdraw_infos) {
+                    nTxFee += withdrawInfo.amount;
+                }
+                for (ContractTransaction &ctx : resultConvertContractTx.txs) {
+                    sumGas += ctx.params.gasLimit * ctx.params.gasPrice;
+                    if (ctx.params.deposit_amount >= nTxFee)
+                        return state.DoS(100, error("ConnectBlock(): Transaction fee does not cover the gas stipend"),
+                                         REJECT_INVALID, "bad-txns-fee-notenough");
+                    nTxFee -= ctx.params.deposit_amount;
+                    if (sumGas > UINT64_MAX)
+                        return state.DoS(100, error("ConnectBlock(): Transaction's gas stipend overflows"),
+                                         REJECT_INVALID, "bad-tx-gas-stipend-overflow");
+                    if (sumGas > nTxFee)
+                        return state.DoS(100, error("ConnectBlock(): Transaction fee does not cover the gas stipend"),
+                                         REJECT_INVALID, "bad-txns-fee-notenough");
+                    if (ctx.params.gasLimit > UINT32_MAX)
+                        return state.DoS(100,
+                                         error("ConnectBlock(): Contract execution can not specify greater gas limit than can fit in 32-bits"),
+                                         REJECT_INVALID, "bad-tx-too-much-gas");
+                    gasAllTxs += ctx.params.gasLimit;
+                    if (gasAllTxs > blockGasLimit)
+                        return state.DoS(1, false, REJECT_INVALID, "bad-txns-gas-exceeds-blockgaslimit");
+                    if ((uint64_t) ctx.params.gasPrice < DEFAULT_MIN_GAS_PRICE)
+                        return state.DoS(100,
+                                         error("ConnectBlock(): Contract execution has lower gas price than allowed"),
+                                         REJECT_INVALID, "bad-tx-low-gas-price");
+                    if (!ctx.params.check_upgrade_contract_caller(ctx.opcode, service))
+                        return state.DoS(100, error("ConnectBlock(): Only contract creator can upgrade it"),
+                                         REJECT_INVALID, "bad-contract-upgrader");
+                }
+
+                ContractExec exec(service.get(), block, resultConvertContractTx.txs, blockGasLimit, nTxFee);
+                const auto &old_root_hash = service->current_root_state_hash();
+                bool success = false;
+                BOOST_SCOPE_EXIT(service, &old_root_hash, &success)
+                {
+                    if (!success)
+                        service->rollback_contract_state(old_root_hash);
+                }
+                BOOST_SCOPE_EXIT_END
+                auto execRes = exec.performByteCode();
+                if (!execRes) {
+                    return state.DoS(100,
+                                     error("ConnectBlock(): exec bytecode error"),
+                                     REJECT_INVALID, exec.pending_contract_exec_result.error_message);
+                }
+                ContractExecResult contract_exec_result;
+                exec.processingResults(contract_exec_result);
+                if (contract_exec_result.exit_code != 0)
+                    return state.DoS(100,
+                                     error("ConnectBlock(): exec bytecode error"),
+                                     REJECT_INVALID, exec.pending_contract_exec_result.error_message);
+
+                if (!exec.commit_changes(service))
+                    return state.DoS(100,
+                                     error("ConnectBlock(): commit contract result error"),
+                                     REJECT_INVALID, exec.pending_contract_exec_result.error_message);
+
+                blockGasUsed += contract_exec_result.usedGas;
+                if (blockGasUsed > blockGasLimit) {
+                    return state.DoS(1000, error("ConnectBlock(): Block exceeds gas limit"), REJECT_INVALID,
+                                     "bad-blk-gaslimit");
+                }
+                // check withdraw-from-contract info correct
+                if (!contract_exec_result.match_contract_withdraw_infos(
+                        resultConvertContractTx.contract_withdraw_infos)) {
+                    return state.DoS(1000, error("ConnectBlock(): Contract tx withdraw info error"), REJECT_INVALID,
+                                     "bad-tx-contractwithdrawinfo");
+                }
+                success = true;
+            } else if (tx.HasOpSpend()) {
+                return state.DoS(1000, error("ConnectBlock(): Contract tx format error"), REJECT_INVALID,
+                                 "bad-tx-contracttx-format");
             }
         }
-
-        // TODO: if tx has OP_SPEND or is contract tx, eval sender bitcoin script first
-        // TODO: then convert bitcoin script to AAL-tx, run the contract code, etc.
-        // TODO: check gas, result status, result. and make result tx
-        if(!tx.HasOpSpend()) {
-            // checkBlock.vtx.push_back(block.vtx[i]);
-            // TODO
-        }
-        uint64_t blockGasLimit = UINT64_MAX;
-        if(tx.HasContractOp()) {
-            ContractTxConverter converter(tx, &view, &block.vtx);
-            ExtractContractTX resultConvertContractTx;
-            if(!converter.extractionContractTransactions(resultConvertContractTx)) {
-               return state.DoS(100, error("ConnectBlock(): Contract transaction of the wrong format"), REJECT_INVALID, "bad-tx-bad-contract-format");
-            }
-            uint64_t gasAllTxs = 0;
-            uint64_t sumGas = 0;
-            CAmount nTxFee = view.GetValueIn(tx) - tx.GetValueOut();
-            for(const auto& withdrawInfo : resultConvertContractTx.contract_withdraw_infos) {
-                nTxFee += withdrawInfo.amount;
-            }
-            for(ContractTransaction &ctx : resultConvertContractTx.txs) {
-                sumGas += ctx.params.gasLimit * ctx.params.gasPrice;
-                if(ctx.params.deposit_amount >= nTxFee)
-                    return state.DoS(100, error("ConnectBlock(): Transaction fee does not cover the gas stipend"), REJECT_INVALID, "bad-txns-fee-notenough");
-                nTxFee -= ctx.params.deposit_amount;
-                if(sumGas > UINT64_MAX)
-                    return state.DoS(100, error("ConnectBlock(): Transaction's gas stipend overflows"), REJECT_INVALID, "bad-tx-gas-stipend-overflow");
-                if(sumGas > nTxFee)
-                    return state.DoS(100, error("ConnectBlock(): Transaction fee does not cover the gas stipend"), REJECT_INVALID, "bad-txns-fee-notenough");
-                if(ctx.params.gasLimit > UINT32_MAX)
-                    return state.DoS(100, error("ConnectBlock(): Contract execution can not specify greater gas limit than can fit in 32-bits"), REJECT_INVALID, "bad-tx-too-much-gas");
-                gasAllTxs += ctx.params.gasLimit;
-                if(gasAllTxs > blockGasLimit)
-                    return state.DoS(1, false, REJECT_INVALID, "bad-txns-gas-exceeds-blockgaslimit");
-                if((uint64_t)ctx.params.gasPrice < DEFAULT_MIN_GAS_PRICE)
-                    return state.DoS(100, error("ConnectBlock(): Contract execution has lower gas price than allowed"), REJECT_INVALID, "bad-tx-low-gas-price");
-                if(!ctx.params.check_upgrade_contract_caller(ctx.opcode, service))
-                    return state.DoS(100, error("ConnectBlock(): Only contract creator can upgrade it"), REJECT_INVALID, "bad-contract-upgrader");
-            }
-
-			ContractExec exec(service.get(), block, resultConvertContractTx.txs, blockGasLimit, nTxFee);
-            const auto& old_root_hash = service->current_root_state_hash();
-            bool success = false;
-            BOOST_SCOPE_EXIT(service, &old_root_hash, &success) {
-                if(!success)
-                    service->rollback_contract_state(old_root_hash);
-            } BOOST_SCOPE_EXIT_END
-            auto execRes = exec.performByteCode();
-            if(!execRes) {
-                return state.DoS(100,
-                                 error("ConnectBlock(): exec bytecode error"),
-                                 REJECT_INVALID, exec.pending_contract_exec_result.error_message);
-            }
-            ContractExecResult contract_exec_result;
-            exec.processingResults(contract_exec_result);
-            if(contract_exec_result.exit_code != 0)
-                return state.DoS(100,
-                                 error("ConnectBlock(): exec bytecode error"),
-                                 REJECT_INVALID, exec.pending_contract_exec_result.error_message);
-
-            if(!exec.commit_changes(service))
-                return state.DoS(100,
-                                 error("ConnectBlock(): commit contract result error"),
-                                 REJECT_INVALID, exec.pending_contract_exec_result.error_message);
-
-            blockGasUsed += contract_exec_result.usedGas;
-            if(blockGasUsed > blockGasLimit){
-                return state.DoS(1000, error("ConnectBlock(): Block exceeds gas limit"), REJECT_INVALID, "bad-blk-gaslimit");
-            }
-            // check withdraw-from-contract info correct
-            if(!contract_exec_result.match_contract_withdraw_infos(resultConvertContractTx.contract_withdraw_infos)) {
-                return state.DoS(1000, error("ConnectBlock(): Contract tx withdraw info error"), REJECT_INVALID, "bad-tx-contractwithdrawinfo");
-            }
-
-            // TODO: refund
-
-            // TODO
-            success = true;
-        }
-
 
         CTxUndo undoDummy;
         if (i > 0) {
@@ -2819,20 +2827,24 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
     LogPrint(BCLog::BENCH, "    - Verify %u txins: %.2fms (%.3fms/txin) [%.2fs (%.2fms/blk)]\n", nInputs - 1, MILLI * (nTime4 - nTime2), nInputs <= 1 ? 0 : MILLI * (nTime4 - nTime2) / (nInputs-1), nTimeVerify * MICRO, nTimeVerify * MILLI / nBlocksTotal);
 
 	if (fJustCheck) {
-		service->rollback_contract_state(old_root_state_hash_before_connect_block);
+        if(allow_contract)
+		    service->rollback_contract_state(old_root_state_hash_before_connect_block);
 		return true;
 	}
 
-    const auto& end_root_state_hash = service->current_root_state_hash();
-	if (allow_contract)
-	{
-		if (end_root_state_hash != block_root_state_hash) {
-			std::cout << "current root state hash before connect block: " << old_root_state_hash_before_connect_block << std::endl; // FIXME
-			std::cout << "end_root_state_hash(when connect block): " << end_root_state_hash << std::endl;
-			std::cout << "block_root_state_hash(when connect block): " << block_root_state_hash << std::endl;
-			return state.DoS(100, error("block contract txs result state not matched with block root state hash"), REJECT_INVALID, "block-root-state-hash-invalid-after-contract-exec");
-		}
-	}
+    if(allow_contract) {
+        const auto &end_root_state_hash = service->current_root_state_hash();
+        if (allow_contract) {
+            if (end_root_state_hash != block_root_state_hash) {
+                std::cout << "current root state hash before connect block: "
+                          << old_root_state_hash_before_connect_block << std::endl; // FIXME
+                std::cout << "end_root_state_hash(when connect block): " << end_root_state_hash << std::endl;
+                std::cout << "block_root_state_hash(when connect block): " << block_root_state_hash << std::endl;
+                return state.DoS(100, error("block contract txs result state not matched with block root state hash"),
+                                 REJECT_INVALID, "block-root-state-hash-invalid-after-contract-exec");
+            }
+        }
+    }
 
     // Write undo information to disk
     if (pindex->GetUndoPos().IsNull() || !pindex->IsValid(BLOCK_VALID_SCRIPTS))

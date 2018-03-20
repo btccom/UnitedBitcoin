@@ -1,7 +1,5 @@
 #include <contract_engine/uvm_contract_engine.hpp>
 
-// TODO: gas price
-
 namespace uvm
 {
 	UvmContractEngine::UvmContractEngine(bool use_contract)
