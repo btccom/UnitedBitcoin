@@ -206,7 +206,7 @@ private:
     int64_t nLockTimeCutoff;
     const CChainParams& chainparams;
 
-    ContractExecResult bceResult;
+    ContractExecResult bceResult; // block contracts exec result
     uint64_t minGasPrice = 1;
     uint64_t hardBlockGasLimit;
     uint64_t softBlockGasLimit;

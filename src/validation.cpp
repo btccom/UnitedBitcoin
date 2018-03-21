@@ -627,6 +627,9 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 		CAmount nValueOut = tx.GetValueOut();
 		CAmount txMinGasPrice = 0;
 
+		auto allow_contract = (chainActive.Tip()->nHeight + 1) >= Params().GetConsensus().UBCONTRACT_Height;
+		if(!allow_contract && (tx.HasContractOp() || tx.HasOpSpend()))
+			return state.DoS(100, error("ConnectBlock(): Contract tx not allowed"), REJECT_INVALID, "contract-tx-not-allowed");
 		// contract
 		if (tx.HasContractOp()) {
 			ContractTxConverter converter(tx, &view, nullptr);
@@ -634,11 +637,18 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 			if (!converter.extractionContractTransactions(resultConvertContractTx)) {
 				return state.DoS(100, error("ConnectBlock(): Contract transaction of the wrong format"), REJECT_INVALID, "bad-tx-bad-contract-format");
 			}
+
 			uint64_t gasAllTxs = 0;
 			uint64_t sumGas = 0;
 			CAmount nTxFee = view.GetValueIn(tx) - tx.GetValueOut();
 
 			uint64_t blockGasLimit = UINT64_MAX;
+
+			auto minGasPrice = DEFAULT_MIN_GAS_PRICE;
+			auto hardBlockGasLimit = DEFAULT_BLOCK_GAS_LIMIT;
+			auto softBlockGasLimit = hardBlockGasLimit;
+			softBlockGasLimit = std::min(softBlockGasLimit, hardBlockGasLimit);
+
 			size_t contract_call_vout_count = 0;
 			for (const CTxOut& o : tx.vout)
                 contract_call_vout_count += o.scriptPubKey.HasContractOp() ? 1 : 0;
@@ -646,6 +656,8 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
             {
                 nTxFee += withdrawInfo.amount;
             }
+			auto service = get_contract_storage_service();
+			service->open();
 			for (ContractTransaction &ctx : resultConvertContractTx.txs) {
 				sumGas += ctx.params.gasLimit * ctx.params.gasPrice;
                 if(ctx.params.deposit_amount >= nTxFee)
@@ -668,9 +680,40 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 				else {
 					txMinGasPrice = ctx.params.gasPrice;
 				}
+				if (!ctx.params.check_upgrade_contract_caller(ctx.opcode, service)) {
+					return false;
+				}
 			}
 			if (contract_call_vout_count > resultConvertContractTx.txs.size())
 				return state.DoS(100, false, REJECT_INVALID, "bad-txns-incorrect-format");
+			// attempt to evaluate this contract transaction
+			const auto& old_root_state_hash = service->current_root_state_hash();
+			CBlock block;
+			block.vtx.push_back(MakeTransactionRef(CTransaction(tx)));
+			ContractExec exec(service.get(), block, resultConvertContractTx.txs, hardBlockGasLimit, nTxFee);
+			BOOST_SCOPE_EXIT_ALL(&) {
+				service->rollback_contract_state(old_root_state_hash);
+			};
+
+			if (!exec.performByteCode()) {
+				//error, don't add contract
+				return state.DoS(100, false, REJECT_INVALID, "bad-contracttx-execution");
+			}
+			ContractExecResult testExecResult;
+			if (!exec.processingResults(testExecResult)) {
+				return state.DoS(100, false, REJECT_INVALID, "bad-contracttx-execution");
+			}
+			if (testExecResult.usedGas > softBlockGasLimit) {
+				//if this transaction could cause block gas limit to be exceeded, then don't add it
+				return state.DoS(100, false, REJECT_INVALID, "bad-contracttx-execution");
+			}
+			// check withdraw-from-info correct
+			if (!testExecResult.match_contract_withdraw_infos(resultConvertContractTx.contract_withdraw_infos)) {
+				return state.DoS(100, false, REJECT_INVALID, "bad-contracttx-execution");
+			}
+			// commit changes than can generate new root state hash
+			if (!exec.commit_changes(service))
+				return state.DoS(100, false, REJECT_INVALID, "bad-contracttx-execution");
 		} else if(tx.HasOpSpend()) {
             return state.DoS(100, false, REJECT_INVALID, "bad-contracttx-incorrect-format");
         }

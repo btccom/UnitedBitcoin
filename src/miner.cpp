@@ -330,10 +330,6 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
             // Limit the tx gas limit by the soft limit if such a limit has been specified.
             return false;
         }
-        if (bceResult.usedGas + contractTransaction.params.gasLimit > softBlockGasLimit) {
-            //if this transaction's gasLimit could cause block gas limit to be exceeded, then don't add it
-            return false;
-        }
         if (contractTransaction.params.gasPrice < minGasPrice) {
             //if this transaction's gasPrice is less than the current DGP minGasPrice don't add it
             return false;
