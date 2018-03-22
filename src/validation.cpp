@@ -1860,6 +1860,7 @@ else \
             return fc::raw::pack(*this);
         }
 
+        // this may cause exception
         Code Code::unpack(const std::vector<unsigned char>& data)
         {
             std::vector<char> char_datas(data.size());
@@ -1867,6 +1868,7 @@ else \
             return fc::raw::unpack<Code>(char_datas);
         }
 
+        // this may cause exception
         Code Code::unpack(const std::vector<char>& data)
         {
             return fc::raw::unpack<Code>(data);
@@ -2012,7 +2014,7 @@ bool ContractExec::performByteCode()
         pending_contract_exec_result.balance_changes = pending_state.balance_changes;
         pending_contract_exec_result.contract_upgrade_infos = pending_state.contract_upgrade_infos;
 		pending_contract_exec_result.api_result = api_result_json_string;
-		// TODO: gas used and refund info
+		pending_contract_exec_result.usedGas = engine->gas_used();
     }
     return true;
 }

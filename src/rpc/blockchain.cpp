@@ -1946,7 +1946,7 @@ UniValue getcreatecontractaddress(const JSONRPCRequest& request)
 
 UniValue invokecontractoffline(const JSONRPCRequest& request)
 {
-	if (request.fHelp || request.params.size() < 3)
+	if (request.fHelp || request.params.size() < 4)
 		throw runtime_error(
 			"invokecontractoffline \"caller_address\" \"contract_address\" \"api_name\" \"api_arg\" ( caller_address, contract_address, api_name, api_arg )\n"
 			"\nArgument:\n"
@@ -1958,9 +1958,9 @@ UniValue invokecontractoffline(const JSONRPCRequest& request)
 
 	LOCK(cs_main);
 	std::string caller_address = request.params[0].get_str();
-	if (caller_address.size()<30)
+	if (caller_address.length()<20) // FIXME
 		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect address");
-	// TODO: check caller_address valid, and whether has secret of it
+    // TODO: check whether has secret of caller_address
 	std::string contract_address = request.params[1].get_str();
 	if (!ContractHelper::is_valid_contract_address_format(contract_address))
 		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect address");
@@ -1998,7 +1998,7 @@ UniValue invokecontractoffline(const JSONRPCRequest& request)
 	ContractTransaction contract_tx;
 	contract_tx.opcode = OP_CALL;
 	contract_tx.params.caller_address = caller_address;
-	contract_tx.params.caller = ""; // FIXME
+	contract_tx.params.caller = "";
 	contract_tx.params.api_name = api_name;
 	contract_tx.params.api_arg = api_arg;
 	contract_tx.params.contract_address = contract_address;
@@ -2019,7 +2019,78 @@ UniValue invokecontractoffline(const JSONRPCRequest& request)
 
 	UniValue result(UniValue::VOBJ);
 	result.push_back(Pair("result", execResult.api_result));
+	result.push_back(Pair("gasCount", execResult.usedGas));
 	return result;
+}
+
+UniValue registercontracttesting(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 2)
+        throw runtime_error(
+                "registercontracttesting \"caller_address\" \"bytecode_hex\" ( caller_address, bytecode_hex )\n"
+                        "\nArgument:\n"
+                        "1. \"caller_address\"            (string, required) The caller address\n"
+                        "2. \"bytecode_hex\"          (string, required) The contract bytecode hex\n"
+        );
+
+    LOCK(cs_main);
+    std::string caller_address = request.params[0].get_str();
+    if (caller_address.length()<20) // FIXME
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect address");
+    // TODO: check whether has secret of caller_address
+    const auto& bytecode_hex = request.params[1].get_str();
+
+    std::vector<unsigned char> contract_data = ParseHexV(bytecode_hex,"Data");
+
+    auto service = get_contract_storage_service();
+    service->open();
+
+    const auto& old_root_state_hash = service->current_root_state_hash();
+
+
+    BOOST_SCOPE_EXIT_ALL(&service, old_root_state_hash) {
+        service->open();
+        service->rollback_contract_state(old_root_state_hash);
+        service->close();
+    };
+
+    CBlock block;
+    CMutableTransaction tx;
+    uint64_t gas_limit = 0;
+    uint64_t gas_price = 40;
+
+    valtype version;
+    version.push_back(0x01);
+    tx.vout.push_back(CTxOut(0, CScript() << version << contract_data << ToByteVector(caller_address) << gas_limit << gas_price << OP_CREATE));
+    block.vtx.push_back(MakeTransactionRef(CTransaction(tx)));
+
+    std::vector<ContractTransaction> contractTransactions;
+    ContractTransaction contract_tx;
+    contract_tx.opcode = OP_CREATE;
+    contract_tx.params.caller_address = caller_address;
+    contract_tx.params.caller = "";
+    contract_tx.params.api_name = "";
+    contract_tx.params.api_arg = "";
+    contract_tx.params.gasPrice = gas_price;
+    contract_tx.params.gasLimit = gas_limit;
+    contract_tx.params.code = ContractHelper::load_contract_from_gpc_data(contract_data);
+	contract_tx.params.contract_address = "local_contract";
+    contract_tx.params.version = CONTRACT_MAJOR_VERSION;
+    contractTransactions.push_back(contract_tx);
+
+    ContractExec exec(service.get(), block, contractTransactions, gas_limit, 0);
+    if (!exec.performByteCode()) {
+        //error, don't add contract
+        return false;
+    }
+    ContractExecResult execResult;
+    if (!exec.processingResults(execResult)) {
+        return false;
+    }
+
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("gasCount", execResult.usedGas));
+    return result;
 }
 
 /////
@@ -2228,6 +2299,8 @@ static const CRPCCommand commands[] =
     { "blockchain",         "getsimplecontractinfo",  &getsimplecontractinfo,  {"contract_address"} },
     { "blockchain",         "getcreatecontractaddress", &getcreatecontractaddress, {"contact_tx"} },
 	{ "blockchain",         "invokecontractoffline",  &invokecontractoffline,  {"caller_address", "contract_address", "api_name", "api_arg"} },
+    { "blockchain",         "registercontracttesting",  &registercontracttesting,  {"caller_address", "contract_address", "api_name", "api_arg"} },
+    // TODO: register testing, upgrade testing, deposit testing
     { "blockchain",         "currentrootstatehash", &currentrootstatehash, {} },
 
     /* Not shown in help */
