@@ -707,6 +707,8 @@ namespace contract_utils {
 
 std::shared_ptr<::contract::storage::ContractStorageService> get_contract_storage_service();
 
+std::shared_ptr<std::string> get_root_state_hash_from_block(const CBlock* block);
+
 // end contract code
 
 #endif // BITCOIN_VALIDATION_H

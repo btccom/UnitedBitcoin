@@ -189,12 +189,20 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 	// save old root state hash
 	std::shared_ptr<::contract::storage::ContractStorageService> service;
 	std::string old_root_state_hash;
+    bool rollbacked_contract_storage = false;
 	if (allow_contract) {
 		service = get_contract_storage_service();
 		service->open();
 		old_root_state_hash = service->current_root_state_hash();
 		service->close();
 	}
+    BOOST_SCOPE_EXIT_ALL(&) {
+        if(allow_contract && !rollbacked_contract_storage) {
+            service->rollback_contract_state(old_root_state_hash);
+            rollbacked_contract_storage = true;
+            service->close();
+        }
+    };
     // addPriorityTxs(minGasPrice); // TODO
     int nPackagesSelected = 0;
     int nDescendantsUpdated = 0;
@@ -215,6 +223,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 	// rollback root state hash
 	if (allow_contract) {
 		service->rollback_contract_state(old_root_state_hash);
+        rollbacked_contract_storage = true;
 		service->close();
 	}
 

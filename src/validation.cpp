@@ -1093,10 +1093,6 @@ bool GetTransaction(const uint256 &hash, CTransactionRef &txOut, const Consensus
 }
 
 
-
-
-
-
 //////////////////////////////////////////////////////////////////////////////
 //
 // CBlock and CBlockIndex
@@ -1576,7 +1572,7 @@ int ApplyTxInUndo(Coin&& undo, CCoinsViewCache& view, const COutPoint& out)
 
 /** Undo the effects of this block (with given index) on the UTXO set represented by coins.
  *  When FAILED is returned, view is left in an indeterminate state. */
-static DisconnectResult DisconnectBlock(const CBlock& block, const CBlockIndex* pindex, CCoinsViewCache& view)
+static DisconnectResult DisconnectBlock(const CBlock& block, const CBlockIndex* pindex, CCoinsViewCache& view, bool only_reset_root_state_hash=false)
 {
     bool fClean = true;
 
@@ -1645,36 +1641,21 @@ static DisconnectResult DisconnectBlock(const CBlock& block, const CBlockIndex* 
 				return DISCONNECT_FAILED;
 			const auto& coinbase_tx = *(prev_block.vtx[0]);
 			// get root state hash from prev_block coinbase vout
-			std::string block_root_state_hash;
-			bool found_root_state_hash = false;
-			for (const auto& txout : coinbase_tx.vout)
-			{
-				txnouttype whichType;
-				std::vector<std::vector<unsigned char> > vSolutions;
-				if (!Solver(txout.scriptPubKey, whichType, vSolutions))
-					return DISCONNECT_FAILED;
-				if (whichType == TX_ROOT_STATE_HASH)
-				{
-					if (vSolutions.empty())
-					{
-						return DISCONNECT_FAILED;
-					}
-					if (txout.nValue != 0)
-						return DISCONNECT_FAILED;
-					block_root_state_hash = ValtypeUtils::vch_to_string(vSolutions[0]);
-					found_root_state_hash = true;
-				}
-			}
-			if (!found_root_state_hash)
-			{
-				return DISCONNECT_FAILED;
-			}
+			auto maybe_block_root_state_hash = get_root_state_hash_from_block(&prev_block);
+			std::string block_root_state_hash = maybe_block_root_state_hash ? *maybe_block_root_state_hash : std::string(EMPTY_COMMIT_ID);
+			
 			auto service = get_contract_storage_service();
 			service->open();
-			if (found_root_state_hash)
-				service->rollback_contract_state(block_root_state_hash);
-			else
-				service->rollback_contract_state(EMPTY_COMMIT_ID);
+			try {
+				if (only_reset_root_state_hash)
+					service->reset_root_state_hash(block_root_state_hash);
+				else
+					service->rollback_contract_state(block_root_state_hash);
+			}
+			catch (const ::contract::storage::ContractStorageException& e) {
+				std::cout << "DisconnectBlock(): " << e.what() << std::endl;
+				return DISCONNECT_FAILED;
+			}
 		}
 		else {
 			return DISCONNECT_FAILED;
@@ -2510,6 +2491,33 @@ std::shared_ptr<::contract::storage::ContractStorageService> get_contract_storag
 	return service;
 }
 
+std::shared_ptr<std::string> get_root_state_hash_from_block(const CBlock* block) {
+    if(block->vtx.empty())
+        return nullptr;
+    const auto& tx = block->vtx[0];
+    if(!tx->IsCoinBase())
+        return nullptr;
+    for (const auto& txout : tx->vout)
+    {
+        txnouttype whichType;
+        std::vector<std::vector<unsigned char> > vSolutions;
+        if (!Solver(txout.scriptPubKey, whichType, vSolutions))
+            return false;
+        if (whichType == TX_ROOT_STATE_HASH)
+        {
+            if (vSolutions.empty())
+            {
+                return nullptr;
+            }
+            if(txout.nValue != 0)
+                return nullptr;
+            const auto& block_root_state_hash = ValtypeUtils::vch_to_string(vSolutions[0]);
+            return std::make_shared<std::string>(block_root_state_hash);
+        }
+    }
+    return nullptr;
+}
+
 static int64_t nTimeCheck = 0;
 static int64_t nTimeForks = 0;
 static int64_t nTimeVerify = 0;
@@ -2670,6 +2678,21 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
         service->open();
         old_root_state_hash_before_connect_block = service->current_root_state_hash();
     }
+    bool success_connect_block = false;
+    bool rollbacked = false;
+    BOOST_SCOPE_EXIT_ALL(&) {
+        if(allow_contract && !rollbacked && !success_connect_block) {
+            service->rollback_contract_state(old_root_state_hash_before_connect_block);
+        }
+    };
+
+    if(allow_contract) {
+        auto maybe_root_state_hash_in_block = get_root_state_hash_from_block(&block);
+        if (!maybe_root_state_hash_in_block) {
+            return state.DoS(100, error("can't find root state hash in block"), REJECT_INVALID, "invalid-block-root-state-hash");
+        }
+        block_root_state_hash = *maybe_root_state_hash_in_block;
+    }
 
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
@@ -2678,35 +2701,6 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
             return false;
 
         nInputs += tx.vin.size();
-
-        if(allow_contract) {
-            if(tx.IsCoinBase())
-            {
-				bool found_root_state_hash = false;
-				for (const auto& txout : tx.vout)
-				{
-					txnouttype whichType;
-					std::vector<std::vector<unsigned char> > vSolutions;
-					if (!Solver(txout.scriptPubKey, whichType, vSolutions))
-						return false;
-					if (whichType == TX_ROOT_STATE_HASH)
-					{
-						if (vSolutions.empty())
-						{
-							return state.DoS(100, error("can't find root state hash in block"), REJECT_INVALID, "invalid-block-root-state-hash");
-						}
-						if(txout.nValue != 0)
-							return state.DoS(100, error("can't find root state hash in block"), REJECT_INVALID, "invalid-block-root-state-hash");
-						block_root_state_hash = ValtypeUtils::vch_to_string(vSolutions[0]);
-						found_root_state_hash = true;
-					}
-				}
-				if (!found_root_state_hash)
-				{
-					return state.DoS(100, error("can't find root state hash in block"), REJECT_INVALID, "invalid-block-root-state-hash");
-				}
-            }
-        }
 
         if (!tx.IsCoinBase())
         {
@@ -2803,12 +2797,10 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                 ContractExec exec(service.get(), block, resultConvertContractTx.txs, blockGasLimit, nTxFee);
                 const auto &old_root_hash = service->current_root_state_hash();
                 bool success = false;
-                BOOST_SCOPE_EXIT(service, &old_root_hash, &success)
-                {
+                BOOST_SCOPE_EXIT_ALL(service, &old_root_hash, &success) {
                     if (!success)
                         service->rollback_contract_state(old_root_hash);
-                }
-                BOOST_SCOPE_EXIT_END
+                };
                 auto execRes = exec.performByteCode();
                 if (!execRes) {
                     return state.DoS(100,
@@ -2870,8 +2862,6 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
     LogPrint(BCLog::BENCH, "    - Verify %u txins: %.2fms (%.3fms/txin) [%.2fs (%.2fms/blk)]\n", nInputs - 1, MILLI * (nTime4 - nTime2), nInputs <= 1 ? 0 : MILLI * (nTime4 - nTime2) / (nInputs-1), nTimeVerify * MICRO, nTimeVerify * MILLI / nBlocksTotal);
 
 	if (fJustCheck) {
-        if(allow_contract)
-		    service->rollback_contract_state(old_root_state_hash_before_connect_block);
 		return true;
 	}
 
@@ -2879,10 +2869,6 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
         const auto &end_root_state_hash = service->current_root_state_hash();
         if (allow_contract) {
             if (end_root_state_hash != block_root_state_hash) {
-                std::cout << "current root state hash before connect block: "
-                          << old_root_state_hash_before_connect_block << std::endl; // FIXME
-                std::cout << "end_root_state_hash(when connect block): " << end_root_state_hash << std::endl;
-                std::cout << "block_root_state_hash(when connect block): " << block_root_state_hash << std::endl;
                 return state.DoS(100, error("block contract txs result state not matched with block root state hash"),
                                  REJECT_INVALID, "block-root-state-hash-invalid-after-contract-exec");
             }
@@ -2922,6 +2908,7 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
     int64_t nTime6 = GetTimeMicros(); nTimeCallbacks += nTime6 - nTime5;
     LogPrint(BCLog::BENCH, "    - Callbacks: %.2fms [%.2fs (%.2fms/blk)]\n", MILLI * (nTime6 - nTime5), nTimeCallbacks * MICRO, nTimeCallbacks * MILLI / nBlocksTotal);
 
+    success_connect_block = true;
     return true;
 }
 
@@ -3141,7 +3128,7 @@ bool static DisconnectTip(CValidationState& state, const CChainParams& chainpara
     {
         CCoinsViewCache view(pcoinsTip.get());
         assert(view.GetBestBlock() == pindexDelete->GetBlockHash());
-        if (DisconnectBlock(block, pindexDelete, view) != DISCONNECT_OK)
+        if (DisconnectBlock(block, pindexDelete, view, false) != DISCONNECT_OK)
             return error("DisconnectTip(): DisconnectBlock %s failed", pindexDelete->GetBlockHash().ToString());
         bool flushed = view.Flush();
         assert(flushed);
@@ -4880,6 +4867,12 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
     int nGoodTransactions = 0;
     CValidationState state;
     int reportDone = 0;
+
+    auto service = get_contract_storage_service();
+    service->open();
+    const auto& old_root_state_hash = service->current_root_state_hash();
+    service->close();
+
     LogPrintf("[0%%]...");
     for (CBlockIndex* pindex = chainActive.Tip(); pindex && pindex->pprev; pindex = pindex->pprev)
     {
@@ -4918,7 +4911,7 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
         // check level 3: check for inconsistencies during memory-only disconnect of tip blocks
         if (nCheckLevel >= 3 && pindex == pindexState && (coins.DynamicMemoryUsage() + pcoinsTip->DynamicMemoryUsage()) <= nCoinCacheUsage) {
             assert(coins.GetBestBlock() == pindex->GetBlockHash());
-            DisconnectResult res = DisconnectBlock(block, pindex, coins);
+            DisconnectResult res = DisconnectBlock(block, pindex, coins, true);
             if (res == DISCONNECT_FAILED) {
                 return error("VerifyDB(): *** irrecoverable inconsistency in block data at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
             }
@@ -4946,9 +4939,21 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
             CBlock block;
             if (!ReadBlockFromDisk(block, pindex, chainparams.GetConsensus()))
                 return error("VerifyDB(): *** ReadBlockFromDisk failed at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
-            if (!ConnectBlock(block, state, pindex, coins, chainparams))
-                return error("VerifyDB(): *** found unconnectable block at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
+            service->open();
+            const auto& old_root_state_hash = service->current_root_state_hash();
+            service->close();
+            if (!ConnectBlock(block, state, pindex, coins, chainparams)) {
+                service->open();
+                service->rollback_contract_state(old_root_state_hash);
+                service->close();
+                return error("VerifyDB(): *** found unconnectable block at %d, hash=%s", pindex->nHeight,
+                             pindex->GetBlockHash().ToString());
+            }
         }
+    } else {
+        service->open();
+        service->reset_root_state_hash(old_root_state_hash);
+        service->close();
     }
 
     LogPrintf("[DONE].\n");
@@ -4965,23 +4970,28 @@ static bool RollforwardBlock(const CBlockIndex* pindex, CCoinsViewCache& inputs,
     if (!ReadBlockFromDisk(block, pindex, params.GetConsensus())) {
         return error("ReplayBlock(): ReadBlockFromDisk failed at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
     }
-
-    for (const CTransactionRef& tx : block.vtx) {
-        if (!tx->IsCoinBase()) {
-            for (const CTxIn &txin : tx->vin) {
-                inputs.SpendCoin(txin.prevout);
-            }
-        }
-        // Pass check = true as every addition may be an overwrite.
-        AddCoins(inputs, *tx, pindex->nHeight, true);
-    }
+    CValidationState state;
+    CBlockIndex* pindex_mod = const_cast<CBlockIndex*>(pindex);
+    ConnectBlock(block, state, pindex_mod, inputs, params, false); // TODO: check whether can merge RollforwardBlock with ConnectBlock
+//    for (const CTransactionRef& tx : block.vtx) {
+//        if (!tx->IsCoinBase()) {
+//            for (const CTxIn &txin : tx->vin) {
+//                inputs.SpendCoin(txin.prevout);
+//            }
+//        }
+//        // TODO: evaluate contracts when tx is contract tx
+//        // Pass check = true as every addition may be an overwrite.
+//        AddCoins(inputs, *tx, pindex->nHeight, true);
+//    }
+    auto service = get_contract_storage_service();
+    service->open();
+    const auto& root_state_hash = service->current_root_state_hash();
     return true;
 }
 
 bool ReplayBlocks(const CChainParams& params, CCoinsView* view)
 {
     LOCK(cs_main);
-
     CCoinsViewCache cache(view);
 
     std::vector<uint256> hashHeads = view->GetHeadBlocks();
@@ -4989,7 +4999,6 @@ bool ReplayBlocks(const CChainParams& params, CCoinsView* view)
     if (hashHeads.size() != 2) return error("ReplayBlocks(): unknown inconsistent state");
 
     uiInterface.ShowProgress(_("Replaying blocks..."), 0, false);
-    LogPrintf("Replaying blocks\n");
 
     const CBlockIndex* pindexOld = nullptr;  // Old tip during the interrupted flush.
     const CBlockIndex* pindexNew;            // New tip during the interrupted flush.
@@ -5008,7 +5017,6 @@ bool ReplayBlocks(const CChainParams& params, CCoinsView* view)
         pindexFork = LastCommonAncestor(pindexOld, pindexNew);
         assert(pindexFork != nullptr);
     }
-
     // Rollback along the old branch.
     while (pindexOld != pindexFork) {
         if (pindexOld->nHeight > 0) { // Never disconnect the genesis block.
@@ -5039,11 +5047,6 @@ bool ReplayBlocks(const CChainParams& params, CCoinsView* view)
 
     cache.SetBestBlock(pindexNew->GetBlockHash());
     cache.Flush();
-    
-    // reset contract storage service's root state hash
-	auto service = get_contract_storage_service();
-	service->open();
-	service->rollback_contract_state(EMPTY_COMMIT_ID);
 
     uiInterface.ShowProgress("", 100, false);
     return true;

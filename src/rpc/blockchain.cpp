@@ -1861,6 +1861,16 @@ UniValue getcontractinfo(const JSONRPCRequest& request)
     return result;
 }
 
+UniValue currentrootstatehash(const JSONRPCRequest& request)
+{
+    LOCK(cs_main);
+    auto service = get_contract_storage_service();
+    const auto& root_state_hash = service->current_root_state_hash();
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("root_state_hash", root_state_hash));
+    return result;
+}
+
 UniValue getcreatecontractaddress(const JSONRPCRequest& request)
 {
     if (request.fHelp || request.params.size() < 1)
@@ -1871,7 +1881,7 @@ UniValue getcreatecontractaddress(const JSONRPCRequest& request)
         );
 
     LOCK(cs_main);
-    RPCTypeCheck(request.params, {UniValue::VSTR, UniValue::VARR, UniValue::VARR, UniValue::VSTR}, true);
+    RPCTypeCheck(request.params, { UniValue::VSTR }, true);
 
     CMutableTransaction mtx;
     if (!DecodeHexTx(mtx, request.params[0].get_str(), true))
@@ -2218,6 +2228,7 @@ static const CRPCCommand commands[] =
     { "blockchain",         "getsimplecontractinfo",  &getsimplecontractinfo,  {"contract_address"} },
     { "blockchain",         "getcreatecontractaddress", &getcreatecontractaddress, {"contact_tx"} },
 	{ "blockchain",         "invokecontractoffline",  &invokecontractoffline,  {"caller_address", "contract_address", "api_name", "api_arg"} },
+    { "blockchain",         "currentrootstatehash", &currentrootstatehash, {} },
 
     /* Not shown in help */
     { "hidden",             "invalidateblock",        &invalidateblock,        {"blockhash"} },

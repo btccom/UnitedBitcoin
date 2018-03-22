@@ -150,6 +150,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "getsimplecontractinfo", 1, "contract_address_or_name" },
     { "getcreatecontractaddress", 1, "tx" },
 	{ "invokecontractoffline", 4, "caller_address" },
+    { "currentrootstatehash", 0, "" },
 };
 
 class CRPCConvertTable
