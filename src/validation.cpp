@@ -2015,6 +2015,8 @@ bool ContractExec::performByteCode()
         pending_contract_exec_result.contract_upgrade_infos = pending_state.contract_upgrade_infos;
 		pending_contract_exec_result.api_result = api_result_json_string;
 		pending_contract_exec_result.usedGas = engine->gas_used();
+		if (pending_contract_exec_result.usedGas < DEFAULT_MIN_GAS_LIMIT)
+			pending_contract_exec_result.usedGas = DEFAULT_MIN_GAS_LIMIT;
     }
     return true;
 }

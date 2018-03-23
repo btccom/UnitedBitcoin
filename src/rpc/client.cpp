@@ -151,6 +151,8 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "getcreatecontractaddress", 1, "tx" },
 	{ "invokecontractoffline", 4, "caller_address" },
     { "registercontracttesting", 4, "caller_address" },
+    { "upgradecontracttesting", 4, "caller_address" },
+    { "deposittocontracttesting", 4, "caller_address" },
     { "currentrootstatehash", 0, "" },
 };
 
