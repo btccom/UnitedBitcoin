@@ -2013,6 +2013,7 @@ bool ContractExec::performByteCode()
 		pending_contract_exec_result.contract_storage_changes = pending_state.contract_storage_changes;
         pending_contract_exec_result.balance_changes = pending_state.balance_changes;
         pending_contract_exec_result.contract_upgrade_infos = pending_state.contract_upgrade_infos;
+		pending_contract_exec_result.events = pending_state.events;
 		pending_contract_exec_result.api_result = api_result_json_string;
 		pending_contract_exec_result.usedGas = engine->gas_used();
 		if (pending_contract_exec_result.usedGas < DEFAULT_MIN_GAS_LIMIT)
@@ -2112,6 +2113,10 @@ bool ContractExec::commit_changes(std::shared_ptr<::contract::storage::ContractS
             upgrade_info.description_diff = differ.diff("", info.description);
         contract_changes->upgrade_infos.push_back(upgrade_info);
     }
+	for (const auto& event_info : pending_contract_exec_result.events)
+	{
+		contract_changes->events.push_back(event_info);
+	}
 	try {
 		service->commit_contract_changes(contract_changes);
 	}

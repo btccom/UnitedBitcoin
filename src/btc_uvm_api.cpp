@@ -646,11 +646,36 @@ namespace uvm {
 				return int32_t(hash.GetUint64(2)) % (1 << 31 - 1);
             }
 
+			static bool is_valid_event_name(const std::string& event_name) {
+				if (event_name.empty() || event_name.size() > 30)
+					return false;
+				return true;
+			}
+
+			static bool is_valid_event_arg(const std::string& event_arg) {
+				if (event_arg.size() > 1024)
+					return false;
+				return true;
+			}
+
             void BtcUvmChainApi::emit(lua_State *L, const char* contract_id, const char* event_name, const char* event_param)
             {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
-//                printf("emit called\n");
-                // TODO
+				std::string event_name_str(event_name);
+				std::string event_arg_str(event_param ? event_param : "");
+				if (!is_valid_event_name(event_name_str) || !is_valid_event_arg(event_arg_str)) {
+					uvm::lua::api::global_uvm_chain_api->throw_exception(L, UVM_API_SIMPLE_ERROR, "event name or event argument format error");
+					return;
+				}
+				auto evaluator = get_evaluator(L);
+				if (!evaluator)
+					return;
+				::contract::storage::ContractEventInfo event_info;
+				event_info.contract_id = contract_id;
+				event_info.event_name = event_name_str;
+				event_info.event_arg = event_arg_str;
+				event_info.transaction_id = evaluator->tx_id.ToString();
+				evaluator->events.push_back(event_info);
             }
 
             bool BtcUvmChainApi::is_valid_address(lua_State *L, const char *address_str)
