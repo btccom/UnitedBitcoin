@@ -1861,6 +1861,39 @@ UniValue getcontractinfo(const JSONRPCRequest& request)
     return result;
 }
 
+UniValue gettransactionevents(const JSONRPCRequest& request)
+{
+	if (request.fHelp || request.params.size() < 1)
+		throw runtime_error(
+			"gettransactionevents \"txid\" ( string )\n"
+			"\nArgument:\n"
+			"1. \"txid\"          (string, required) The transaction id\n"
+		);
+
+	LOCK(cs_main);
+
+	std::string txid = request.params[0].get_str();
+	auto service = get_contract_storage_service();
+	service->open();
+	::contract::storage::ContractInfoP contract_info;
+	
+	auto events = service->get_transaction_events(txid);
+
+
+	UniValue result(UniValue::VARR);
+	for (auto i = 0; i < events->size(); i++) {
+		const ::contract::storage::ContractEventInfo& event_info = (*events)[i];
+		UniValue item(UniValue::VOBJ);
+		item.push_back(Pair("txid", event_info.transaction_id));
+		item.push_back(Pair("event_name", event_info.event_name));
+		item.push_back(Pair("event_arg", event_info.event_arg));
+		item.push_back(Pair("contract_address", event_info.contract_id));
+		result.push_back(item);
+	}
+	
+	return result;
+}
+
 UniValue currentrootstatehash(const JSONRPCRequest& request)
 {
     LOCK(cs_main);
@@ -2448,6 +2481,7 @@ static const CRPCCommand commands[] =
     { "blockchain",         "preciousblock",          &preciousblock,          {"blockhash"} },
 
     { "blockchain",         "getcontractinfo",        &getcontractinfo,        {"contract_address"} },
+	{ "blockchain",         "gettransactionevents",   &gettransactionevents,   {"txid"} },
     { "blockchain",         "getsimplecontractinfo",  &getsimplecontractinfo,  {"contract_address"} },
     { "blockchain",         "getcreatecontractaddress", &getcreatecontractaddress, {"contact_tx"} },
 	{ "blockchain",         "invokecontractoffline",  &invokecontractoffline,  {"caller_address", "contract_address", "api_name", "api_arg"} },
