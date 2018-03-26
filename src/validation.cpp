@@ -2106,7 +2106,7 @@ bool ContractExec::commit_changes(std::shared_ptr<::contract::storage::ContractS
     {
         ::contract::storage::ContractUpgradeInfo upgrade_info;
         upgrade_info.contract_id = info.address;
-        if(!contract_utils::is_valid_contract_name_format(info.name))
+        if(!ContractHelper::is_valid_contract_name_format(info.name))
             return false;
         upgrade_info.name_diff = differ.diff("", info.name);
         if(info.description != "")
@@ -2410,8 +2410,6 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
 				return false;
 		}
 
-        // TODO: check withdraw amount and spend info
-
         params.caller = "";
         params.api_name = ValtypeUtils::vch_to_string(api_name);
         params.api_arg = ValtypeUtils::vch_to_string(apiArg);
@@ -2438,10 +2436,10 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
 
         if(opcode == OP_UPGRADE) {
             params.contract_name = ValtypeUtils::vch_to_string(contract_name);
-            if(!contract_utils::is_valid_contract_name_format(params.contract_name))
+            if(!ContractHelper::is_valid_contract_name_format(params.contract_name))
                 return false;
             params.contract_desc = ValtypeUtils::vch_to_string(contract_desc);
-            if(!contract_utils::is_valid_contract_desc_format(params.contract_desc))
+            if(!ContractHelper::is_valid_contract_desc_format(params.contract_desc))
                 return false;
         }
         return true;
@@ -2457,10 +2455,6 @@ ContractTransaction ContractTxConverter::createContractTX(const ContractTransact
 	params = etp;
     txContract.opcode = opcode;
     txContract.tx_id = txBitcoin.GetHash();
-    // FIXME: dev::Address sender(GetSenderAddress(txBit, view, blockTransactions));
-    // txContract.forceSender(sender);
-//    txContract.setHashWith(uintToh256(txBitcoin.GetHash()));
-//    txContract.setNVout(nOut);
     return txContract;
 }
 
@@ -5728,48 +5722,3 @@ public:
         mapBlockIndex.clear();
     }
 } instance_of_cmaincleanup;
-
-namespace contract_utils {
-    std::string storage_to_json_string(const StorageValue &storage_value)
-    {
-        return jsondiff::json_dumps(storage_value);
-    }
-    ContractDataValue vch_to_contract_data(const valtype &vch_value)
-    {
-        const auto &vch_str = ValtypeUtils::vch_to_string(vch_value);
-        return jsondiff::json_loads(vch_str);
-    }
-    valtype contract_data_to_vch(const ContractDataValue &value)
-    {
-        auto str = jsondiff::json_dumps(value);
-        std::vector<unsigned char> data(str.size() + 1);
-        memcpy(data.data(), str.c_str(), str.size());
-        data[str.size()] = '\0';
-        return data;
-    }
-
-    bool is_valid_contract_name_format(const std::string& name)
-    {
-        if(name.size() < 2 || name.size() > 30)
-            return false;
-        // first char must be ascii character or '_'
-        if(!(std::isalpha(name[0]) || name[0] == '_'))
-            return false;
-        // other position chars must be ascii character or '_' or digit
-        for(size_t i=1;i<name.size();i++) {
-            if(!(std::isalpha(name[i]) || name[i] == '_' || std::isdigit(name[i])))
-                return false;
-        }
-        return true;
-    }
-    bool is_valid_contract_desc_format(const std::string& desc)
-    {
-        if(desc.size() > 100)
-            return false;
-        for(size_t i=0;i<desc.size();i++) {
-            if(!(std::isalpha(desc[i]) || desc[i] == '_' || std::isdigit(desc[i]) || desc[i]==' ' || desc[i] == '\n'))
-                return false;
-        }
-        return true;
-    }
-}

@@ -1753,7 +1753,7 @@ UniValue getsimplecontractinfo(const JSONRPCRequest& request)
 	if (ContractHelper::is_valid_contract_address_format(strAddr)) {
 		contract_info = service->get_contract_info(strAddr);
 	} else {
-		if (!contract_utils::is_valid_contract_name_format) {
+		if (!ContractHelper::is_valid_contract_name_format(strAddr)) {
 			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Address does not exist");
 		}
 		auto contract_addr = service->find_contract_id_by_name(strAddr);
@@ -1815,7 +1815,7 @@ UniValue getcontractinfo(const JSONRPCRequest& request)
 	if (ContractHelper::is_valid_contract_address_format(strAddr)) {
 		contract_info = service->get_contract_info(strAddr);
 	} else {
-		if (!contract_utils::is_valid_contract_name_format) {
+		if (!ContractHelper::is_valid_contract_name_format(strAddr)) {
 			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Address does not exist");
 		}
 		auto contract_addr = service->find_contract_id_by_name(strAddr);
@@ -2148,10 +2148,10 @@ UniValue upgradecontracttesting(const JSONRPCRequest& request)
     if(!ContractHelper::is_valid_contract_address_format(contract_address))
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect contract address");
     const auto& contract_name = request.params[2].get_str();
-    if(!contract_utils::is_valid_contract_name_format(contract_name))
+    if(!ContractHelper::is_valid_contract_name_format(contract_name))
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Incorrect contract name format");
     const auto& contract_desc = request.params[3].get_str();
-    if(!contract_utils::is_valid_contract_desc_format(contract_desc))
+    if(!ContractHelper::is_valid_contract_desc_format(contract_desc))
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Incorrect contract description format");
 
     auto service = get_contract_storage_service();

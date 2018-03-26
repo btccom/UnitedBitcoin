@@ -203,7 +203,6 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
             service->close();
         }
     };
-    // addPriorityTxs(minGasPrice); // TODO
     int nPackagesSelected = 0;
     int nDescendantsUpdated = 0;
     addPackageTxs(nPackagesSelected, nDescendantsUpdated, minGasPrice, allow_contract);
@@ -227,10 +226,6 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 		service->close();
 	}
 
-    //this should already be populated by AddBlock in case of contracts, but if no contracts
-    //then it won't get populated
-//    RebuildRefundTransaction(); // TODO
-
     ////////////////////////////////////////////////////////
 
     pblocktemplate->vchCoinbaseCommitment = GenerateCoinbaseCommitment(*pblock, pindexPrev, chainparams.GetConsensus());
@@ -240,7 +235,6 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 
     // The total fee is the Fees minus the Refund
     if (pTotalFees) {
-//        *pTotalFees = nFees - bceResult.refundSender; // TODO
         *pTotalFees = nFees;
     }
 
@@ -410,12 +404,6 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
     nBlockSigOpsCost -= GetLegacySigOpCount(*pblock->vtx[0]);
     // manually rebuild refundtx
     CMutableTransaction contrTx(*pblock->vtx[0]);
-    int i = contrTx.vout.size();
-    contrTx.vout.resize(contrTx.vout.size() + testExecResult.refundOutputs.size());
-    for (CTxOut& vout : testExecResult.refundOutputs) {
-        contrTx.vout[i] = vout;
-        i++;
-    }
 
     nBlockSigOpsCost += GetLegacySigOpCount(contrTx);
     //all contract costs now applied to local state
@@ -428,9 +416,6 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
     //block is not too big, so apply the contract execution and it's results to the actual block
     //apply local bytecode to global bytecode state
     bceResult.usedGas += testExecResult.usedGas;
-    // bceResult.refundSender += testExecResult.refundSender;
-    bceResult.refundOutputs.insert(bceResult.refundOutputs.end(), testExecResult.refundOutputs.begin(), testExecResult.refundOutputs.end());
-    // bceResult.valueTransfers = std::move(testExecResult.valueTransfers);
     pblock->vtx.emplace_back(iter->GetSharedTx());
     pblocktemplate->vTxFees.push_back(iter->GetFee());
     pblocktemplate->vTxSigOpsCost.push_back(iter->GetSigOpCost());
@@ -455,7 +440,6 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
     */
     //calculate sigops from new refund/proof tx
     this->nBlockSigOpsCost -= GetLegacySigOpCount(*pblock->vtx[0]);
-//    RebuildRefundTransaction(); // TODO:
     this->nBlockSigOpsCost += GetLegacySigOpCount(*pblock->vtx[0]);
     // bceResult.valueTransfers.clear();
 	success = true;

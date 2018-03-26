@@ -21,6 +21,7 @@
 #include <contract_engine/contract_engine_builder.hpp>
 #include <contract_storage/contract_storage.hpp>
 #include <contract_storage/exceptions.hpp>
+#include <contract_engine/contract_helper.hpp>
 #include <jsondiff/jsondiff.h>
 #include <fc/io/enum_type.hpp>
 #include <fc/io/varint.hpp>
@@ -606,10 +607,6 @@ struct ContractTransaction {
     ContractTransactionParams params;
 };
 
-typedef jsondiff::JsonValue StorageValue;
-typedef jsondiff::JsonValue ContractDataValue; // data in contract vm's value type
-typedef jsondiff::DiffResultP StorageChanges;
-
 struct ContractWithdrawInfo {
     std::string from_contract_address;
     uint64_t amount = 0;
@@ -627,6 +624,8 @@ struct ContractResultTransferInfo {
     uint64_t amount = 0;
 };
 
+typedef jsondiff::DiffResultP StorageChanges;
+
 // FIXME: not use it now
 // contract execute result for uvm
 struct ResultExecute {
@@ -641,8 +640,6 @@ struct ResultExecute {
 // contract result for bitcoin
 struct ContractExecResult {
     uint64_t usedGas = 0;
-    std::vector<CTxOut> refundOutputs;
-//    std::vector<CTransaction> valueTransfers;
     int32_t exit_code = 0;
     std::string error_message;
 	std::string api_result;
@@ -666,8 +663,6 @@ private:
     bool receiveStack(const CScript& scriptPubKey);
     bool parseContractTXParams(ContractTransactionParams& params, size_t contract_op_vout_index);
     ContractTransaction createContractTX(const ContractTransactionParams& etp, const uint32_t nOut);
-    // TODO: more functions
-    // TODO: build ContractTransaction
 private:
     const CTransaction txBitcoin;
     const CCoinsViewCache *view;
@@ -687,7 +682,6 @@ public:
     std::vector<ResultExecute>& getResult() {return result;}
     bool commit_changes(std::shared_ptr<::contract::storage::ContractStorageService> service);
 private:
-    // TODO: build contract execute environment
 	::contract::storage::ContractStorageService* storage_service;
 public:
     std::vector<ContractTransaction> txs;
@@ -697,14 +691,6 @@ public:
     const CAmount nTxFee;
     ContractExecResult pending_contract_exec_result; // pending contract exec changes not committed
 };
-
-namespace contract_utils {
-    std::string storage_to_json_string(const StorageValue &storage_value);
-    ContractDataValue vch_to_contract_data(const valtype &vch_value);
-    valtype contract_data_to_vch(const ContractDataValue &value);
-    bool is_valid_contract_name_format(const std::string& name);
-    bool is_valid_contract_desc_format(const std::string& desc);
-}
 
 std::shared_ptr<::contract::storage::ContractStorageService> get_contract_storage_service();
 

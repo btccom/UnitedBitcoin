@@ -299,3 +299,46 @@ bool ContractHelper::is_valid_contract_address_format(const std::string& address
 	memcpy(first_4_bytes_of_b_calculated.data(), b.data(), 4);
 	return first_4_bytes_of_b_calculated == first_4_bytes_of_b;
 }
+
+bool ContractHelper::is_valid_contract_name_format(const std::string& name)
+{
+    if(name.size() < 2 || name.size() > 30)
+        return false;
+    // first char must be ascii character or '_'
+    if(!(std::isalpha(name[0]) || name[0] == '_'))
+        return false;
+    // other position chars must be ascii character or '_' or digit
+    for(size_t i=1;i<name.size();i++) {
+        if(!(std::isalpha(name[i]) || name[i] == '_' || std::isdigit(name[i])))
+            return false;
+    }
+    return true;
+}
+bool ContractHelper::is_valid_contract_desc_format(const std::string& desc)
+{
+    if(desc.size() > 100)
+        return false;
+    for(size_t i=0;i<desc.size();i++) {
+        if(!(std::isalpha(desc[i]) || desc[i] == '_' || std::isdigit(desc[i]) || desc[i]==' ' || desc[i] == '\n' || desc[i] == '\r'))
+            return false;
+    }
+    return true;
+}
+
+std::string ContractHelper::storage_to_json_string(const StorageValue &storage_value)
+{
+    return jsondiff::json_dumps(storage_value);
+}
+ContractDataValue ContractHelper::vch_to_contract_data(const valtype &vch_value)
+{
+    const auto &vch_str = ValtypeUtils::vch_to_string(vch_value);
+    return jsondiff::json_loads(vch_str);
+}
+valtype ContractHelper::contract_data_to_vch(const ContractDataValue &value)
+{
+    const auto& str = jsondiff::json_dumps(value);
+    std::vector<unsigned char> data(str.size() + 1);
+    memcpy(data.data(), str.c_str(), str.size());
+    data[str.size()] = '\0';
+    return data;
+}

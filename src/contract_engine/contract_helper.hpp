@@ -22,6 +22,11 @@ struct GpcBuffer
 
 int gpcread(void* ptr, size_t element_size, size_t count, GpcBuffer* gpc_buffer);
 
+typedef jsondiff::JsonValue StorageValue;
+typedef jsondiff::JsonValue ContractDataValue; // data in contract vm's value type
+
+using valtype = std::vector<unsigned char>;
+
 class ContractHelper
 {
 public:
@@ -32,4 +37,10 @@ public:
 
     static std::string generate_contract_address(const uvm::blockchain::Code& code, const std::string& caller_address, const CTransaction& txBitcoin, size_t contract_op_vout_index);
     static bool is_valid_contract_address_format(const std::string& address);
+    static bool is_valid_contract_name_format(const std::string& name);
+    static bool is_valid_contract_desc_format(const std::string& desc);
+
+    std::string storage_to_json_string(const StorageValue &storage_value);
+    ContractDataValue vch_to_contract_data(const valtype &vch_value);
+    valtype contract_data_to_vch(const ContractDataValue &value);
 };
