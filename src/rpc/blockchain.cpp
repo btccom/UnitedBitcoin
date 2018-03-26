@@ -1904,6 +1904,35 @@ UniValue currentrootstatehash(const JSONRPCRequest& request)
     return result;
 }
 
+UniValue blockrootstatehash(const JSONRPCRequest& request)
+{
+	if (request.fHelp || request.params.size() < 1)
+		throw runtime_error(
+			"currentrootstatehash \"block_height\" ( int )\n"
+			"\nArgument:\n"
+			"1. \"block_height\"          (int, required) The block height to get root state hash\n"
+		);
+
+	LOCK(cs_main);
+	auto height = request.params[0].get_int();
+	if (height <= 0 || height > chainActive.Height())
+		throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid block height");
+	if (height < Params().GetConsensus().UBCONTRACT_Height)
+		throw JSONRPCError(RPC_INVALID_PARAMETER, "contract feature is not allowed in this block height");
+	auto bindex = chainActive.Tip()->GetAncestor(height);
+	if (bindex->nHeight != height)
+		throw JSONRPCError(RPC_INVALID_PARAMETER, "can't find valid block of this height");
+	CBlock block;
+	auto res = ReadBlockFromDisk(block, bindex, Params().GetConsensus());
+	if (!res)
+		throw JSONRPCError(RPC_INVALID_PARAMETER, "can't find valid block of this height");
+	auto maybe_root_state_hash_in_block = get_root_state_hash_from_block(&block);
+	auto root_state_hash = maybe_root_state_hash_in_block ? *maybe_root_state_hash_in_block : std::string(EMPTY_COMMIT_ID);
+	UniValue result(UniValue::VOBJ);
+	result.push_back(Pair("root_state_hash", root_state_hash));
+	return result;
+}
+
 UniValue getcreatecontractaddress(const JSONRPCRequest& request)
 {
     if (request.fHelp || request.params.size() < 1)
@@ -2490,6 +2519,7 @@ static const CRPCCommand commands[] =
     { "blockchain",         "deposittocontracttesting", &deposittocontracttesting, {"caller_address", "contract_address", "deposit_amount", "deposit_memo"} },
 
     { "blockchain",         "currentrootstatehash", &currentrootstatehash, {} },
+	{ "blockchain",         "blockrootstatehash", &blockrootstatehash,{"block_height"} },
 
     /* Not shown in help */
     { "hidden",             "invalidateblock",        &invalidateblock,        {"blockhash"} },

@@ -477,14 +477,12 @@ namespace uvm {
             void BtcUvmChainApi::release_objects_in_pool(lua_State *L)
             {
                 auto node = uvm::lua::lib::get_lua_state_value_node(L, GLUA_OUTSIDE_OBJECT_POOLS_KEY);
-                // Map<type, Map<object_key, object_addr>>
                 std::map<UvmOutsideObjectTypes, std::shared_ptr<std::map<intptr_t, intptr_t>>> *object_pools = nullptr;
                 if (node.type == UvmStateValueType::LUA_STATE_VALUE_nullptr)
                 {
                     return;
                 }
                 object_pools = (std::map<UvmOutsideObjectTypes, std::shared_ptr<std::map<intptr_t, intptr_t>>> *) node.value.pointer_value;
-                // TODO: 对于object_pools中不同类型的对象，分别释放
                 for(const auto &p : *object_pools)
                 {
                     auto type = p.first;
