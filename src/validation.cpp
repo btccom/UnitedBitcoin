@@ -5767,7 +5767,7 @@ namespace contract_utils {
         if(desc.size() > 100)
             return false;
         for(size_t i=0;i<desc.size();i++) {
-            if(!(std::isalpha(desc[i]) || desc[i] == '_' || std::isdigit(desc[i])))
+            if(!(std::isalpha(desc[i]) || desc[i] == '_' || std::isdigit(desc[i]) || desc[i]==' ' || desc[i] == '\n'))
                 return false;
         }
         return true;
