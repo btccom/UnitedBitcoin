@@ -1769,30 +1769,44 @@ UniValue getsimplecontractinfo(const JSONRPCRequest& request)
     result.push_back(Pair("creator_address", contract_info->creator_address));
     result.push_back(Pair("name", contract_info->name));
     result.push_back(Pair("description", contract_info->description));
-    jsondiff::JsonArray apis;
-    for (const auto& api : contract_info->apis)
-    {
-        apis.push_back(api);
-    }
-    result.push_back(Pair("apis", jsondiff::json_pretty_dumps(apis)));
-    jsondiff::JsonArray offline_apis;
-    for (const auto& api : contract_info->offline_apis)
-    {
-        offline_apis.push_back(api);
-    }
-    result.push_back(Pair("offline_apis", jsondiff::json_pretty_dumps(offline_apis)));
-    jsondiff::JsonArray storages;
-    for (const auto& p : contract_info->storage_types)
-    {
-        storages.push_back(p.first);
-    }
-    result.push_back(Pair("storages", jsondiff::json_pretty_dumps(storages)));
-    jsondiff::JsonArray balances;
-    for (const auto& b : contract_info->balances)
-    {
-        balances.push_back(b.to_json());
-    }
-    result.push_back(Pair("balances", jsondiff::json_pretty_dumps(balances)));
+	{
+		UniValue apis(UniValue::VARR);
+		for (const auto& api : contract_info->apis) {
+			UniValue item(UniValue::VOBJ);
+			item.push_back(Pair("name", api));
+			apis.push_back(item);
+		}
+		result.push_back(Pair("apis", apis));
+	}
+	{
+		UniValue offline_apis(UniValue::VARR);
+		for (const auto& api : contract_info->offline_apis) {
+			UniValue item(UniValue::VOBJ);
+			item.push_back(Pair("name", api));
+			offline_apis.push_back(item);
+		}
+		result.push_back(Pair("offline_apis", offline_apis));
+	}
+	{
+		UniValue storages(UniValue::VARR);
+		for (const auto& p : contract_info->storage_types) {
+			UniValue item(UniValue::VOBJ);
+			item.push_back(Pair("name", p.first));
+			item.push_back(Pair("type", (uint64_t)p.second));
+			storages.push_back(item);
+		}
+		result.push_back(Pair("storages", storages));
+	}
+	{
+		UniValue balances(UniValue::VARR);
+		for (const auto& b : contract_info->balances) {
+			UniValue item(UniValue::VOBJ);
+			item.push_back(Pair("asset_id", uint64_t(b.asset_id)));
+			item.push_back(Pair("amount", b.amount));
+			balances.push_back(item);
+		}
+		result.push_back(Pair("balances", balances));
+	}
 
     return result;
 }
@@ -1831,32 +1845,46 @@ UniValue getcontractinfo(const JSONRPCRequest& request)
     result.push_back(Pair("creator_address", contract_info->creator_address));
     result.push_back(Pair("name", contract_info->name));
     result.push_back(Pair("description", contract_info->description));
-	jsondiff::JsonArray apis;
-	for (const auto& api : contract_info->apis)
 	{
-		apis.push_back(api);
+		UniValue apis(UniValue::VARR);
+		for (const auto& api : contract_info->apis) {
+			UniValue item(UniValue::VOBJ);
+			item.push_back(Pair("name", api));
+			apis.push_back(item);
+		}
+		result.push_back(Pair("apis", apis));
 	}
-    result.push_back(Pair("apis", jsondiff::json_pretty_dumps(apis)));
-	jsondiff::JsonArray offline_apis;
-	for (const auto& api : contract_info->offline_apis)
 	{
-		offline_apis.push_back(api);
+		UniValue offline_apis(UniValue::VARR);
+		for (const auto& api : contract_info->offline_apis) {
+			UniValue item(UniValue::VOBJ);
+			item.push_back(Pair("name", api));
+			offline_apis.push_back(item);
+		}
+		result.push_back(Pair("offline_apis", offline_apis));
 	}
-    result.push_back(Pair("offline_apis", jsondiff::json_pretty_dumps(offline_apis)));
-    auto bytecode_base64 = fc::base64_encode(contract_info->bytecode.data(), contract_info->bytecode.size());
-    result.push_back(Pair("code", bytecode_base64));
-	jsondiff::JsonArray storages;
-	for (const auto& p : contract_info->storage_types)
+	auto bytecode_base64 = fc::base64_encode(contract_info->bytecode.data(), contract_info->bytecode.size());
+	result.push_back(Pair("code", bytecode_base64));
 	{
-		storages.push_back(p.first);
+		UniValue storages(UniValue::VARR);
+		for (const auto& p : contract_info->storage_types) {
+			UniValue item(UniValue::VOBJ);
+			item.push_back(Pair("name", p.first));
+			item.push_back(Pair("type", (uint64_t)p.second));
+			storages.push_back(item);
+		}
+		result.push_back(Pair("storages", storages));
 	}
-	result.push_back(Pair("storages", jsondiff::json_pretty_dumps(storages)));
-	jsondiff::JsonArray balances;
-	for (const auto& b : contract_info->balances)
 	{
-		balances.push_back(b.to_json());
+		UniValue balances(UniValue::VARR);
+		for (const auto& b : contract_info->balances) {
+			UniValue item(UniValue::VOBJ);
+			item.push_back(Pair("asset_id", uint64_t(b.asset_id)));
+			item.push_back(Pair("amount", b.amount));
+			balances.push_back(item);
+		}
+		result.push_back(Pair("balances", balances));
 	}
-	result.push_back(Pair("balances", jsondiff::json_pretty_dumps(balances)));
 
     return result;
 }
@@ -2082,6 +2110,20 @@ UniValue invokecontractoffline(const JSONRPCRequest& request)
 	UniValue result(UniValue::VOBJ);
 	result.push_back(Pair("result", execResult.api_result));
 	result.push_back(Pair("gasCount", execResult.usedGas));
+	// balance changes
+	UniValue balance_changes(UniValue::VARR);
+	for (auto i = 0; i < execResult.balance_changes.size(); i++) {
+		const auto& change = execResult.balance_changes[i];
+		if (!change.is_contract)
+			continue;
+		UniValue item(UniValue::VOBJ);
+		item.push_back(Pair("contract_address", change.address));
+		item.push_back(Pair("is_add", change.add));
+		item.push_back(Pair("amount", change.amount));
+		balance_changes.push_back(item);
+	}
+	result.push_back(Pair("balanceChanges", balance_changes));
+	
 	return result;
 }
 
@@ -2152,6 +2194,19 @@ UniValue registercontracttesting(const JSONRPCRequest& request)
 
     UniValue result(UniValue::VOBJ);
     result.push_back(Pair("gasCount", execResult.usedGas));
+	// balance changes
+	UniValue balance_changes(UniValue::VARR);
+	for (auto i = 0; i < execResult.balance_changes.size(); i++) {
+		const auto& change = execResult.balance_changes[i];
+		if (!change.is_contract)
+			continue;
+		UniValue item(UniValue::VOBJ);
+		item.push_back(Pair("contract_address", change.address));
+		item.push_back(Pair("is_add", change.add));
+		item.push_back(Pair("amount", change.amount));
+		balance_changes.push_back(item);
+	}
+	result.push_back(Pair("balanceChanges", balance_changes));
     return result;
 }
 
@@ -2229,6 +2284,19 @@ UniValue upgradecontracttesting(const JSONRPCRequest& request)
 
     UniValue result(UniValue::VOBJ);
     result.push_back(Pair("gasCount", execResult.usedGas));
+	// balance changes
+	UniValue balance_changes(UniValue::VARR);
+	for (auto i = 0; i < execResult.balance_changes.size(); i++) {
+		const auto& change = execResult.balance_changes[i];
+		if (!change.is_contract)
+			continue;
+		UniValue item(UniValue::VOBJ);
+		item.push_back(Pair("contract_address", change.address));
+		item.push_back(Pair("is_add", change.add));
+		item.push_back(Pair("amount", change.amount));
+		balance_changes.push_back(item);
+	}
+	result.push_back(Pair("balanceChanges", balance_changes));
     return result;
 }
 
@@ -2304,6 +2372,19 @@ UniValue deposittocontracttesting(const JSONRPCRequest& request)
 
     UniValue result(UniValue::VOBJ);
     result.push_back(Pair("gasCount", execResult.usedGas));
+	// balance changes
+	UniValue balance_changes(UniValue::VARR);
+	for (auto i = 0; i < execResult.balance_changes.size(); i++) {
+		const auto& change = execResult.balance_changes[i];
+		if (!change.is_contract)
+			continue;
+		UniValue item(UniValue::VOBJ);
+		item.push_back(Pair("contract_address", change.address));
+		item.push_back(Pair("is_add", change.add));
+		item.push_back(Pair("amount", change.amount));
+		balance_changes.push_back(item);
+	}
+	result.push_back(Pair("balanceChanges", balance_changes));
     return result;
 }
 
@@ -2510,8 +2591,8 @@ static const CRPCCommand commands[] =
     { "blockchain",         "preciousblock",          &preciousblock,          {"blockhash"} },
 
     { "blockchain",         "getcontractinfo",        &getcontractinfo,        {"contract_address"} },
+	{ "blockchain",         "getsimplecontractinfo",  &getsimplecontractinfo,{ "contract_address" } },
 	{ "blockchain",         "gettransactionevents",   &gettransactionevents,   {"txid"} },
-    { "blockchain",         "getsimplecontractinfo",  &getsimplecontractinfo,  {"contract_address"} },
     { "blockchain",         "getcreatecontractaddress", &getcreatecontractaddress, {"contact_tx"} },
 	{ "blockchain",         "invokecontractoffline",  &invokecontractoffline,  {"caller_address", "contract_address", "api_name", "api_arg"} },
     { "blockchain",         "registercontracttesting",  &registercontracttesting,  {"caller_address", "contract_address", "api_name", "api_arg"} },
