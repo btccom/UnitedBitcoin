@@ -472,6 +472,138 @@ static bool CheckInputsFromMempoolAndCache(const CTransaction& tx, CValidationSt
     return CheckInputs(tx, state, view, true, flags, cacheSigStore, true, txdata);
 }
 
+static bool CheckAddContractTxToMempoolAvailable(const CTransaction& tx, CCoinsViewCache& view, CAmount txMinGasPrice, std::string& error_out, std::string& short_error_out)
+{
+	if (!tx.HasContractOp())
+		return false;
+    ContractTxConverter converter(tx, &view, nullptr);
+    ExtractContractTX resultConvertContractTx;
+    if (!converter.extractionContractTransactions(resultConvertContractTx)) {
+        error_out = "Contract transaction of the wrong format";
+        short_error_out = "bad-tx-bad-contract-format";
+        return false;
+    }
+
+    uint64_t gasAllTxs = 0;
+    uint64_t sumGas = 0;
+    CAmount nTxFee = view.GetValueIn(tx) - tx.GetValueOut();
+
+    uint64_t blockGasLimit = UINT64_MAX;
+
+    auto minGasPrice = DEFAULT_MIN_GAS_PRICE;
+    auto hardBlockGasLimit = DEFAULT_BLOCK_GAS_LIMIT;
+    auto softBlockGasLimit = hardBlockGasLimit;
+    softBlockGasLimit = std::min(softBlockGasLimit, hardBlockGasLimit);
+
+    size_t contract_call_vout_count = 0;
+    for (const CTxOut& o : tx.vout)
+        contract_call_vout_count += o.scriptPubKey.HasContractOp() ? 1 : 0;
+    for(const auto& withdrawInfo : resultConvertContractTx.contract_withdraw_infos)
+    {
+        nTxFee += withdrawInfo.amount;
+    }
+    auto service = get_contract_storage_service();
+    service->open();
+    for (ContractTransaction &ctx : resultConvertContractTx.txs) {
+        sumGas += ctx.params.gasLimit * ctx.params.gasPrice;
+        if(ctx.params.deposit_amount >= nTxFee) {
+            error_out = "Transaction fee does not cover the gas stipend";
+            short_error_out = "bad-txns-fee-notenough";
+            return false;
+        }
+        nTxFee -= ctx.params.deposit_amount;
+        if (sumGas > UINT64_MAX) {
+            error_out = "Transaction's gas stipend overflows";
+            short_error_out = "bad-tx-gas-stipend-overflow";
+            return false;
+        }
+        if (sumGas > nTxFee) {
+            error_out = "Transaction fee does not cover the gas stipend";
+            short_error_out = "bad-txns-fee-notenough";
+            return false;
+        }
+        if (ctx.params.gasLimit > UINT32_MAX) {
+            error_out = "Contract execution can not specify greater gas limit than can fit in 32-bits";
+            short_error_out = "bad-tx-too-much-gas";
+            return false;
+        }
+        gasAllTxs += ctx.params.gasLimit;
+        if (gasAllTxs > blockGasLimit) {
+            error_out = "bad-txns-gas-exceeds-blockgaslimit";
+            short_error_out = "bad-txns-gas-exceeds-blockgaslimit";
+            return false;
+        }
+        if ((uint64_t)ctx.params.gasPrice < DEFAULT_MIN_GAS_PRICE) {
+            error_out = "Contract execution has lower gas price than allowed";
+            short_error_out = "bad-tx-low-gas-price";
+            return false;
+        }
+        if (txMinGasPrice != 0) {
+            txMinGasPrice = std::min(txMinGasPrice, (CAmount) ctx.params.gasPrice);
+        }
+        else {
+            txMinGasPrice = ctx.params.gasPrice;
+        }
+        if (!ctx.params.check_upgrade_contract_caller(ctx.opcode, service)) {
+            error_out = "Contract upgrader error";
+            short_error_out = "bad-contract-upgrader";
+            return false;
+        }
+    }
+    if (contract_call_vout_count > resultConvertContractTx.txs.size()) {
+        error_out = "bad-txns-incorrect-format";
+        short_error_out = "bad-txns-incorrect-format";
+        return false;
+    }
+    // attempt to evaluate this contract transaction
+    const auto& old_root_state_hash = service->current_root_state_hash();
+    CBlock block;
+    block.vtx.push_back(MakeTransactionRef(CTransaction(tx)));
+    ContractExec exec(service.get(), block, resultConvertContractTx.txs, hardBlockGasLimit, nTxFee);
+    BOOST_SCOPE_EXIT_ALL(&) {
+        service->rollback_contract_state(old_root_state_hash);
+    };
+
+    if (!exec.performByteCode()) {
+        //error, don't add contract
+        if(!exec.pending_contract_exec_result.error_message.empty()) {
+            error_out = exec.pending_contract_exec_result.error_message;
+            short_error_out = exec.pending_contract_exec_result.error_message;
+            return false;
+        }
+        else {
+            error_out = "bad-contracttx-execution";
+            short_error_out = "bad-contracttx-execution";
+            return false;
+        }
+    }
+    ContractExecResult testExecResult;
+    if (!exec.processingResults(testExecResult)) {
+        error_out = "bad-contracttx-execution";
+        short_error_out = "bad-contracttx-execution";
+        return false;
+    }
+    if (testExecResult.usedGas > softBlockGasLimit) {
+        //if this transaction could cause block gas limit to be exceeded, then don't add it
+        error_out = "bad-contracttx-execution";
+        short_error_out = "bad-contracttx-execution";
+        return false;
+    }
+    // check withdraw-from-info correct
+    if (!testExecResult.match_contract_withdraw_infos(resultConvertContractTx.contract_withdraw_infos)) {
+        error_out = "bad-contracttx-execution";
+        short_error_out = "bad-contracttx-execution";
+        return false;
+    }
+    // commit changes than can generate new root state hash
+    if (!exec.commit_changes(service)) {
+        error_out = "bad-contracttx-execution";
+        short_error_out = "bad-contracttx-execution";
+        return false;
+    }
+    return true;
+}
+
 static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool& pool, CValidationState& state, const CTransactionRef& ptx,
                               bool* pfMissingInputs, int64_t nAcceptTime, std::list<CTransactionRef>* plTxnReplaced,
                               bool bypass_limits, const CAmount& nAbsurdFee, std::vector<COutPoint>& coins_to_uncache)
@@ -632,91 +764,11 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 			return state.DoS(100, error("ConnectBlock(): Contract tx not allowed"), REJECT_INVALID, "contract-tx-not-allowed");
 		// contract
 		if (tx.HasContractOp()) {
-			ContractTxConverter converter(tx, &view, nullptr);
-			ExtractContractTX resultConvertContractTx;
-			if (!converter.extractionContractTransactions(resultConvertContractTx)) {
-				return state.DoS(100, error("ConnectBlock(): Contract transaction of the wrong format"), REJECT_INVALID, "bad-tx-bad-contract-format");
+			std::string error_out;
+			std::string short_error_out;
+			if (!CheckAddContractTxToMempoolAvailable(tx, view, txMinGasPrice, error_out, short_error_out)) {
+				return state.DoS(100, error("ConnectBlock(): %s", error_out.c_str()), REJECT_INVALID, short_error_out.c_str());
 			}
-
-			uint64_t gasAllTxs = 0;
-			uint64_t sumGas = 0;
-			CAmount nTxFee = view.GetValueIn(tx) - tx.GetValueOut();
-
-			uint64_t blockGasLimit = UINT64_MAX;
-
-			auto minGasPrice = DEFAULT_MIN_GAS_PRICE;
-			auto hardBlockGasLimit = DEFAULT_BLOCK_GAS_LIMIT;
-			auto softBlockGasLimit = hardBlockGasLimit;
-			softBlockGasLimit = std::min(softBlockGasLimit, hardBlockGasLimit);
-
-			size_t contract_call_vout_count = 0;
-			for (const CTxOut& o : tx.vout)
-                contract_call_vout_count += o.scriptPubKey.HasContractOp() ? 1 : 0;
-            for(const auto& withdrawInfo : resultConvertContractTx.contract_withdraw_infos)
-            {
-                nTxFee += withdrawInfo.amount;
-            }
-			auto service = get_contract_storage_service();
-			service->open();
-			for (ContractTransaction &ctx : resultConvertContractTx.txs) {
-				sumGas += ctx.params.gasLimit * ctx.params.gasPrice;
-                if(ctx.params.deposit_amount >= nTxFee)
-                    return state.DoS(100, error("ConnectBlock(): Transaction fee does not cover the gas stipend"), REJECT_INVALID, "bad-txns-fee-notenough");
-                nTxFee -= ctx.params.deposit_amount;
-				if (sumGas > UINT64_MAX)
-					return state.DoS(100, error("ConnectBlock(): Transaction's gas stipend overflows"), REJECT_INVALID, "bad-tx-gas-stipend-overflow");
-				if (sumGas > nTxFee)
-					return state.DoS(100, error("ConnectBlock(): Transaction fee does not cover the gas stipend"), REJECT_INVALID, "bad-txns-fee-notenough");
-				if (ctx.params.gasLimit > UINT32_MAX)
-					return state.DoS(100, error("ConnectBlock(): Contract execution can not specify greater gas limit than can fit in 32-bits"), REJECT_INVALID, "bad-tx-too-much-gas");
-				gasAllTxs += ctx.params.gasLimit;
-				if (gasAllTxs > blockGasLimit)
-					return state.DoS(1, false, REJECT_INVALID, "bad-txns-gas-exceeds-blockgaslimit");
-				if ((uint64_t)ctx.params.gasPrice < DEFAULT_MIN_GAS_PRICE)
-					return state.DoS(100, error("ConnectBlock(): Contract execution has lower gas price than allowed"), REJECT_INVALID, "bad-tx-low-gas-price");
-				if (txMinGasPrice != 0) {
-					txMinGasPrice = std::min(txMinGasPrice, (CAmount) ctx.params.gasPrice);
-				}
-				else {
-					txMinGasPrice = ctx.params.gasPrice;
-				}
-				if (!ctx.params.check_upgrade_contract_caller(ctx.opcode, service)) {
-					return false;
-				}
-			}
-			if (contract_call_vout_count > resultConvertContractTx.txs.size())
-				return state.DoS(100, false, REJECT_INVALID, "bad-txns-incorrect-format");
-			// attempt to evaluate this contract transaction
-			const auto& old_root_state_hash = service->current_root_state_hash();
-			CBlock block;
-			block.vtx.push_back(MakeTransactionRef(CTransaction(tx)));
-			ContractExec exec(service.get(), block, resultConvertContractTx.txs, hardBlockGasLimit, nTxFee);
-			BOOST_SCOPE_EXIT_ALL(&) {
-				service->rollback_contract_state(old_root_state_hash);
-			};
-
-			if (!exec.performByteCode()) {
-				//error, don't add contract
-				if(!exec.pending_contract_exec_result.error_message.empty())
-					return state.DoS(100, false, REJECT_INVALID, exec.pending_contract_exec_result.error_message);
-				else
-					return state.DoS(100, false, REJECT_INVALID, "bad-contracttx-execution");
-			}
-			ContractExecResult testExecResult;
-			if (!exec.processingResults(testExecResult)) {
-				return state.DoS(100, false, REJECT_INVALID, "bad-contracttx-execution");
-			}
-			if (testExecResult.usedGas > softBlockGasLimit) {
-				//if this transaction could cause block gas limit to be exceeded, then don't add it
-				return state.DoS(100, false, REJECT_INVALID, "bad-contracttx-execution");
-			}
-			// check withdraw-from-info correct
-			if (!testExecResult.match_contract_withdraw_infos(resultConvertContractTx.contract_withdraw_infos)) {
-				return state.DoS(100, false, REJECT_INVALID, "bad-contracttx-execution");
-			}
-			// commit changes than can generate new root state hash
-			if (!exec.commit_changes(service))
-				return state.DoS(100, false, REJECT_INVALID, "bad-contracttx-execution");
 		} else if(tx.HasOpSpend()) {
             return state.DoS(100, false, REJECT_INVALID, "bad-contracttx-incorrect-format");
         }
@@ -5566,6 +5618,46 @@ int VersionBitsTipStateSinceHeight(const Consensus::Params& params, Consensus::D
 {
     LOCK(cs_main);
     return VersionBitsStateSinceHeight(chainActive.Tip(), params, pos, versionbitscache);
+}
+
+
+int ReCheckContractTxsInMempool()
+{
+	auto allow_contract = chainActive.Tip()->nHeight > Params().GetConsensus().UBCONTRACT_Height;
+	if (!allow_contract)
+		return 0;
+	AssertLockHeld(cs_main);
+	std::vector<const CTransaction*> failedTx;
+	auto mi = mempool.mapTx.get<ancestor_score_or_gas_price>().begin();
+	while (mi != mempool.mapTx.get<ancestor_score_or_gas_price>().end())
+	{
+		if (mi == mempool.mapTx.get<ancestor_score_or_gas_price>().end()) {
+			break;
+		}
+		else {
+			++mi;
+		}
+		
+		const CTransaction& tx = mi->GetTx();
+
+		if (tx.HasContractOp()) {
+			CAmount txMinGasPrice = 0;
+			CCoinsView dummy;
+			CCoinsViewCache view(&dummy);
+			std::string error_out;
+			std::string short_error_out;
+			bool success = CheckAddContractTxToMempoolAvailable(tx, view, txMinGasPrice, error_out, short_error_out);
+			if (!success) {
+				failedTx.push_back(&tx);
+			}
+		}
+
+	}
+	// remove failedTxs from mempool
+	for (const auto& tx : failedTx) {
+		mempool.removeRecursive(*tx);
+	}
+	return failedTx.size();
 }
 
 static const uint64_t MEMPOOL_DUMP_VERSION = 1;

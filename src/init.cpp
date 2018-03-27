@@ -50,6 +50,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <memory>
+#include <condition_variable>
+#include <mutex>
 
 #ifndef WIN32
 #include <signal.h>
@@ -62,6 +64,8 @@
 #include <boost/interprocess/sync/file_lock.hpp>
 #include <boost/thread.hpp>
 #include <openssl/crypto.h>
+#include <chrono>
+#include <thread>
 
 #if ENABLE_ZMQ
 #include <zmq/zmqnotificationinterface.h>
@@ -607,6 +611,28 @@ void CleanupBlockRevFiles()
             continue;
         }
         remove(item.second);
+    }
+}
+
+/**
+ * check contract txs in txmempool every period time(eg. period = 120min)
+ */
+void ReCheckMemPoolThreadWorker()
+{
+	RenameThread("bitcoin-recheck-contract-tx-mempool");
+	auto period = std::chrono::minutes(120);
+	auto last_time = std::chrono::system_clock::now() - 2 * period;
+    while(!fRequestShutdown) {
+		{
+			if (std::chrono::system_clock::now() - last_time >= period) {
+				last_time = std::chrono::system_clock::now();
+				auto res = ReCheckContractTxsInMempool();
+				if (res > 0) {
+					LogPrintf("removed %d contract txs from txmempool when rechecking\n", res);
+				}
+			}
+		}
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 }
 
@@ -1627,6 +1653,7 @@ bool AppInitMain(boost::thread_group& threadGroup, CScheduler& scheduler)
     }
 
     threadGroup.create_thread(boost::bind(&ThreadImport, vImportFiles));
+	threadGroup.create_thread(boost::bind(&ReCheckMemPoolThreadWorker));
 
     // Wait for genesis block to be processed
     {

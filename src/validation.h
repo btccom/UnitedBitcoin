@@ -533,6 +533,9 @@ bool DumpMempool();
 /** Load the mempool from disk. */
 bool LoadMempool();
 
+/** check contract txs in txemempool. if evaluation failed, remove it from txemempool */
+int ReCheckContractTxsInMempool();
+
 // start contract code
 using valtype = std::vector<unsigned char>;
 
