@@ -697,7 +697,10 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 
 			if (!exec.performByteCode()) {
 				//error, don't add contract
-				return state.DoS(100, false, REJECT_INVALID, "bad-contracttx-execution");
+				if(!exec.pending_contract_exec_result.error_message.empty())
+					return state.DoS(100, false, REJECT_INVALID, exec.pending_contract_exec_result.error_message);
+				else
+					return state.DoS(100, false, REJECT_INVALID, "bad-contracttx-execution");
 			}
 			ContractExecResult testExecResult;
 			if (!exec.processingResults(testExecResult)) {

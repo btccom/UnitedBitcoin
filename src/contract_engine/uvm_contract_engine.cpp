@@ -101,7 +101,7 @@ namespace uvm
 		if (exception_code > 0)
 		{
 			if (exception_code == UVM_API_LVM_LIMIT_OVER_ERROR)
-				throw uvm::core::UvmException("execute contract out of memory");
+				throw uvm::core::UvmException("execute contract out of gas");
 			else
 			{
 				throw uvm::core::UvmException(exception_msg);
@@ -120,7 +120,7 @@ namespace uvm
 		if (exception_code > 0)
 		{
 			if (exception_code == UVM_API_LVM_LIMIT_OVER_ERROR)
-				throw uvm::core::UvmException("execute contract out of memory");
+				throw uvm::core::UvmException("execute contract out of gas");
 			else
 			{
 				throw uvm::core::UvmException(exception_msg);
