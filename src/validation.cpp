@@ -759,7 +759,7 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 		CAmount nValueOut = tx.GetValueOut();
 		CAmount txMinGasPrice = 0;
 
-		auto allow_contract = (chainActive.Tip()->nHeight + 1) >= Params().GetConsensus().UBCONTRACT_Height;
+		bool allow_contract = chainActive.Tip() && ((chainActive.Tip()->nHeight + 1) >= Params().GetConsensus().UBCONTRACT_Height);
 		if(!allow_contract && (tx.HasContractOp() || tx.HasOpSpend()))
 			return state.DoS(100, error("ConnectBlock(): Contract tx not allowed"), REJECT_INVALID, "contract-tx-not-allowed");
 		// contract
@@ -767,7 +767,7 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 			std::string error_out;
 			std::string short_error_out;
 			if (!CheckAddContractTxToMempoolAvailable(tx, view, txMinGasPrice, error_out, short_error_out)) {
-				return state.DoS(100, error("ConnectBlock(): %s", error_out.c_str()), REJECT_INVALID, short_error_out.c_str());
+				return state.DoS(100, error("AcceptContractTxToMempool(): %s", error_out.c_str()), REJECT_INVALID, short_error_out.c_str());
 			}
 		} else if(tx.HasOpSpend()) {
             return state.DoS(100, false, REJECT_INVALID, "bad-contracttx-incorrect-format");
@@ -5623,32 +5623,34 @@ int VersionBitsTipStateSinceHeight(const Consensus::Params& params, Consensus::D
 
 int ReCheckContractTxsInMempool()
 {
-	auto allow_contract = chainActive.Tip()->nHeight > Params().GetConsensus().UBCONTRACT_Height;
+	bool allow_contract = chainActive.Tip() && (chainActive.Tip()->nHeight > Params().GetConsensus().UBCONTRACT_Height);
 	if (!allow_contract)
 		return 0;
 	AssertLockHeld(cs_main);
+	LOCK(mempool.cs);
 	std::vector<const CTransaction*> failedTx;
-	auto mi = mempool.mapTx.get<ancestor_score_or_gas_price>().begin();
-	while (mi != mempool.mapTx.get<ancestor_score_or_gas_price>().end())
-	{
-		if (mi == mempool.mapTx.get<ancestor_score_or_gas_price>().end()) {
-			break;
-		}
-		else {
-			++mi;
-		}
-		
-		const CTransaction& tx = mi->GetTx();
 
-		if (tx.HasContractOp()) {
+	std::vector<TxMempoolInfo> vinfo;
+	{
+		vinfo = mempool.infoAll();
+	}
+	int count = 0;
+	for(auto mi= vinfo.begin();mi!= vinfo.end();mi++)
+	{
+		if (count > 1000)
+			break;
+		const auto& tx = mi->tx;
+
+		if (tx->HasContractOp()) {
+			++count;
 			CAmount txMinGasPrice = 0;
 			CCoinsView dummy;
 			CCoinsViewCache view(&dummy);
 			std::string error_out;
 			std::string short_error_out;
-			bool success = CheckAddContractTxToMempoolAvailable(tx, view, txMinGasPrice, error_out, short_error_out);
+			bool success = CheckAddContractTxToMempoolAvailable(*tx, view, txMinGasPrice, error_out, short_error_out);
 			if (!success) {
-				failedTx.push_back(&tx);
+				failedTx.push_back(&(*tx));
 			}
 		}
 

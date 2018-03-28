@@ -614,12 +614,17 @@ void CleanupBlockRevFiles()
     }
 }
 
+std::condition_variable cv_mempool_loaded;
+std::mutex mutex_mempool_load;
+
 /**
  * check contract txs in txmempool every period time(eg. period = 120min)
  */
 void ReCheckMemPoolThreadWorker()
 {
 	RenameThread("bitcoin-recheck-contract-tx-mempool");
+	std::unique_lock<std::mutex> lock(mutex_mempool_load);
+	cv_mempool_loaded.wait_until(lock, std::chrono::system_clock::now() + std::chrono::seconds(3));
 	auto period = std::chrono::minutes(120);
 	auto last_time = std::chrono::system_clock::now() - 2 * period;
     while(!fRequestShutdown) {
@@ -704,6 +709,10 @@ void ThreadImport(std::vector<fs::path> vImportFiles)
     } // End scope of CImportingNow
     if (gArgs.GetArg("-persistmempool", DEFAULT_PERSIST_MEMPOOL)) {
         LoadMempool();
+		
+		std::unique_lock<std::mutex> lock_mempool_load(mutex_mempool_load);
+		cv_mempool_loaded.notify_one();
+
         fDumpMempoolLater = !fRequestShutdown;
     }
 }
