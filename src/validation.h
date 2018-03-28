@@ -608,6 +608,8 @@ struct ContractTransaction {
     opcodetype opcode; // bitcoin script opcode(contract op)
     uint256 tx_id;
     ContractTransactionParams params;
+
+	bool is_params_valid(std::shared_ptr<::contract::storage::ContractStorageService> service, CAmount nTxFeeRemaining, CAmount sumGasCoin, CAmount gasCountOfAllTxsInBlock, CAmount blockGasLimit, std::string& error_str) const;
 };
 
 struct ContractWithdrawInfo {

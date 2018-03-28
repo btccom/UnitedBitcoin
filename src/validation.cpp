@@ -472,7 +472,7 @@ static bool CheckInputsFromMempoolAndCache(const CTransaction& tx, CValidationSt
     return CheckInputs(tx, state, view, true, flags, cacheSigStore, true, txdata);
 }
 
-static bool CheckAddContractTxToMempoolAvailable(const CTransaction& tx, CCoinsViewCache& view, CAmount txMinGasPrice, std::string& error_out, std::string& short_error_out)
+static bool CheckAddContractTxToMempoolAvailable(const CTransaction& tx, CCoinsViewCache& view, CAmount& txMinGasPrice, std::string& error_out, std::string& short_error_out)
 {
 	if (!tx.HasContractOp())
 		return false;
@@ -504,50 +504,21 @@ static bool CheckAddContractTxToMempoolAvailable(const CTransaction& tx, CCoinsV
     }
     auto service = get_contract_storage_service();
     service->open();
+	std::string error_str;
     for (ContractTransaction &ctx : resultConvertContractTx.txs) {
+		if (!ctx.is_params_valid(service, nTxFee, sumGas, gasAllTxs, blockGasLimit, error_str)) {
+			error_out = error_str;
+			short_error_out = error_str;
+			return false;
+		}
         sumGas += ctx.params.gasLimit * ctx.params.gasPrice;
-        if(ctx.params.deposit_amount >= nTxFee) {
-            error_out = "Transaction fee does not cover the gas stipend";
-            short_error_out = "bad-txns-fee-notenough";
-            return false;
-        }
         nTxFee -= ctx.params.deposit_amount;
-        if (sumGas > UINT64_MAX) {
-            error_out = "Transaction's gas stipend overflows";
-            short_error_out = "bad-tx-gas-stipend-overflow";
-            return false;
-        }
-        if (sumGas > nTxFee) {
-            error_out = "Transaction fee does not cover the gas stipend";
-            short_error_out = "bad-txns-fee-notenough";
-            return false;
-        }
-        if (ctx.params.gasLimit > UINT32_MAX) {
-            error_out = "Contract execution can not specify greater gas limit than can fit in 32-bits";
-            short_error_out = "bad-tx-too-much-gas";
-            return false;
-        }
         gasAllTxs += ctx.params.gasLimit;
-        if (gasAllTxs > blockGasLimit) {
-            error_out = "bad-txns-gas-exceeds-blockgaslimit";
-            short_error_out = "bad-txns-gas-exceeds-blockgaslimit";
-            return false;
-        }
-        if ((uint64_t)ctx.params.gasPrice < DEFAULT_MIN_GAS_PRICE) {
-            error_out = "Contract execution has lower gas price than allowed";
-            short_error_out = "bad-tx-low-gas-price";
-            return false;
-        }
         if (txMinGasPrice != 0) {
             txMinGasPrice = std::min(txMinGasPrice, (CAmount) ctx.params.gasPrice);
         }
         else {
             txMinGasPrice = ctx.params.gasPrice;
-        }
-        if (!ctx.params.check_upgrade_contract_caller(ctx.opcode, service)) {
-            error_out = "Contract upgrader error";
-            short_error_out = "bad-contract-upgrader";
-            return false;
         }
     }
     if (contract_call_vout_count > resultConvertContractTx.txs.size()) {
@@ -2313,6 +2284,31 @@ bool ContractTransactionParams::check_upgrade_contract_caller(opcodetype opcode,
     return true;
 }
 
+static bool set_error_str(std::string& error_str, const char* msg) {
+	error_str = msg;
+	return false;
+}
+
+bool ContractTransaction::is_params_valid(std::shared_ptr<::contract::storage::ContractStorageService> service, CAmount nTxFeeRemaining, CAmount sumGasCoin, CAmount gasCountOfAllTxsInBlock, CAmount blockGasLimit, std::string& error_str) const
+{
+	if (params.deposit_amount >= nTxFeeRemaining)
+		return set_error_str(error_str, "bad-txns-fee-notenough");
+    auto sumGasCoinRemaining = sumGasCoin + params.gasLimit * params.gasPrice;
+	if (sumGasCoinRemaining > UINT64_MAX)
+		return set_error_str(error_str, "bad-tx-gas-stipend-overflow");
+	if (sumGasCoinRemaining > nTxFeeRemaining - params.deposit_amount)
+		return set_error_str(error_str, "bad-txns-fee-notenough");
+	if (params.gasLimit > DEFAULT_BLOCK_GAS_LIMIT)
+		return set_error_str(error_str, "bad-tx-too-much-gas");
+	if (gasCountOfAllTxsInBlock + params.gasLimit > blockGasLimit)
+		return set_error_str(error_str, "bad-txns-gas-exceeds-blockgaslimit");
+	if ((uint64_t)params.gasPrice < DEFAULT_MIN_GAS_PRICE)
+		return set_error_str(error_str, "bad-tx-low-gas-price");
+	if (!params.check_upgrade_contract_caller(opcode, service))
+		return set_error_str(error_str, "bad-contract-upgrader");
+	return true;
+}
+
 bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& params, size_t contract_op_vout_index) {
     try{
         uint64_t gasLimit = 0;
@@ -2824,32 +2820,16 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                 for (const auto &withdrawInfo : resultConvertContractTx.contract_withdraw_infos) {
                     nTxFee += withdrawInfo.amount;
                 }
+				std::string error_str;
                 for (ContractTransaction &ctx : resultConvertContractTx.txs) {
+					if (!ctx.is_params_valid(service, nTxFee, sumGas, gasAllTxs, blockGasLimit, error_str)) {
+						std::string full_error_str = std::string("ConnectBlock(): ") + error_str;
+						return state.DoS(100, error(full_error_str.c_str()),
+							REJECT_INVALID, error_str);
+					}
                     sumGas += ctx.params.gasLimit * ctx.params.gasPrice;
-                    if (ctx.params.deposit_amount >= nTxFee)
-                        return state.DoS(100, error("ConnectBlock(): Transaction fee does not cover the gas stipend"),
-                                         REJECT_INVALID, "bad-txns-fee-notenough");
                     nTxFee -= ctx.params.deposit_amount;
-                    if (sumGas > UINT64_MAX)
-                        return state.DoS(100, error("ConnectBlock(): Transaction's gas stipend overflows"),
-                                         REJECT_INVALID, "bad-tx-gas-stipend-overflow");
-                    if (sumGas > nTxFee)
-                        return state.DoS(100, error("ConnectBlock(): Transaction fee does not cover the gas stipend"),
-                                         REJECT_INVALID, "bad-txns-fee-notenough");
-                    if (ctx.params.gasLimit > UINT32_MAX)
-                        return state.DoS(100,
-                                         error("ConnectBlock(): Contract execution can not specify greater gas limit than can fit in 32-bits"),
-                                         REJECT_INVALID, "bad-tx-too-much-gas");
                     gasAllTxs += ctx.params.gasLimit;
-                    if (gasAllTxs > blockGasLimit)
-                        return state.DoS(1, false, REJECT_INVALID, "bad-txns-gas-exceeds-blockgaslimit");
-                    if ((uint64_t) ctx.params.gasPrice < DEFAULT_MIN_GAS_PRICE)
-                        return state.DoS(100,
-                                         error("ConnectBlock(): Contract execution has lower gas price than allowed"),
-                                         REJECT_INVALID, "bad-tx-low-gas-price");
-                    if (!ctx.params.check_upgrade_contract_caller(ctx.opcode, service))
-                        return state.DoS(100, error("ConnectBlock(): Only contract creator can upgrade it"),
-                                         REJECT_INVALID, "bad-contract-upgrader");
                 }
 
                 ContractExec exec(service.get(), block, resultConvertContractTx.txs, blockGasLimit, nTxFee);
@@ -2872,10 +2852,11 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                                      error("ConnectBlock(): exec bytecode error"),
                                      REJECT_INVALID, exec.pending_contract_exec_result.error_message);
 
-                if (!exec.commit_changes(service))
-                    return state.DoS(100,
-                                     error("ConnectBlock(): commit contract result error"),
-                                     REJECT_INVALID, exec.pending_contract_exec_result.error_message);
+				if (!exec.commit_changes(service)) {
+					return state.DoS(100,
+						error("ConnectBlock(): commit contract result error"),
+						REJECT_INVALID, exec.pending_contract_exec_result.error_message);
+				}
 
                 blockGasUsed += contract_exec_result.usedGas;
                 if (blockGasUsed > blockGasLimit) {

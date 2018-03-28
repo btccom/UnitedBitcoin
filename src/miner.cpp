@@ -316,31 +316,21 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
     service->open();
 
     std::vector<ContractTransaction> contractTransactions = resultConverter.txs;
-    uint64_t txGas = 0;
-	CAmount gasAllTxs = 0;
+	CAmount sumGasCoins = 0;
+	CAmount gasCountAllTxs = 0;
+	uint64_t blockGasLimit = UINT64_MAX;
     uint64_t allDepositAmount = 0;
     uint64_t allWithdrawFromContractAmount = 0;
     for(const auto& withdrawInfo : resultConverter.contract_withdraw_infos) {
         allWithdrawFromContractAmount += withdrawInfo.amount;
     }
+	std::string error_str;
     for (const auto& contractTransaction : contractTransactions) {
-        txGas += contractTransaction.params.gasLimit;
-		if (contractTransaction.params.gasLimit < DEFAULT_MIN_GAS_LIMIT) {
-			// connect in block must have min gas to avoid mini-contract-tx DDoS
+		if (!contractTransaction.is_params_valid(service, -1, sumGasCoins, gasCountAllTxs, blockGasLimit, error_str)) {
 			return false;
 		}
-        if (txGas > txGasLimit) {
-            // Limit the tx gas limit by the soft limit if such a limit has been specified.
-            return false;
-        }
-        if (contractTransaction.params.gasPrice < minGasPrice) {
-            //if this transaction's gasPrice is less than the current DGP minGasPrice don't add it
-            return false;
-        }
-        if(!contractTransaction.params.check_upgrade_contract_caller(contractTransaction.opcode, service)) {
-            return false;
-        }
-		gasAllTxs += contractTransaction.params.gasLimit * contractTransaction.params.gasPrice;
+		sumGasCoins += contractTransaction.params.gasLimit * contractTransaction.params.gasPrice;
+		gasCountAllTxs += contractTransaction.params.gasLimit;
         allDepositAmount += contractTransaction.params.deposit_amount;
     }
 	// check tx fee can over gas
@@ -351,7 +341,7 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
         if(nTxFee <= allDepositAmount)
             return false;
         nTxFee -= allDepositAmount;
-		if (nTxFee < gasAllTxs)
+		if (nTxFee < sumGasCoins)
 			return false;
 	}
 
