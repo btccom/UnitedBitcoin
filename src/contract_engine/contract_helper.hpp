@@ -39,6 +39,7 @@ public:
     static bool is_valid_contract_address_format(const std::string& address);
     static bool is_valid_contract_name_format(const std::string& name);
     static bool is_valid_contract_desc_format(const std::string& desc);
+    static bool is_valid_deposit_memo_format(const std::string& memo);
 
     std::string storage_to_json_string(const StorageValue &storage_value);
     ContractDataValue vch_to_contract_data(const valtype &vch_value);

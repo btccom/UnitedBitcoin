@@ -314,6 +314,7 @@ bool ContractHelper::is_valid_contract_name_format(const std::string& name)
     }
     return true;
 }
+
 bool ContractHelper::is_valid_contract_desc_format(const std::string& desc)
 {
     if(desc.size() > 100)
@@ -322,6 +323,13 @@ bool ContractHelper::is_valid_contract_desc_format(const std::string& desc)
         if(!(std::isalpha(desc[i]) || desc[i] == '_' || std::isdigit(desc[i]) || desc[i]==' ' || desc[i] == '\n' || desc[i] == '\r'))
             return false;
     }
+    return true;
+}
+
+bool ContractHelper::is_valid_deposit_memo_format(const std::string& memo)
+{
+    if(memo.size() > 100)
+        return false;
     return true;
 }
 

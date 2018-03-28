@@ -2291,12 +2291,12 @@ static bool set_error_str(std::string& error_str, const char* msg) {
 
 bool ContractTransaction::is_params_valid(std::shared_ptr<::contract::storage::ContractStorageService> service, CAmount nTxFeeRemaining, CAmount sumGasCoin, CAmount gasCountOfAllTxsInBlock, CAmount blockGasLimit, std::string& error_str) const
 {
-	if (params.deposit_amount >= nTxFeeRemaining)
+	if (nTxFeeRemaining >= 0 && params.deposit_amount >= nTxFeeRemaining)
 		return set_error_str(error_str, "bad-txns-fee-notenough");
     auto sumGasCoinRemaining = sumGasCoin + params.gasLimit * params.gasPrice;
 	if (sumGasCoinRemaining > UINT64_MAX)
 		return set_error_str(error_str, "bad-tx-gas-stipend-overflow");
-	if (sumGasCoinRemaining > nTxFeeRemaining - params.deposit_amount)
+	if (nTxFeeRemaining >= 0 && (sumGasCoinRemaining > (nTxFeeRemaining - params.deposit_amount)))
 		return set_error_str(error_str, "bad-txns-fee-notenough");
 	if (params.gasLimit > DEFAULT_BLOCK_GAS_LIMIT)
 		return set_error_str(error_str, "bad-tx-too-much-gas");
@@ -2427,7 +2427,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
             }
         }
 
-        if(opcode == OP_SPEND) {
+        if(OP_SPEND == opcode) {
             if(withdraw_amount <= 0)
                 return false;
             params.withdraw_amount = withdraw_amount;
@@ -2466,7 +2466,13 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         params.api_arg = ValtypeUtils::vch_to_string(apiArg);
         params.deposit_amount = deposit_amount;
         params.deposit_memo = ValtypeUtils::vch_to_string(deposit_memo);
-        if(bytecode.size()>0 && is_create) {
+        if(OP_DEPOSIT_TO_CONTRACT == opcode) {
+            if(params.deposit_amount <= 0)
+                return false;
+            if(!ContractHelper::is_valid_deposit_memo_format(params.deposit_memo))
+                return false;
+        }
+        if(bytecode.size() > 0 && is_create) {
             try {
                 params.code = ContractHelper::load_contract_from_gpc_data(bytecode);
             } catch (uvm::core::UvmException &e) {
