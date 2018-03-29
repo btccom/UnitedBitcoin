@@ -2044,6 +2044,20 @@ bool ContractExec::performByteCode()
 		pending_contract_exec_result.usedGas = engine->gas_used();
 		if (pending_contract_exec_result.usedGas < DEFAULT_MIN_GAS_LIMIT)
 			pending_contract_exec_result.usedGas = DEFAULT_MIN_GAS_LIMIT;
+		// gas fee of new contract bytecode store
+        if(OP_CREATE == tx.opcode) {
+            auto contract_bytecode_length = params.code.code.size();
+            auto bytecode_store_gas_count = uint64_t(contract_bytecode_length/100); // it cost 1 gas to store each 10 bytes of bytecode
+            if(bytecode_store_gas_count > MAX_CONTRACT_BYTECODE_STORE_FEE_GAS) {
+                bytecode_store_gas_count = MAX_CONTRACT_BYTECODE_STORE_FEE_GAS;
+            }
+            if(pending_contract_exec_result.usedGas > UINT64_MAX - bytecode_store_gas_count) {
+                pending_contract_exec_result.exit_code = 1;
+                pending_contract_exec_result.error_message = "too large gas";
+                return false;
+            }
+            pending_contract_exec_result.usedGas += bytecode_store_gas_count;
+        }
     }
     return true;
 }
