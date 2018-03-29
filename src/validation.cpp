@@ -2559,7 +2559,7 @@ std::shared_ptr<::contract::storage::ContractStorageService> get_contract_storag
 {
 	fs::path storage_db_path = GetDataDir() / CONTRACT_STORAGE_DB_PATH;
 	fs::path storage_sql_db_path = GetDataDir() / CONTRACT_STORAGE_SQL_DB_PATH;
-	auto service = std::make_shared<::contract::storage::ContractStorageService>(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
+	auto service = ::contract::storage::ContractStorageService::get_instance(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
 	auto chain_height = chainActive.Height();
 	service->set_current_block_height(chain_height);
 	return service;

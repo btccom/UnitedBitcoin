@@ -7,6 +7,12 @@
 #include <boost/scope_exit.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
+#include <set>
+#include <vector>
+#include <map>
+#include <mutex>
+
+// TODO: use a single embedded document database to store all data
 
 namespace contract
 {
@@ -16,6 +22,8 @@ namespace contract
 
 		static const std::string root_state_hash_key = "ROOT_STATE_HASH";
 		static const std::string top_root_state_hash_key = "TOP_ROOT_STATE_HASH";
+
+		static std::recursive_mutex storage_mutex;
 
 		static std::string make_contract_info_key(const std::string& contract_id)
 		{
@@ -27,37 +35,8 @@ namespace contract
 			return std::string("contract_storage_key_") + contract_id + "_" + storage_name;
 		}
 
-		static std::string make_event_id_prefix(const ContractCommitId& commit_id) {
-			return std::string("event$") + commit_id;
-		}
-
-		static std::string make_event_id(const ContractCommitId& commit_id, size_t index_in_commit)
-		{
-			return make_event_id_prefix(commit_id) + std::to_string(index_in_commit);
-		}
-
 		static std::string make_commit_events_key(const ContractCommitId& commit_id) {
 			return std::string("commit_events$") + commit_id;
-		}
-
-		static std::string make_commit_event_key_prefix_of_commit(const ContractCommitId& commit_id) {
-			return std::string("commit_event$") + commit_id + "$";
-		}
-
-		static std::string make_commit_event_key(const ContractCommitId& commit_id, const std::string& event_id)
-		{
-			return make_commit_event_key_prefix_of_commit(commit_id) + event_id;
-		}
-
-		static std::string make_transaction_event_key_prefix_of_transaction_id(const std::string& transaction_id) {
-			if (transaction_id.empty())
-				BOOST_THROW_EXCEPTION(ContractStorageException("empty transaction id error"));
-			return std::string("transaction_event$") + transaction_id + "$";
-		}
-
-		static std::string make_transaction_event_key(const std::string& transaction_id, const std::string& event_id)
-		{
-			return make_transaction_event_key_prefix_of_transaction_id(transaction_id) + event_id;
 		}
 
 		static std::string make_transaction_events_key(const std::string& transaction_id) {
@@ -69,14 +48,26 @@ namespace contract
 			return std::string("contract_name_id_mapping_") + contract_name;
 		}
 
-		ContractStorageService::ContractStorageService(uint32_t magic_number, const std::string& storage_db_path, const std::string& storage_sql_db_path)
+		ContractStorageService::ContractStorageService(uint32_t magic_number, const std::string& storage_db_path, const std::string& storage_sql_db_path, bool auto_open)
 			: _db(nullptr), _sql_db(nullptr), _magic_number(magic_number), _storage_db_path(storage_db_path), _storage_sql_db_path(storage_sql_db_path)
 		{
-			open();
+			if(auto_open)
+				open();
 		}
 		ContractStorageService::~ContractStorageService()
 		{
 			close();
+		}
+
+		std::shared_ptr<ContractStorageService> ContractStorageService::get_instance(uint32_t magic_number, const std::string& storage_db_path, const std::string& storage_sql_db_path)
+		{
+			static ContractStorageService service_instance(magic_number, storage_db_path, storage_sql_db_path, false);
+			storage_mutex.lock();
+			service_instance.open();
+			return std::shared_ptr<ContractStorageService>(&service_instance, [&](ContractStorageService* ptr) {
+				ptr->close();
+				storage_mutex.unlock();
+			});
 		}
 
 		void ContractStorageService::open()
@@ -111,6 +102,11 @@ namespace contract
 			}
 		}
 
+		bool ContractStorageService::is_open() const
+		{
+			return _db ? true : false;
+		}
+
 		static int empty_sql_callback(void *notUsed, int argc, char **argv, char **colNames)
 		{
 			return 0;
@@ -119,7 +115,6 @@ namespace contract
 		void ContractStorageService::init_commits_table()
 		{
 			char *errMsg;
-			// TODO: auto generate bigint id auto increment, maybe need use a new config table. or use GUID as id
 			auto status = sqlite3_exec(_sql_db, "CREATE TABLE IF NOT EXISTS commit_info (id INTEGER PRIMARY KEY, commit_id varchar(255) not null, change_type varchar(50) not null, contract_id varchar(255))",
 				&empty_sql_callback, nullptr, &errMsg);
 			if (status != SQLITE_OK)
@@ -341,8 +336,6 @@ namespace contract
 			return state_hash;
 		}
 
-		// TODO: only use leveldb and use leveldb transaction
-
 		ContractCommitId ContractStorageService::save_contract_info(ContractInfoP contract_info)
 		{
 			check_db();
@@ -532,8 +525,6 @@ namespace contract
 			}
 		}
 
-		// not support concurrency now
-		// TODO: add lock
 		// save commit history with all diffs
 		ContractCommitId ContractStorageService::commit_contract_changes(ContractChangesP changes)
 		{
@@ -636,28 +627,9 @@ namespace contract
 
 			// events save
 			auto transaction_events = std::make_shared<std::map<std::string, std::vector<ContractEventInfo>>>();
-			for (size_t i=0;i<changes->events.size();i++)
+			for (const auto& event_info : changes->events)
 			{
-				const auto& event_info = changes->events[i];
-				// let event_id => "event" + commit_id + index
-				// save {event_id} => event json info, event_commit_{commit_id}_{event_id} => event_id, event_transaction_{transaction_id}_{event_id} => event_id if transaction id not empty
-				const auto& event_id = make_event_id(commitId, i);
-				const auto& event_json = event_info.to_json();
-				if (!_db->Put(write_options, event_id, jsondiff::json_dumps(event_json)).ok()) {
-					BOOST_THROW_EXCEPTION(ContractStorageException("event info save error"));
-				}
-				changed_leveldb_keys.push_back(event_id);
-				const auto& commit_event_key = make_commit_event_key(commitId, event_id);
-				if (!_db->Put(write_options, commit_event_key, event_id).ok()) {
-					BOOST_THROW_EXCEPTION(ContractStorageException("event info save error"));
-				}
-				changed_leveldb_keys.push_back(commit_event_key);
 				if (!event_info.transaction_id.empty()) {
-					const auto& transaction_event_key = make_transaction_event_key(event_info.transaction_id, event_id);
-					if (!_db->Put(write_options, transaction_event_key, event_id).ok()) {
-						BOOST_THROW_EXCEPTION(ContractStorageException("event info save error"));
-					}
-					changed_leveldb_keys.push_back(transaction_event_key);
 					if (transaction_events->find(event_info.transaction_id) == transaction_events->end()) {
 						(*transaction_events)[event_info.transaction_id] = std::vector<ContractEventInfo>();
 					}
@@ -962,21 +934,9 @@ namespace contract
 						}
 					}
 					std::set<std::string> transaction_ids;
-					for (size_t j = 0; j < changes.events.size(); j++) {
-						const auto& event_info = changes.events[j];
-						const auto& event_id = make_event_id(i->commit_id, j);
-						const auto& commit_event_key = make_commit_event_key(i->commit_id, event_id);
-						if (!_db->Delete(write_options, commit_event_key).ok()) {
-							BOOST_THROW_EXCEPTION(ContractStorageException("rollback event info failed"));
-						}
-						changed_leveldb_keys.push_back(commit_event_key);
+					for (const auto& event_info : changes.events) {
 						if (!event_info.transaction_id.empty()) {
 							transaction_ids.insert(event_info.transaction_id);
-							const auto& transaction_event_key = make_transaction_event_key(event_info.transaction_id, event_id);
-							if (!_db->Delete(write_options, transaction_event_key).ok()) {
-								BOOST_THROW_EXCEPTION(ContractStorageException("rollback event info failed"));
-							}
-							changed_leveldb_keys.push_back(transaction_event_key);
 						}
 					}
 					{
