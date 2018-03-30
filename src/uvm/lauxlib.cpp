@@ -38,6 +38,8 @@
 #include <uvm/uvm_lib.h>
 #include <uvm/uvm_lutil.h>
 #include <uvm/exceptions.h>
+#include <boost/variant.hpp>
+#include <boost/lexical_cast.hpp>
 
 using uvm::lua::api::global_uvm_chain_api;
 
@@ -2560,7 +2562,7 @@ static void luatablemap_to_json_stream(UvmTableMapP map, std::stringstream &ss, 
 			{
 				try
 				{
-					int_key = std::stoi(key);
+                    int_key = boost::lexical_cast<int>(key);
 					if (int_key == 0)
 					{
 						has_wrong_array_format = true;
