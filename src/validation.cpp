@@ -1932,6 +1932,7 @@ bool ContractExec::performByteCode()
 		blockchain::contract::PendingState pending_state(storage_service);
         pending_state.tx_id = tx.tx_id;
         pending_state.nTxFee = nTxFee;
+		pending_state.origin_opcode = tx.opcode;
 		if (tx.opcode == OP_CREATE)
 		{
             ContractInfo contract_info;

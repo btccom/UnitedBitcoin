@@ -36,7 +36,7 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
     Consensus::Params * temp_params = (Consensus::Params *)&params;
     if((pindexLast->nHeight+1) >= Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount)
     {
-    	temp_params->UpdateDifficultyAdjustmentInterval();
+		temp_params->UpdateDifficultyAdjustmentInterval();
     }
     else
     {

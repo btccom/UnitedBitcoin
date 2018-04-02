@@ -534,6 +534,8 @@ namespace uvm {
 					return -2;
 				}
                 auto evaluator = get_evaluator(L);
+				if (evaluator->origin_opcode == OP_DEPOSIT_TO_CONTRACT) // can't transfer when on_deposit
+					return -7;
 				// check contract balance enough
 				auto contract_balance = evaluator->get_contract_balance(contract_addr_str);
 				if (contract_balance < amount)

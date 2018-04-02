@@ -2114,10 +2114,9 @@ UniValue invokecontractoffline(const JSONRPCRequest& request)
 	UniValue balance_changes(UniValue::VARR);
 	for (auto i = 0; i < execResult.balance_changes.size(); i++) {
 		const auto& change = execResult.balance_changes[i];
-		if (!change.is_contract)
-			continue;
 		UniValue item(UniValue::VOBJ);
-		item.push_back(Pair("contract_address", change.address));
+		item.push_back(Pair("is_contract", change.is_contract));
+		item.push_back(Pair("address", change.address));
 		item.push_back(Pair("is_add", change.add));
 		item.push_back(Pair("amount", change.amount));
 		balance_changes.push_back(item);
@@ -2198,10 +2197,9 @@ UniValue registercontracttesting(const JSONRPCRequest& request)
 	UniValue balance_changes(UniValue::VARR);
 	for (auto i = 0; i < execResult.balance_changes.size(); i++) {
 		const auto& change = execResult.balance_changes[i];
-		if (!change.is_contract)
-			continue;
 		UniValue item(UniValue::VOBJ);
-		item.push_back(Pair("contract_address", change.address));
+		item.push_back(Pair("is_contract", change.is_contract));
+		item.push_back(Pair("address", change.address));
 		item.push_back(Pair("is_add", change.add));
 		item.push_back(Pair("amount", change.amount));
 		balance_changes.push_back(item);
@@ -2288,10 +2286,9 @@ UniValue upgradecontracttesting(const JSONRPCRequest& request)
 	UniValue balance_changes(UniValue::VARR);
 	for (auto i = 0; i < execResult.balance_changes.size(); i++) {
 		const auto& change = execResult.balance_changes[i];
-		if (!change.is_contract)
-			continue;
 		UniValue item(UniValue::VOBJ);
-		item.push_back(Pair("contract_address", change.address));
+		item.push_back(Pair("is_contract", change.is_contract));
+		item.push_back(Pair("address", change.address));
 		item.push_back(Pair("is_add", change.add));
 		item.push_back(Pair("amount", change.amount));
 		balance_changes.push_back(item);
@@ -2376,10 +2373,9 @@ UniValue deposittocontracttesting(const JSONRPCRequest& request)
 	UniValue balance_changes(UniValue::VARR);
 	for (auto i = 0; i < execResult.balance_changes.size(); i++) {
 		const auto& change = execResult.balance_changes[i];
-		if (!change.is_contract)
-			continue;
 		UniValue item(UniValue::VOBJ);
-		item.push_back(Pair("contract_address", change.address));
+		item.push_back(Pair("is_contract", change.is_contract));
+		item.push_back(Pair("address", change.address));
 		item.push_back(Pair("is_add", change.add));
 		item.push_back(Pair("amount", change.amount));
 		balance_changes.push_back(item);

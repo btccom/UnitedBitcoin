@@ -15,6 +15,7 @@ namespace blockchain {
 			::contract::storage::ContractStorageService* storage_service;
             uint256 tx_id;
             CAmount nTxFee;
+			int origin_opcode;
 
             std::unordered_map<std::string, ContractInfo> pending_contracts_to_create;
 			std::vector<std::pair<std::string, StorageChanges>> contract_storage_changes; // contract_id => changes
