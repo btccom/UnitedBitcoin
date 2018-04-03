@@ -5655,7 +5655,6 @@ int ReCheckContractTxsInMempool()
 				failedTx.push_back(&(*tx));
 			}
 		}
-
 	}
 	// remove failedTxs from mempool
 	for (const auto& tx : failedTx) {
@@ -5783,7 +5782,7 @@ bool DumpMempool(void)
         file.fclose();
         RenameOver(GetDataDir() / "mempool.dat.new", GetDataDir() / "mempool.dat");
         int64_t last = GetTimeMicros();
-        LogPrintf("Dumped mempool: %gs to copy, %gs to dump\n", (mid-start)*MICRO, (last-mid)*MICRO);
+        LogPrintf("Dumped mempool: %gs to copy, %gs to dump, %d txs\n", (mid-start)*MICRO, (last-mid)*MICRO, vinfo.size());
     } catch (const std::exception& e) {
         LogPrintf("Failed to dump mempool: %s. Continuing anyway.\n", e.what());
         return false;

@@ -1697,6 +1697,7 @@ void CWallet::ReacceptWalletTransactions()
         return;
     LOCK2(cs_main, cs_wallet);
     std::map<int64_t, CWalletTx*> mapSorted;
+	std::vector<CWalletTx*> failedTxs;
 
     // Sort pending wallet transactions based on their initial wallet insertion order
     for (std::pair<const uint256, CWalletTx>& item : mapWallet)
@@ -1719,8 +1720,20 @@ void CWallet::ReacceptWalletTransactions()
 
         LOCK(mempool.cs);
         CValidationState state;
-        wtx.AcceptToMemoryPool(maxTxFee, state);
+		if (!wtx.AcceptToMemoryPool(maxTxFee, state)) {
+			failedTxs.push_back(item.second);
+		}
     }
+	for (const auto& item : failedTxs) {
+		mapWallet.erase(item->GetHash());
+	}
+	if (failedTxs.size() > 0) {
+		CWalletDB walletdb(*dbw, "r+");
+		for (const auto& item : failedTxs) {
+			walletdb.EraseTx(item->GetHash());
+		}
+		LogPrintf("removed %d failed txs from wallet db\n", failedTxs.size());
+	}
 }
 
 bool CWalletTx::RelayWalletTransaction(CConnman* connman)
