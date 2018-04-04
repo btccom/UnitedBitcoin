@@ -1168,6 +1168,8 @@ void CWallet::MarkConflicted(const uint256& hashBlock, const uint256& hashTx)
         todo.erase(now);
         done.insert(now);
         auto it = mapWallet.find(now);
+		if (it == mapWallet.end())
+			continue;
         assert(it != mapWallet.end());
         CWalletTx& wtx = it->second;
         int currentconfirm = wtx.GetDepthInMainChain();
@@ -1727,13 +1729,14 @@ void CWallet::ReacceptWalletTransactions()
 	for (const auto& item : failedTxs) {
 		mapWallet.erase(item->GetHash());
 	}
-	if (failedTxs.size() > 0) {
+	// FIXME: need remove failed contract txs from wallet db
+	/*if (failedTxs.size() > 0) {
 		CWalletDB walletdb(*dbw, "r+");
 		for (const auto& item : failedTxs) {
 			walletdb.EraseTx(item->GetHash());
 		}
 		LogPrintf("removed %d failed txs from wallet db\n", failedTxs.size());
-	}
+	}*/
 }
 
 bool CWalletTx::RelayWalletTransaction(CConnman* connman)

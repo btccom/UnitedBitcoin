@@ -2080,6 +2080,8 @@ bool ContractExec::commit_changes(std::shared_ptr<::contract::storage::ContractS
 		auto new_contract_info_to_commit = std::make_shared<::contract::storage::ContractInfo>();
 		new_contract_info_to_commit->id = con_tx.params.contract_address;
 		new_contract_info_to_commit->name = "";
+		new_contract_info_to_commit->is_native = false;
+		new_contract_info_to_commit->txid = txs[0].tx_id.ToString();
         new_contract_info_to_commit->creator_address = con_tx.params.caller_address;
 		new_contract_info_to_commit->version = con_tx.params.version;
 		new_contract_info_to_commit->bytecode = con_tx.params.code.code;
