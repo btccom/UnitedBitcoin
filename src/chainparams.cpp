@@ -99,6 +99,10 @@ public:
         // hard fork
         consensus.UBCHeight = 498777 ;
 		consensus.UBCInitBlockCount = 500;
+	// ForkV1Height
+	// Fork to adjust block interval (ForkV1)
+	consensus.ForkV1Height = 506400;
+
 
 		// UnionBitcoin foundation multisig address
 		consensus.UBCfoundationAddress = "31rZdrTpN57Wbfhg7xTPxeFGjEQaMBjxoo";
