@@ -39,6 +39,7 @@
 
 #include <contract_storage/contract_storage.hpp>
 #include <contract_engine/contract_helper.hpp>
+#include <contract_engine/native_contract.hpp>
 #include <fc/crypto/base64.hpp>
 #include <boost/scope_exit.hpp>
 
@@ -2216,6 +2217,89 @@ UniValue registercontracttesting(const JSONRPCRequest& request)
     return result;
 }
 
+UniValue registernativecontracttesting(const JSONRPCRequest& request)
+{
+	if (request.fHelp || request.params.size() < 2)
+		throw runtime_error(
+			"registernativecontracttesting \"caller_address\" \"template_name\" ( caller_address, bytecode_hex )\n"
+			"\nArgument:\n"
+			"1. \"caller_address\"            (string, required) The caller address\n"
+			"2. \"template_name\"          (string, required) The contract template name\n"
+		);
+
+	LOCK(cs_main);
+	std::string caller_address = request.params[0].get_str();
+	if (caller_address.length()<20) // FIXME
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect address");
+	// TODO: check whether has secret of caller_address
+	const auto& template_name = request.params[1].get_str();
+	if(!blockchain::contract::native_contract_finder::has_native_contract_with_key(template_name))
+		throw JSONRPCError(RPC_INVALID_PARAMETER, "Incorrect native contract template name");
+
+	auto service = get_contract_storage_service();
+	service->open();
+
+	const auto& old_root_state_hash = service->current_root_state_hash();
+
+
+	BOOST_SCOPE_EXIT_ALL(&service, old_root_state_hash) {
+		service->open();
+		service->rollback_contract_state(old_root_state_hash);
+		service->close();
+	};
+
+	CBlock block;
+	CMutableTransaction tx;
+	uint64_t gas_limit = 0;
+	uint64_t gas_price = 40;
+
+	valtype version;
+	version.push_back(0x01);
+	tx.vout.push_back(CTxOut(0, CScript() << version << ToByteVector(template_name) << ToByteVector(caller_address) << gas_limit << gas_price << OP_CREATE_NATIVE));
+	block.vtx.push_back(MakeTransactionRef(CTransaction(tx)));
+
+	std::vector<ContractTransaction> contractTransactions;
+	ContractTransaction contract_tx;
+	contract_tx.opcode = OP_CREATE_NATIVE;
+	contract_tx.params.caller_address = caller_address;
+	contract_tx.params.caller = "";
+	contract_tx.params.api_name = "";
+	contract_tx.params.api_arg = "";
+	contract_tx.params.gasPrice = gas_price;
+	contract_tx.params.gasLimit = gas_limit;
+	contract_tx.params.is_native = true;
+	contract_tx.params.template_name = template_name;
+	contract_tx.params.contract_address = "local_contract";
+	contract_tx.params.version = CONTRACT_MAJOR_VERSION;
+	contractTransactions.push_back(contract_tx);
+
+	ContractExec exec(service.get(), block, contractTransactions, gas_limit, 0);
+	if (!exec.performByteCode()) {
+		//error, don't add contract
+		return false;
+	}
+	ContractExecResult execResult;
+	if (!exec.processingResults(execResult)) {
+		return false;
+	}
+
+	UniValue result(UniValue::VOBJ);
+	result.push_back(Pair("gasCount", execResult.usedGas));
+	// balance changes
+	UniValue balance_changes(UniValue::VARR);
+	for (auto i = 0; i < execResult.balance_changes.size(); i++) {
+		const auto& change = execResult.balance_changes[i];
+		UniValue item(UniValue::VOBJ);
+		item.push_back(Pair("is_contract", change.is_contract));
+		item.push_back(Pair("address", change.address));
+		item.push_back(Pair("is_add", change.add));
+		item.push_back(Pair("amount", change.amount));
+		balance_changes.push_back(item);
+	}
+	result.push_back(Pair("balanceChanges", balance_changes));
+	return result;
+}
+
 UniValue upgradecontracttesting(const JSONRPCRequest& request)
 {
     if (request.fHelp || request.params.size() < 4)
@@ -2599,7 +2683,8 @@ static const CRPCCommand commands[] =
 	{ "blockchain",         "gettransactionevents",   &gettransactionevents,   {"txid"} },
     { "blockchain",         "getcreatecontractaddress", &getcreatecontractaddress, {"contact_tx"} },
 	{ "blockchain",         "invokecontractoffline",  &invokecontractoffline,  {"caller_address", "contract_address", "api_name", "api_arg"} },
-    { "blockchain",         "registercontracttesting",  &registercontracttesting,  {"caller_address", "contract_address", "api_name", "api_arg"} },
+    { "blockchain",         "registercontracttesting",  &registercontracttesting,  {"caller_address", "bytecode_hex"} },
+    { "blockchain",         "registernativecontracttesting",  &registernativecontracttesting,  {"caller_address", "contract_template_name"} },
     { "blockchain",         "upgradecontracttesting",  &upgradecontracttesting, {"caller_address", "contract_address", "contract_name", "contract_desc"} },
     { "blockchain",         "deposittocontracttesting", &deposittocontracttesting, {"caller_address", "contract_address", "deposit_amount", "deposit_memo"} },
 
