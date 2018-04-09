@@ -1923,7 +1923,7 @@ bool ContractExec::performByteCode()
             pending_contract_exec_result.error_message = "contract version invalid";
             return false;
         }
-		if (params.gasLimit < DEFAULT_MIN_GAS_COUNT) {
+		if ((0 != params.gasLimit) && (params.gasLimit < DEFAULT_MIN_GAS_COUNT)) {
 			pending_contract_exec_result.exit_code = 1;
 			pending_contract_exec_result.error_message = "too little gas limit";
 			return false;
@@ -1933,6 +1933,8 @@ bool ContractExec::performByteCode()
         engine_builder.set_caller(caller, caller_address);
         auto engine = engine_builder.build();
         engine->set_gas_limit(params.gasLimit);
+		CAmount gas_used_of_native_contract = 0;
+		bool is_native_contract_exec = false;
         std::string api_result_json_string;
 
 		blockchain::contract::PendingState pending_state(storage_service);
@@ -1955,6 +1957,7 @@ bool ContractExec::performByteCode()
 			pending_state.pending_contracts_to_create[contract_info.address] = contract_info;
 		}
 		else if (OP_CREATE_NATIVE == tx.opcode) {
+			is_native_contract_exec = true;
 			ContractInfo contract_info;
 			contract_info.address = params.contract_address;
 			native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(&pending_state, params.template_name, params.contract_address);
@@ -1989,13 +1992,15 @@ bool ContractExec::performByteCode()
 		}
 		else if (OP_CREATE_NATIVE == tx.opcode) {
 			try {
+				is_native_contract_exec = true;
 				const CAmount gas_needed = DEFAULT_MIN_GAS_COUNT;
 				const auto& exec_result = native_contract_info->invoke("init", params.api_arg);
 				pending_state.contract_storage_changes = exec_result.contract_storage_changes;
 				pending_state.balance_changes = exec_result.balance_changes;
 				pending_state.contract_upgrade_infos = exec_result.contract_upgrade_infos;
 				pending_state.events = exec_result.events;
-				engine->set_gas_used(gas_needed);
+				api_result_json_string = exec_result.api_result;
+				gas_used_of_native_contract = gas_needed;
 			}
 			catch (uvm::core::UvmException& e)
 			{
@@ -2005,14 +2010,42 @@ bool ContractExec::performByteCode()
 			}
 		}
 		else if (OP_CALL == tx.opcode) {
-			// TODO: when contract is native
             if(params.api_name.empty()) {
                 pending_contract_exec_result.exit_code = 1;
                 pending_contract_exec_result.error_message = "contract api name to be called can't be empty";
                 return false;
             }
+			auto contract_info = storage_service->get_contract_info(params.contract_address);
+			if (!contract_info) {
+				pending_contract_exec_result.exit_code = 1;
+				pending_contract_exec_result.error_message = std::string("Can't find contract ") + params.contract_address;
+				return false;
+			}
             try {
-                engine->execute_contract_api_by_address(params.contract_address, params.api_name, params.api_arg, &api_result_json_string);
+				if ((std::find(contract_info->apis.begin(), contract_info->apis.end(), params.api_name) == contract_info->apis.end())
+					&& (std::find(contract_info->offline_apis.begin(), contract_info->offline_apis.end(), params.api_name) == contract_info->offline_apis.end())) {
+					auto error_str = std::string("Can't find api ") + params.api_name + " in contract " + contract_info->id;
+					throw uvm::core::UvmException(error_str.c_str());
+				}
+				if (contract_info->is_native) {
+					is_native_contract_exec = true;
+					native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(&pending_state, contract_info->contract_template_key, contract_info->id);
+					if (!native_contract_info) {
+						auto error_str = std::string("Can't find native contract template ") + contract_info->contract_template_key;
+						throw uvm::core::UvmException(error_str.c_str());
+					}
+					const CAmount gas_needed = DEFAULT_MIN_GAS_COUNT;
+					const auto& exec_result = native_contract_info->invoke(params.api_name, params.api_arg);
+					pending_state.contract_storage_changes = exec_result.contract_storage_changes;
+					pending_state.balance_changes = exec_result.balance_changes;
+					pending_state.contract_upgrade_infos = exec_result.contract_upgrade_infos;
+					pending_state.events = exec_result.events;
+					api_result_json_string = exec_result.api_result;
+					gas_used_of_native_contract = gas_needed;
+				}
+				else {
+					engine->execute_contract_api_by_address(params.contract_address, params.api_name, params.api_arg, &api_result_json_string);
+				}
             }
             catch(uvm::core::UvmException &e)
             {
@@ -2021,8 +2054,7 @@ bool ContractExec::performByteCode()
                 return false;
             }
         } else if(OP_UPGRADE == tx.opcode) {
-			// TODO: when contract is native
-            // 查找合约名是否存在
+            // check exist of contract name
             const auto& exist_contract_with_name = storage_service->find_contract_id_by_name(params.contract_name);
             if(!exist_contract_with_name.empty())
             {
@@ -2040,10 +2072,28 @@ bool ContractExec::performByteCode()
                     auto error_msg = std::string("Can't upgrade contract ") + params.contract_address + " again";
                     throw uvm::core::UvmException(error_msg.c_str());
                 }
-                if (std::find(contract_info->apis.begin(), contract_info->apis.end(), "on_upgrade") != contract_info->apis.end()) {
-                    engine->execute_contract_api_by_address(params.contract_address, "on_upgrade", "",
-                                                            &api_result_json_string);
-                }
+				
+				if (std::find(contract_info->apis.begin(), contract_info->apis.end(), "on_upgrade") != contract_info->apis.end()) {
+					if (contract_info->is_native) {
+						is_native_contract_exec = true;
+						native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(&pending_state, contract_info->contract_template_key, contract_info->id);
+						if (!native_contract_info) {
+							auto error_str = std::string("Can't find native contract template ") + contract_info->contract_template_key;
+							throw uvm::core::UvmException(error_str.c_str());
+						}
+						const CAmount gas_needed = DEFAULT_MIN_GAS_COUNT;
+						const auto& exec_result = native_contract_info->invoke("on_upgrade", params.api_arg);
+						pending_state.contract_storage_changes = exec_result.contract_storage_changes;
+						pending_state.balance_changes = exec_result.balance_changes;
+						pending_state.events = exec_result.events;
+						api_result_json_string = exec_result.api_result;
+						gas_used_of_native_contract = gas_needed;
+					}
+					else {
+						engine->execute_contract_api_by_address(params.contract_address, "on_upgrade", "",
+							&api_result_json_string);
+					}
+				}
                 ContractBaseInfoForUpdate upgrade_info;
                 upgrade_info.address = params.contract_address;
                 upgrade_info.name = params.contract_name;
@@ -2057,7 +2107,6 @@ bool ContractExec::performByteCode()
                 return false;
             }
         } else if(tx.opcode == OP_DEPOSIT_TO_CONTRACT) {
-			// TODO: when contract is native
             std::string deposit_arg = std::to_string(params.deposit_amount);
             try {
 				auto contract_info = storage_service->get_contract_info(params.contract_address);
@@ -2067,7 +2116,24 @@ bool ContractExec::performByteCode()
 				}
 				if (std::find(contract_info->apis.begin(), contract_info->apis.end(), "on_deposit") != contract_info->apis.end())
 				{
-					engine->execute_contract_api_by_address(params.contract_address, "on_deposit", deposit_arg, &api_result_json_string);
+					if (contract_info->is_native) {
+						is_native_contract_exec = true;
+						native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(&pending_state, contract_info->contract_template_key, contract_info->id);
+						if (!native_contract_info) {
+							auto error_str = std::string("Can't find native contract template ") + contract_info->contract_template_key;
+							throw uvm::core::UvmException(error_str.c_str());
+						}
+						const CAmount gas_needed = DEFAULT_MIN_GAS_COUNT;
+						const auto& exec_result = native_contract_info->invoke("on_deposit", params.api_arg);
+						pending_state.contract_storage_changes = exec_result.contract_storage_changes;
+						pending_state.balance_changes = exec_result.balance_changes;
+						pending_state.events = exec_result.events;
+						api_result_json_string = exec_result.api_result;
+						gas_used_of_native_contract = gas_needed;
+					}
+					else {
+						engine->execute_contract_api_by_address(params.contract_address, "on_deposit", deposit_arg, &api_result_json_string);
+					}
 				}
                 // add balance to contract in storage service
                 pending_state.add_balance_change(params.contract_address, true, true, params.deposit_amount);
@@ -2089,7 +2155,7 @@ bool ContractExec::performByteCode()
         pending_contract_exec_result.contract_upgrade_infos = pending_state.contract_upgrade_infos;
 		pending_contract_exec_result.events = pending_state.events;
 		pending_contract_exec_result.api_result = api_result_json_string;
-		pending_contract_exec_result.usedGas = engine->gas_used();
+		pending_contract_exec_result.usedGas = is_native_contract_exec ? gas_used_of_native_contract : engine->gas_used();
 		if (pending_contract_exec_result.usedGas < DEFAULT_MIN_GAS_COUNT)
 			pending_contract_exec_result.usedGas = DEFAULT_MIN_GAS_COUNT;
 		// gas fee of new contract bytecode store

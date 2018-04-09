@@ -117,7 +117,7 @@ namespace blockchain {
 			return contract_id;
 		}
 		std::set<std::string> demo_native_contract::apis() const {
-			return { "init", "hello", "contract_balance", "withdraw", "on_deposit_asset" };
+			return { "init", "hello", "contract_balance", "withdraw", "on_deposit" };
 		}
 		std::set<std::string> demo_native_contract::offline_apis() const {
 			return {};
@@ -132,6 +132,7 @@ namespace blockchain {
 			printf("api %s called with arg %s\n", api_name.c_str(), api_arg.c_str());
 			merge_storage_changes_to_exec_result();
 			result.contract_storage_changes = _contract_exec_result.contract_storage_changes;
+			result.api_result = "demo result";
 			return result;
 		}
 

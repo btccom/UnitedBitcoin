@@ -1769,6 +1769,10 @@ UniValue getsimplecontractinfo(const JSONRPCRequest& request)
     result.push_back(Pair("creator_address", contract_info->creator_address));
     result.push_back(Pair("name", contract_info->name));
     result.push_back(Pair("description", contract_info->description));
+	result.push_back(Pair("txid", contract_info->txid));
+	result.push_back(Pair("version", uint64_t(contract_info->version)));
+	result.push_back(Pair("type", contract_info->is_native ? "native" : "bytecode"));
+	result.push_back(Pair("template_name", contract_info->contract_template_key));
 	{
 		UniValue apis(UniValue::VARR);
 		for (const auto& api : contract_info->apis) {
@@ -1845,6 +1849,10 @@ UniValue getcontractinfo(const JSONRPCRequest& request)
     result.push_back(Pair("creator_address", contract_info->creator_address));
     result.push_back(Pair("name", contract_info->name));
     result.push_back(Pair("description", contract_info->description));
+	result.push_back(Pair("txid", contract_info->txid));
+	result.push_back(Pair("version", uint64_t(contract_info->version)));
+	result.push_back(Pair("type", contract_info->is_native ? "native" : "bytecode"));
+	result.push_back(Pair("template_name", contract_info->contract_template_key));
 	{
 		UniValue apis(UniValue::VARR);
 		for (const auto& api : contract_info->apis) {
