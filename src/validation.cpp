@@ -47,6 +47,7 @@
 #include <btc_uvm_api.h>
 #include <contract_engine/contract_helper.hpp>
 #include <contract_engine/pending_state.hpp>
+#include <contract_engine/native_contract.hpp>
 
 #include <atomic>
 #include <sstream>
@@ -1922,6 +1923,11 @@ bool ContractExec::performByteCode()
             pending_contract_exec_result.error_message = "contract version invalid";
             return false;
         }
+		if (params.gasLimit < DEFAULT_MIN_GAS_COUNT) {
+			pending_contract_exec_result.exit_code = 1;
+			pending_contract_exec_result.error_message = "too little gas limit";
+			return false;
+		}
         const auto &caller = params.caller;
         const auto &caller_address = params.caller_address;
         engine_builder.set_caller(caller, caller_address);
@@ -1933,7 +1939,9 @@ bool ContractExec::performByteCode()
         pending_state.tx_id = tx.tx_id;
         pending_state.nTxFee = nTxFee;
 		pending_state.origin_opcode = tx.opcode;
-		if (tx.opcode == OP_CREATE)
+		std::shared_ptr<blockchain::contract::abstract_native_contract> native_contract_info;
+
+		if (OP_CREATE == tx.opcode)
 		{
             ContractInfo contract_info;
             contract_info.address = params.contract_address;
@@ -1946,11 +1954,29 @@ bool ContractExec::performByteCode()
             contract_info.code = params.code;
 			pending_state.pending_contracts_to_create[contract_info.address] = contract_info;
 		}
+		else if (OP_CREATE_NATIVE == tx.opcode) {
+			ContractInfo contract_info;
+			contract_info.address = params.contract_address;
+			native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(&pending_state, params.template_name, params.contract_address);
+			if (!native_contract_info) {
+				pending_contract_exec_result.exit_code = 1;
+				pending_contract_exec_result.error_message = std::string("Can't find contract template ") + params.template_name;
+				return false;
+			}
+			for (const auto& item : native_contract_info->apis())
+				contract_info.apis.push_back(item);
+			std::sort(contract_info.apis.begin(), contract_info.apis.end());
+			for (const auto& item : native_contract_info->offline_apis())
+				contract_info.offline_apis.push_back(item);
+			std::sort(contract_info.offline_apis.begin(), contract_info.offline_apis.end());
+			contract_info.native_contract_info = native_contract_info.get();
+			pending_state.pending_contracts_to_create[contract_info.address] = contract_info;
+		}
 
 		engine->set_state_pointer_value("evaluator", &pending_state);
 		engine->set_state_pointer_value("storage_service", storage_service);
 
-        if(tx.opcode == OP_CREATE) {
+        if(OP_CREATE == tx.opcode) {
             try {
                 engine->execute_contract_init_by_address(params.contract_address, params.api_arg, &api_result_json_string);
             }
@@ -1960,7 +1986,26 @@ bool ContractExec::performByteCode()
                 pending_contract_exec_result.error_message = e.what();
                 return false;
             }
-        } else if(tx.opcode == OP_CALL) {
+		}
+		else if (OP_CREATE_NATIVE == tx.opcode) {
+			try {
+				const CAmount gas_needed = DEFAULT_MIN_GAS_COUNT;
+				const auto& exec_result = native_contract_info->invoke("init", params.api_arg);
+				pending_state.contract_storage_changes = exec_result.contract_storage_changes;
+				pending_state.balance_changes = exec_result.balance_changes;
+				pending_state.contract_upgrade_infos = exec_result.contract_upgrade_infos;
+				pending_state.events = exec_result.events;
+				engine->set_gas_used(gas_needed);
+			}
+			catch (uvm::core::UvmException& e)
+			{
+				pending_contract_exec_result.exit_code = 1;
+				pending_contract_exec_result.error_message = e.what();
+				return false;
+			}
+		}
+		else if (OP_CALL == tx.opcode) {
+			// TODO: when contract is native
             if(params.api_name.empty()) {
                 pending_contract_exec_result.exit_code = 1;
                 pending_contract_exec_result.error_message = "contract api name to be called can't be empty";
@@ -1975,7 +2020,8 @@ bool ContractExec::performByteCode()
                 pending_contract_exec_result.error_message = e.what();
                 return false;
             }
-        } else if(tx.opcode == OP_UPGRADE) {
+        } else if(OP_UPGRADE == tx.opcode) {
+			// TODO: when contract is native
             // 查找合约名是否存在
             const auto& exist_contract_with_name = storage_service->find_contract_id_by_name(params.contract_name);
             if(!exist_contract_with_name.empty())
@@ -2011,6 +2057,7 @@ bool ContractExec::performByteCode()
                 return false;
             }
         } else if(tx.opcode == OP_DEPOSIT_TO_CONTRACT) {
+			// TODO: when contract is native
             std::string deposit_arg = std::to_string(params.deposit_amount);
             try {
 				auto contract_info = storage_service->get_contract_info(params.contract_address);
@@ -2043,8 +2090,8 @@ bool ContractExec::performByteCode()
 		pending_contract_exec_result.events = pending_state.events;
 		pending_contract_exec_result.api_result = api_result_json_string;
 		pending_contract_exec_result.usedGas = engine->gas_used();
-		if (pending_contract_exec_result.usedGas < DEFAULT_MIN_GAS_LIMIT)
-			pending_contract_exec_result.usedGas = DEFAULT_MIN_GAS_LIMIT;
+		if (pending_contract_exec_result.usedGas < DEFAULT_MIN_GAS_COUNT)
+			pending_contract_exec_result.usedGas = DEFAULT_MIN_GAS_COUNT;
 		// gas fee of new contract bytecode store
         if(OP_CREATE == tx.opcode) {
             auto contract_bytecode_length = params.code.code.size();
@@ -2073,30 +2120,40 @@ bool ContractExec::processingResults(ContractExecResult &result)
 bool ContractExec::commit_changes(std::shared_ptr<::contract::storage::ContractStorageService> service)
 {
     jsondiff::JsonDiff differ;
-	if (txs.size() > 0 && txs[0].opcode == OP_CREATE)
+	if (txs.size() > 0 && (OP_CREATE == txs[0].opcode || OP_CREATE_NATIVE == txs[0].opcode))
 	{
 		// save contract info
 		const auto& con_tx = txs[0];
 		auto new_contract_info_to_commit = std::make_shared<::contract::storage::ContractInfo>();
 		new_contract_info_to_commit->id = con_tx.params.contract_address;
 		new_contract_info_to_commit->name = "";
-		new_contract_info_to_commit->is_native = false;
+		new_contract_info_to_commit->is_native = OP_CREATE_NATIVE == txs[0].opcode;
 		new_contract_info_to_commit->txid = txs[0].tx_id.ToString();
         new_contract_info_to_commit->creator_address = con_tx.params.caller_address;
 		new_contract_info_to_commit->version = con_tx.params.version;
-		new_contract_info_to_commit->bytecode = con_tx.params.code.code;
-		for (const auto& api : con_tx.params.code.abi)
-		{
-			new_contract_info_to_commit->apis.push_back(api);
-		}
-		for (const auto& api : con_tx.params.code.offline_abi)
-		{
-			new_contract_info_to_commit->offline_apis.push_back(api);
-		}
-		for (const auto& p : con_tx.params.code.storage_properties)
-		{
-			new_contract_info_to_commit->storage_types[p.first] = p.second.value;
-		}
+		if(new_contract_info_to_commit->is_native) {
+		    new_contract_info_to_commit->contract_template_key = con_tx.params.template_name;
+			const auto& native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(nullptr, con_tx.params.template_name, con_tx.params.contract_address);
+			if (!native_contract_info)
+				return false;
+			for (const auto &api : native_contract_info->apis()) {
+				new_contract_info_to_commit->apis.push_back(api);
+			}
+			for (const auto &api : native_contract_info->offline_apis()) {
+				new_contract_info_to_commit->offline_apis.push_back(api);
+			}
+		} else {
+            new_contract_info_to_commit->bytecode = con_tx.params.code.code;
+            for (const auto &api : con_tx.params.code.abi) {
+                new_contract_info_to_commit->apis.push_back(api);
+            }
+            for (const auto &api : con_tx.params.code.offline_abi) {
+                new_contract_info_to_commit->offline_apis.push_back(api);
+            }
+            for (const auto &p : con_tx.params.code.storage_properties) {
+                new_contract_info_to_commit->storage_types[p.first] = p.second.value;
+            }
+        }
 		service->save_contract_info(new_contract_info_to_commit);
 	}
 	// save contract invoke result
@@ -2233,7 +2290,9 @@ bool ContractTxConverter::receiveStack(const CScript& scriptPubKey) {
     stack.pop_back();
     opcode = (opcodetype)(*scriptRest.begin());
     // check contract opcode and operands format
-    if((opcode == OP_CREATE && stack.size() < 5) || (opcode == OP_CALL && stack.size() < 7)
+    if((opcode == OP_CREATE && stack.size() < 5)
+       || (opcode == OP_CREATE_NATIVE && stack.size() < 5)
+       || (opcode == OP_CALL && stack.size() < 7)
        || (opcode == OP_UPGRADE && stack.size() < 7)
        || (opcode == OP_DESTROY && stack.size() < 5)
        || (opcode == OP_DEPOSIT_TO_CONTRACT && stack.size() < 6)
@@ -2334,6 +2393,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         valtype api_name;
         valtype caller_address;
         valtype bytecode;
+        valtype template_name;
         valtype contract_address;
         valtype contract_name;
         valtype contract_desc;
@@ -2346,7 +2406,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         // get contract args from stack
         switch (opcode) {
             case OP_CREATE: {
-                // OP_CREATE gasPrice gasLimit caller_address contractData version
+                // OP_CREATE gasPrice gasLimit caller_address contract_data version
                 gasPrice = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
@@ -2354,6 +2414,20 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 caller_address = stack.back();
                 stack.pop_back();
                 bytecode = stack.back();
+                stack.pop_back();
+                version = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                is_create = true;
+            } break;
+            case OP_CREATE_NATIVE: {
+                // OP_CREATE_NATIVE gasPrice gasLimit caller_address template_name version
+                gasPrice = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                gasLimit = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                caller_address = stack.back();
+                stack.pop_back();
+                template_name = stack.back();
                 stack.pop_back();
                 version = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
@@ -2496,7 +2570,18 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 LogPrintf(e.what());
                 return false;
             }
+        } else if(template_name.size() > 0 && is_create) {
+            params.is_native = true;
+            params.template_name = ValtypeUtils::vch_to_string(template_name);
+			if (!blockchain::contract::native_contract_finder::has_native_contract_with_key(params.template_name)) {
+				LogPrintf("can't find native contract template %s\n", params.template_name.c_str());
+				return false;
+			}
+        } else if(is_create) {
+            LogPrintf("empty contract data and template name of create-contract params\n");
+            return false;
         }
+
 		if (opcode != OP_SPEND)
 		{
 			if (!is_create) {

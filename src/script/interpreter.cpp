@@ -1069,6 +1069,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                 break;
 
                 // contract execute opcodes
+				case OP_CREATE_NATIVE:
                 case OP_CREATE:
                 case OP_UPGRADE:
                 case OP_DESTROY:

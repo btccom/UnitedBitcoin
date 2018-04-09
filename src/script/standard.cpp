@@ -30,6 +30,7 @@ const char* GetTxnOutputType(txnouttype t)
     case TX_SCRIPTHASH: return "scripthash";
     case TX_MULTISIG: return "multisig";
     case TX_NULL_DATA: return "nulldata";
+	case TX_CREATE_NATIVE: return "createnativecontract";
     case TX_CREATE: return "createcontract";
     case TX_UPGRADE: return "upgradecontract";
     case TX_CALL: return "callcontract";
@@ -60,6 +61,8 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
 
         // Contract creation tx
         mTemplates.insert(std::make_pair(TX_CREATE, CScript() << OP_VERSION << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_CREATE));
+		// Native contract creation tx
+		mTemplates.insert(std::make_pair(TX_CREATE_NATIVE, CScript() << OP_VERSION << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_CREATE_NATIVE));
         // Call contract tx
         mTemplates.insert(std::make_pair(TX_CALL, CScript() << OP_VERSION << OP_DATA << OP_DATA << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_CALL));
         // Upgrade contract tx

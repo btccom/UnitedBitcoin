@@ -2016,7 +2016,7 @@ UniValue getcreatecontractaddress(const JSONRPCRequest& request)
         else
         {
             const auto& con_tx = resultConvertContractTx.txs[0];
-            if(con_tx.opcode == OP_CREATE)
+            if((OP_CREATE == con_tx.opcode) || (OP_CREATE_NATIVE == con_tx.opcode))
             {
                 contract_address = con_tx.params.contract_address;
             }

@@ -67,6 +67,7 @@ enum txnouttype
     TX_WITNESS_UNKNOWN, //!< Only for Witness versions not already defined above
 
     // contract tx
+	TX_CREATE_NATIVE,
     TX_CREATE,
     TX_UPGRADE,
     TX_CALL,

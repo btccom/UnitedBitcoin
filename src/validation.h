@@ -571,11 +571,18 @@ namespace uvm {
 
 FC_REFLECT(uvm::blockchain::Code, (abi)(offline_abi)(events)(storage_properties)(code)(code_hash));
 
+namespace blockchain {
+	namespace contract {
+		class abstract_native_contract;
+	}
+}
+
 struct ContractInfo {
     std::string address;
     std::vector<std::string> apis;
     std::vector<std::string> offline_apis;
     uvm::blockchain::Code code;
+	blockchain::contract::abstract_native_contract* native_contract_info;
 };
 
 struct ContractBaseInfoForUpdate {
@@ -588,6 +595,8 @@ struct ContractTransactionParams {
     uint64_t gasLimit = 0;
     uint64_t gasPrice = 0;
     uvm::blockchain::Code code;
+    bool is_native = false;
+    std::string template_name;
     std::string caller;
     std::string caller_address;
     std::string contract_address;

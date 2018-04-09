@@ -182,6 +182,7 @@ enum opcodetype
     OP_NOP10 = 0xb9,
 
     // Execute EXT byte code.
+    OP_CREATE_NATIVE = 0xc0,
     OP_CREATE = 0xc1,
     OP_UPGRADE = 0Xc2,
     OP_DESTROY = 0Xc3,
@@ -697,7 +698,7 @@ public:
     // contract op check
     bool HasContractOp() const
     {
-        return Find(OP_CREATE) == 1 || Find(OP_UPGRADE) == 1 || Find(OP_DESTROY) == 1
+        return Find(OP_CREATE_NATIVE) == 1 || Find(OP_CREATE) == 1 || Find(OP_UPGRADE) == 1 || Find(OP_DESTROY) == 1
                || Find(OP_CALL) == 1 || Find(OP_DEPOSIT_TO_CONTRACT) == 1;
     }
 	bool HasOpDepositToContract() const
