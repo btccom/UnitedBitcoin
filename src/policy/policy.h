@@ -17,6 +17,7 @@ class CCoinsViewCache;
 class CTxOut;
 
 static const uint64_t DEFAULT_MIN_GAS_PRICE = 10;
+static const uint64_t MIN_GAS_PRICE_HARD_MAX_LIMIT = 100000; // hard limit of biggest min_gas_price
 static const uint64_t DEFAULT_BLOCK_GAS_LIMIT = 40000000;
 static const uint64_t DEFAULT_MIN_GAS_COUNT = 10;
 static const uint64_t MAX_CONTRACT_BYTECODE_STORE_FEE_GAS = 10000;

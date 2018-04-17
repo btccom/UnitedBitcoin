@@ -1930,6 +1930,11 @@ bool ContractExec::performByteCode()
 		}
         const auto &caller = params.caller;
         const auto &caller_address = params.caller_address;
+
+		blockchain::contract::native_contract_sender sender;
+		sender.caller_address = caller_address;
+		sender.block_number = chainActive.Height();
+
         engine_builder.set_caller(caller, caller_address);
         auto engine = engine_builder.build();
         engine->set_gas_limit(params.gasLimit);
@@ -1960,7 +1965,7 @@ bool ContractExec::performByteCode()
 			is_native_contract_exec = true;
 			ContractInfo contract_info;
 			contract_info.address = params.contract_address;
-			native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(&pending_state, params.template_name, params.contract_address);
+			native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(&pending_state, params.template_name, params.contract_address, sender);
 			if (!native_contract_info) {
 				pending_contract_exec_result.exit_code = 1;
 				pending_contract_exec_result.error_message = std::string("Can't find contract template ") + params.template_name;
@@ -2029,7 +2034,7 @@ bool ContractExec::performByteCode()
 				}
 				if (contract_info->is_native) {
 					is_native_contract_exec = true;
-					native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(&pending_state, contract_info->contract_template_key, contract_info->id);
+					native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(&pending_state, contract_info->contract_template_key, contract_info->id, sender);
 					if (!native_contract_info) {
 						auto error_str = std::string("Can't find native contract template ") + contract_info->contract_template_key;
 						throw uvm::core::UvmException(error_str.c_str());
@@ -2076,7 +2081,7 @@ bool ContractExec::performByteCode()
 				if (std::find(contract_info->apis.begin(), contract_info->apis.end(), "on_upgrade") != contract_info->apis.end()) {
 					if (contract_info->is_native) {
 						is_native_contract_exec = true;
-						native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(&pending_state, contract_info->contract_template_key, contract_info->id);
+						native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(&pending_state, contract_info->contract_template_key, contract_info->id, sender);
 						if (!native_contract_info) {
 							auto error_str = std::string("Can't find native contract template ") + contract_info->contract_template_key;
 							throw uvm::core::UvmException(error_str.c_str());
@@ -2118,7 +2123,7 @@ bool ContractExec::performByteCode()
 				{
 					if (contract_info->is_native) {
 						is_native_contract_exec = true;
-						native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(&pending_state, contract_info->contract_template_key, contract_info->id);
+						native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(&pending_state, contract_info->contract_template_key, contract_info->id, sender);
 						if (!native_contract_info) {
 							auto error_str = std::string("Can't find native contract template ") + contract_info->contract_template_key;
 							throw uvm::core::UvmException(error_str.c_str());
@@ -2197,9 +2202,12 @@ bool ContractExec::commit_changes(std::shared_ptr<::contract::storage::ContractS
 		new_contract_info_to_commit->txid = txs[0].tx_id.ToString();
         new_contract_info_to_commit->creator_address = con_tx.params.caller_address;
 		new_contract_info_to_commit->version = con_tx.params.version;
+		::blockchain::contract::native_contract_sender sender;
+		sender.caller_address = con_tx.params.caller_address;
+		sender.block_number = chainActive.Height();
 		if(new_contract_info_to_commit->is_native) {
 		    new_contract_info_to_commit->contract_template_key = con_tx.params.template_name;
-			const auto& native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(nullptr, con_tx.params.template_name, con_tx.params.contract_address);
+			const auto& native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(nullptr, con_tx.params.template_name, con_tx.params.contract_address, sender);
 			if (!native_contract_info)
 				return false;
 			for (const auto &api : native_contract_info->apis()) {
