@@ -13,8 +13,9 @@ namespace blockchain {
         bool native_contract_finder::has_native_contract_with_key(const std::string& key)
         {
 			// FIXME: remove the demo native contract
-            std::vector<std::string> native_contract_keys = {
-                    demo_native_contract::native_contract_key()
+			std::vector<std::string> native_contract_keys = {
+					demo_native_contract::native_contract_key(),
+					dgp_native_contract::native_contract_key()
             };
             return std::find(native_contract_keys.begin(), native_contract_keys.end(), key) != native_contract_keys.end();
         }
@@ -25,6 +26,9 @@ namespace blockchain {
             {
                 return std::make_shared<demo_native_contract>(pending_state, contract_address, sender);
             }
+			else if (key == dgp_native_contract::native_contract_key()) {
+				return std::make_shared<dgp_native_contract>(pending_state, contract_address, sender);
+			}
             else
             {
                 return nullptr;
@@ -49,7 +53,7 @@ namespace blockchain {
 				const auto& before_json_str = jsondiff::json_dumps(before);
 				const auto& after_json_str = jsondiff::json_dumps(change.after);
 				auto diff = differ.diff(before, change.after);
-                change.storage_diff = jsondiff::json_dumps(diff->value()); // TODO: json_ordered_dumps
+                change.storage_diff = diff->value();
 				change.before = before;
                 storage_changes[storage_name] = change;
             }
@@ -63,7 +67,7 @@ namespace blockchain {
 				const auto& before_json_str = json_dumps(before);
                 auto after_json_str = jsondiff::json_dumps(after);
 				auto diff = differ.diff(before, after);
-                change.storage_diff = jsondiff::json_dumps(diff->value()); // TODO: json_ordered_dumps
+                change.storage_diff = diff->value();
             }
         }
 		JsonValue abstract_native_contract::get_contract_storage(const std::string& contract_address, const std::string& storage_name)
@@ -202,6 +206,7 @@ namespace blockchain {
 
 		std::string dgp_native_contract::create_change_admin_proposal_api(const std::string& api_name, const std::string& api_arg) {
 			// only admin can call this api
+			// api_arg: {address: string, add: bool, needAgreeCount: int}
 			const auto& admins = get_contract_storage(contract_id, "admins").as<jsondiff::JsonArray>();
 			if (!is_address_in_admins(admins, sender.caller_address)) {
 				set_error(1, "only admin can call this api");
@@ -254,6 +259,10 @@ namespace blockchain {
 			if (needAgreeCount<1 || needAgreeCount > admins.size())
 			{
 				set_error(1, "argument needAgreeCount must between 1 and admins count");
+				return "";
+			}
+			if (admins.size() >= 2 && needAgreeCount < 2) {
+				set_error(1, "argument needAgreeCount must between 2 and admins count when admins count >= 2");
 				return "";
 			}
 			jsondiff::JsonObject proposal;
@@ -517,6 +526,8 @@ namespace blockchain {
 					value = boost::lexical_cast<int64_t>(value_str);
 					needAgreeCount = boost::lexical_cast<uint32_t>(need_agree_count_str);
 					if (needAgreeCount<1 || needAgreeCount > admins_count)
+						throw ::contract::storage::ContractStorageException("need agree count illegal");
+					if (admins_count >= 2 && needAgreeCount < 2)
 						throw ::contract::storage::ContractStorageException("need agree count illegal");
 				}
 				catch (const std::exception& e) {

@@ -3,9 +3,19 @@ before_script:
     - apt-get install -y software-properties-common
     - add-apt-repository -y ppa:bitcoin/bitcoin
     - apt-get update -y
-    - apt-get install -y libboost-all-dev libminiupnpc-dev libssl-dev libevent-dev libzmq3-dev libprotobuf-dev protobuf-compiler libqrencode-dev libtool  build-essential bsdmainutils g++
+    - apt-get install -y libboost1.58-all-dev libminiupnpc-dev libssl-dev libevent-dev libzmq3-dev libprotobuf-dev protobuf-compiler libqrencode-dev libtool build-essential bsdmainutils g++
     - apt-get install -y libdb4.8-dev libdb4.8++-dev --allow-unauthenticated
     - apt-get install -y autoconf make g++ pkg-config git
+    - apt-get install -y cmake libncurses5-dev libreadline-dev
+    - mkdir -p build
+    - cd build
+    - git clone https://github.com/UnitedBitcoin/fc.git
+    - cd fc
+    - git submodule update --init --recursive
+    - cmake .
+    - make
+    - make install
+    - cd ../..
 
 
 compile:
