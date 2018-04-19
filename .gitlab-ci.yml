@@ -1,10 +1,14 @@
-before_script:
-    - apt-get update -y
+image: ubtc/ubtcdev:latest
 
-compile:
+before_script:
+    - apt-get install -y libdb4.8-dev libdb4.8++-dev --allow-unauthenticated
+
+build:
   script:
     - ./autogen.sh
     - mkdir build
     - ./configure
-    - if [ "$RUN_TESTS" = "true" ]; then test/functional/test_runner.py --combinedlogslen=4000 --coverage --quiet false; fi
 
+test:
+  script:
+    test/functional/test_runner.py --combinedlogslen=4000 --coverage --quiet false

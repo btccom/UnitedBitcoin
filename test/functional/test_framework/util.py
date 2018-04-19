@@ -37,6 +37,10 @@ def assert_equal(thing1, thing2, *args):
     if thing1 != thing2 or any(thing1 != arg for arg in args):
         raise AssertionError("not(%s)" % " == ".join(str(arg) for arg in (thing1, thing2) + args))
 
+def asset_about_equal_with_fee(thing1, thing2):
+    if abs(thing1 - thing2) > 0.01:
+        raise AssertionError("not(%s)" % " == ".join(str(arg) for arg in (thing1, thing2)))
+
 def assert_greater_than(thing1, thing2):
     if thing1 <= thing2:
         raise AssertionError("%s <= %s" % (str(thing1), str(thing2)))

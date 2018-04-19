@@ -36,6 +36,7 @@ class WalletTest(BitcoinTestFramework):
         self.log.info("Mining blocks...")
 
         self.nodes[0].generate(1)
+        #self.nodes[0].settxfee(0)
 
         walletinfo = self.nodes[0].getwalletinfo()
         assert_equal(walletinfo['immature_balance'], 50)
@@ -120,7 +121,7 @@ class WalletTest(BitcoinTestFramework):
 
         # node0 should end up with 100 btc in block rewards plus fees, but
         # minus the 21 plus fees sent to node2
-        assert_equal(self.nodes[0].getbalance(), 100-21)
+        assert_equal(self.nodes[0].getbalance(),100-21)
         assert_equal(self.nodes[2].getbalance(), 21)
 
         # Node0 should have two unspent outputs.
@@ -162,6 +163,7 @@ class WalletTest(BitcoinTestFramework):
         txid = self.nodes[2].sendtoaddress(address, 10, "", "", False)
         self.nodes[2].generate(1)
         self.sync_all([self.nodes[0:3]])
+        self.log.info("balance: %s, balance_with_fee: %s, fee per byte: %s, bytes: %s" % (str(self.nodes[2].getbalance()), str(Decimal('84')), str(fee_per_byte), str(count_bytes(self.nodes[2].getrawtransaction(txid)))))
         node_2_bal = self.check_fee_amount(self.nodes[2].getbalance(), Decimal('84'), fee_per_byte, count_bytes(self.nodes[2].getrawtransaction(txid)))
         assert_equal(self.nodes[0].getbalance(), Decimal('10'))
 
