@@ -2718,6 +2718,10 @@ bool ContractExecResult::match_contract_withdraw_infos(const std::vector<Contrac
     return true;
 }
 
+void ContractExecResult::clear() {
+	*this = ContractExecResult();
+}
+
 std::shared_ptr<::contract::storage::ContractStorageService> get_contract_storage_service()
 {
 	fs::path storage_db_path = GetDataDir() / CONTRACT_STORAGE_DB_PATH;

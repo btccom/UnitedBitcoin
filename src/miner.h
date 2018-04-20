@@ -245,6 +245,9 @@ private:
       * statistics from the package selection (for logging statistics). */
     void addPackageTxs(int &nPackagesSelected, int &nDescendantsUpdated, uint64_t minGasPrice, bool allow_contract);
 
+	/** Rebuild the coinbase/coinstake transaction to account for new gas refunds **/
+	void RebuildRefundTransaction();
+
     // helper functions for addPackageTxs()
     /** Remove confirmed (inBlock) entries from given set */
     void onlyUnconfirmed(CTxMemPool::setEntries& testSet);

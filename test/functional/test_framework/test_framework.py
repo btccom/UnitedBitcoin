@@ -279,6 +279,7 @@ class BitcoinTestFramework():
                 if expected_msg is not None:
                     log_stderr.seek(0)
                     stderr = log_stderr.read().decode('utf-8')
+                    print(stderr)
                     if expected_msg not in stderr:
                         raise AssertionError("Expected error \"" + expected_msg + "\" not found in:\n" + stderr)
             else:

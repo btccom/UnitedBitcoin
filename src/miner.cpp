@@ -216,6 +216,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
         coinbaseTx.vout[1].scriptPubKey =
                 CScript() << ValtypeUtils::string_to_vch(root_state_hash_after_add_txs) << OP_ROOT_STATE_HASH;
         coinbaseTx.vout[1].nValue = 0;
+		originalRewardTx = coinbaseTx;
         pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
     }
 
@@ -225,7 +226,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
         rollbacked_contract_storage = true;
 		service->close();
 	}
-
+	RebuildRefundTransaction();
     ////////////////////////////////////////////////////////
 
     pblocktemplate->vchCoinbaseCommitment = GenerateCoinbaseCommitment(*pblock, pindexPrev, chainparams.GetConsensus());
@@ -254,6 +255,12 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     LogPrint(BCLog::BENCH, "CreateNewBlock() packages: %.2fms (%d packages, %d updated descendants), validity: %.2fms (total %.2fms)\n", 0.001 * (nTime1 - nTimeStart), nPackagesSelected, nDescendantsUpdated, 0.001 * (nTime2 - nTime1), 0.001 * (nTime2 - nTimeStart));
 
     return std::move(pblocktemplate);
+}
+
+void BlockAssembler::RebuildRefundTransaction() {
+	CMutableTransaction contrTx(originalRewardTx);
+	contrTx.vout[0].nValue = nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus());
+	pblock->vtx[0] = MakeTransactionRef(std::move(contrTx));
 }
 
 void BlockAssembler::onlyUnconfirmed(CTxMemPool::setEntries& testSet)
@@ -379,16 +386,6 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
     }
     nBlockWeight += iter->GetTxWeight();
     nBlockSigOpsCost += iter->GetSigOpCost();
-    //apply value-transfer txs to local state
-    /*
-    for (CTransaction &t : testExecResult.valueTransfers) {
-        if (fNeedSizeAccounting) {
-            nBlockSize += ::GetSerializeSize(t, SER_NETWORK, PROTOCOL_VERSION);
-        }
-        nBlockWeight += GetTransactionWeight(t);
-        nBlockSigOpsCost += GetLegacySigOpCount(t);
-    }
-    */
     //calculate sigops from new refund/proof tx
     //first, subtract old proof tx
     nBlockSigOpsCost -= GetLegacySigOpCount(*pblock->vtx[0]);
@@ -417,21 +414,11 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
     this->nBlockSigOpsCost += iter->GetSigOpCost();
     nFees += iter->GetFee();
     inBlock.insert(iter);
-    /*
-    for (CTransaction &t : bceResult.valueTransfers) {
-        pblock->vtx.emplace_back(MakeTransactionRef(std::move(t)));
-        if (fNeedSizeAccounting) {
-            this->nBlockSize += ::GetSerializeSize(t, SER_NETWORK, PROTOCOL_VERSION);
-        }
-        this->nBlockWeight += GetTransactionWeight(t);
-        this->nBlockSigOpsCost += GetLegacySigOpCount(t);
-        ++nBlockTx;
-    }
-    */
     //calculate sigops from new refund/proof tx
     this->nBlockSigOpsCost -= GetLegacySigOpCount(*pblock->vtx[0]);
+	RebuildRefundTransaction();
     this->nBlockSigOpsCost += GetLegacySigOpCount(*pblock->vtx[0]);
-    // bceResult.valueTransfers.clear();
+	
 	success = true;
     return true;
 }

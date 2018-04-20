@@ -664,6 +664,8 @@ struct ContractExecResult {
 	std::vector<::contract::storage::ContractEventInfo> events;
 
     bool match_contract_withdraw_infos(const std::vector<ContractWithdrawInfo> withdraw_infos) const;
+
+	void clear();
 };
 
 class ContractTxConverter {

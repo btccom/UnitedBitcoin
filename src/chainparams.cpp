@@ -329,7 +329,7 @@ public:
         // hard fork
         consensus.UBCHeight = 0 ;
         consensus.UBCInitBlockCount = 0; // 500
-        consensus.UBCONTRACT_Height = 0;
+        consensus.UBCONTRACT_Height = 400;
 
         // UnionBitcoin foundation
         consensus.UBCfoundationPubkey = "026b440cc0f0533a0144a66ac8d297e5df557f3c3c33224e3c40c79c45beda9406";

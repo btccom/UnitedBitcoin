@@ -5,6 +5,7 @@
 """Test the wallet."""
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import *
+import json
 
 class WalletTest(BitcoinTestFramework):
     def set_test_params(self):
@@ -69,6 +70,7 @@ class WalletTest(BitcoinTestFramework):
         # Locked memory should use at least 32 bytes to sign each transaction
         self.log.info("test getmemoryinfo")
         memory_before = self.nodes[0].getmemoryinfo()
+        self.nodes[0].settxfee(Decimal("0.01"))
         self.nodes[0].sendtoaddress(self.nodes[2].getnewaddress(), 11)
         mempool_txid = self.nodes[0].sendtoaddress(self.nodes[2].getnewaddress(), 10)
         memory_after = self.nodes[0].getmemoryinfo()
@@ -95,7 +97,7 @@ class WalletTest(BitcoinTestFramework):
         assert_equal(walletinfo['immature_balance'], 0)
 
         # Have node0 mine a block, thus it will collect its own fee.
-        self.nodes[0].generate(1)
+        block2_hash = self.nodes[0].generate(1)[0]
         self.sync_all([self.nodes[0:3]])
 
         # Exercise locking of unspent outputs
@@ -118,6 +120,22 @@ class WalletTest(BitcoinTestFramework):
         # Have node1 generate 100 blocks (so node0 can recover the fee)
         self.nodes[1].generate(100)
         self.sync_all([self.nodes[0:3]])
+
+        # TODO: get details of the block generated after texs, view its coinbase transactions
+        self.log.info("block2_hash: %s" % json.dumps(block2_hash))
+        block2 = self.nodes[0].getblock(block2_hash)
+        tvs_in_block2 = block2['tx']
+        assert_equal(len(tvs_in_block2), 3)
+        tx1_hex = self.nodes[0].getrawtransaction(tvs_in_block2[0])
+        tx1 = self.nodes[0].decoderawtransaction(tx1_hex)
+        tx2_hex = self.nodes[0].getrawtransaction(tvs_in_block2[1])
+        tx2 = self.nodes[0].decoderawtransaction(tx2_hex)
+        tx3_hex = self.nodes[0].getrawtransaction(tvs_in_block2[2])
+        tx3 = self.nodes[0].decoderawtransaction(tx3_hex)
+        self.log.info("tx1 in block2 is: %s" % str(tx1))
+        self.log.info("tx2 in block2 is: %s" % str(tx2))
+        self.log.info("tx3 in block2 is: %s" % str(tx3))
+
 
         # node0 should end up with 100 btc in block rewards plus fees, but
         # minus the 21 plus fees sent to node2
