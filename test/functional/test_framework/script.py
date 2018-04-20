@@ -232,6 +232,8 @@ OP_NOP8 = CScriptOp(0xb7)
 OP_NOP9 = CScriptOp(0xb8)
 OP_NOP10 = CScriptOp(0xb9)
 
+OP_ROOT_STATE_HASH = CScriptOp(0xf9)
+
 # template matching params
 OP_SMALLINTEGER = CScriptOp(0xfa)
 OP_PUBKEYS = CScriptOp(0xfb)
@@ -352,6 +354,9 @@ OPCODE_NAMES.update({
     OP_NOP8 : 'OP_NOP8',
     OP_NOP9 : 'OP_NOP9',
     OP_NOP10 : 'OP_NOP10',
+
+    OP_ROOT_STATE_HASH: 'OP_ROOT_STATE_HASH',
+
     OP_SMALLINTEGER : 'OP_SMALLINTEGER',
     OP_PUBKEYS : 'OP_PUBKEYS',
     OP_PUBKEYHASH : 'OP_PUBKEYHASH',

@@ -35,6 +35,8 @@ def trueDummy(tx):
     tx.vin[0].scriptSig = CScript(newscript)
     tx.rehash()
 
+import pdb
+
 class NULLDUMMYTest(BitcoinTestFramework):
 
     def set_test_params(self):
@@ -83,7 +85,9 @@ class NULLDUMMYTest(BitcoinTestFramework):
         test6txs=[CTransaction(test4tx)]
         trueDummy(test4tx)
         assert_raises_rpc_error(-26, NULLDUMMY_ERROR, self.nodes[0].sendrawtransaction, bytes_to_hex_str(test4tx.serialize_with_witness()), True)
+        # pdb.set_trace()
         self.block_submit(self.nodes[0], [test4tx])
+        # pdb.set_trace()
 
         self.log.info("Test 5: Non-NULLDUMMY P2WSH multisig transaction invalid after activation")
         test5tx = self.create_transaction(self.nodes[0], txid3, self.wit_address, 48)
@@ -110,6 +114,8 @@ class NULLDUMMYTest(BitcoinTestFramework):
 
 
     def block_submit(self, node, txs, witness = False, accept = False):
+        print(node.getblockcount())
+        print(node.getbestblockhash())
         block = create_block(self.tip, create_coinbase(self.lastblockheight + 1), self.lastblocktime + 1)
         block.nVersion = 4
         for tx in txs:
@@ -121,6 +127,8 @@ class NULLDUMMYTest(BitcoinTestFramework):
         block.solve()
         node.submitblock(bytes_to_hex_str(block.serialize(True)))
         if (accept):
+            print(node.getblockcount())
+            print(node.getbestblockhash())
             assert_equal(node.getbestblockhash(), block.hash)
             self.tip = block.sha256
             self.lastblockhash = block.hash

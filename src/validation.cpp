@@ -2742,6 +2742,8 @@ std::shared_ptr<std::string> get_root_state_hash_from_block(const CBlock* block)
     {
         txnouttype whichType;
         std::vector<std::vector<unsigned char> > vSolutions;
+		if (txout.scriptPubKey.size() == 1 && txout.scriptPubKey[0] == OP_TRUE)
+			continue;
         if (!Solver(txout.scriptPubKey, whichType, vSolutions))
             return false;
         if (whichType == TX_ROOT_STATE_HASH)
