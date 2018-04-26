@@ -73,9 +73,9 @@ BlockAssembler::BlockAssembler(const CChainParams& params, const Options& option
 {
     blockMinFeeRate = options.blockMinFeeRate;
     // Limit weight to between 4K and MaxBlockSize-4K for sanity:
-    unsigned int nAbsMaxSize = MaxBlockSize(std::numeric_limits<uint64_t>::max());
+    unsigned int nAbsMaxSize = MaxBlockSize(chainActive.Height() + 1);
     nBlockMaxWeight = std::max<size_t>(4000, std::min<size_t>(nAbsMaxSize - 4000, options.nBlockMaxWeight));
-    nBlockMaxSize = DEFAULT_BLOCK_MAX_SIZE;
+	nBlockMaxSize = MaxBlockSize(chainActive.Height()+1);;
 }
 
 static BlockAssembler::Options DefaultOptions(const CChainParams& params)
@@ -597,6 +597,7 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
                 mapModifiedTx.get<ancestor_score_or_gas_price>().erase(modit);
                 failedTx.insert(iter);
             }
+			continue;
         }
 
         CTxMemPool::setEntries ancestors;

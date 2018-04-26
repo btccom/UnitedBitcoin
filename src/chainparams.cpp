@@ -82,6 +82,8 @@ void CChainParams::UpdateVersionBitsParameters(Consensus::DeploymentPos d, int64
  * + Contains no strange transactions
  */
 
+uint64_t UB_FORK_BLOCK_NUM = 498777;
+
 class CMainParams : public CChainParams {
 public:
     CMainParams() {
@@ -98,6 +100,8 @@ public:
 
         // hard fork
         consensus.UBCHeight = 498777 ;
+		UB_FORK_BLOCK_NUM = consensus.UBCHeight;
+
         consensus.UBCInitBlockCount = 500;
         consensus.UBCONTRACT_Height = 99999999;
 
@@ -223,6 +227,7 @@ public:
 
         // hard fork
         consensus.UBCHeight = 300 ;
+		UB_FORK_BLOCK_NUM = consensus.UBCHeight;
         consensus.UBCInitBlockCount = 0; // 500
         consensus.UBCONTRACT_Height = 400;
 
@@ -328,8 +333,9 @@ public:
 
         // hard fork
         consensus.UBCHeight = 0 ;
+		UB_FORK_BLOCK_NUM = consensus.UBCHeight;
         consensus.UBCInitBlockCount = 0; // 500
-        consensus.UBCONTRACT_Height = 400;
+        consensus.UBCONTRACT_Height = 1500;
 
         // UnionBitcoin foundation
         consensus.UBCfoundationPubkey = "026b440cc0f0533a0144a66ac8d297e5df557f3c3c33224e3c40c79c45beda9406";

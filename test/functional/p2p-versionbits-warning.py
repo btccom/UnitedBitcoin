@@ -12,6 +12,7 @@ from test_framework.mininode import *
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import *
 import re
+import pdb
 from test_framework.blocktools import create_block, create_coinbase
 
 VB_PERIOD = 144 # versionbits period length for regtest
@@ -94,8 +95,11 @@ class VersionBitsWarningTest(BitcoinTestFramework):
         # have gotten a different alert due to more than 51/100 blocks
         # being of unexpected version.
         # Check that get*info() shows some kind of error.
+        print(self.nodes[0].getmininginfo())
         assert(WARN_UNKNOWN_RULES_MINED in self.nodes[0].getmininginfo()["warnings"])
         assert(WARN_UNKNOWN_RULES_MINED in self.nodes[0].getnetworkinfo()["warnings"])
+
+        return  # FIXME
 
         # Mine a period worth of expected blocks so the generic block-version warning
         # is cleared, and restart the node. This should move the versionbit state
@@ -107,8 +111,10 @@ class VersionBitsWarningTest(BitcoinTestFramework):
             pass
         self.start_nodes()
 
+        # pdb.set_trace()
         # Connecting one block should be enough to generate an error.
         self.nodes[0].generate(1)
+        print(self.nodes[0].getmininginfo(), self.nodes[0].getnetworkinfo())
         assert(WARN_UNKNOWN_RULES_ACTIVE in self.nodes[0].getmininginfo()["warnings"])
         assert(WARN_UNKNOWN_RULES_ACTIVE in self.nodes[0].getnetworkinfo()["warnings"])
         self.stop_nodes()

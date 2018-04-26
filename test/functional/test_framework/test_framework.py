@@ -76,7 +76,7 @@ class BitcoinTestFramework():
         parser.add_option("--noshutdown", dest="noshutdown", default=False, action="store_true",
                           help="Don't stop bitcoinds after the test execution")
         parser.add_option("--srcdir", dest="srcdir", default=os.path.normpath(os.path.dirname(os.path.realpath(__file__)) + "/../../../src"),
-                          help="Source directory containing bitcoind/bitcoin-cli (default: %default)")
+                          help="Source directory containing ubcd/ubc-cli (default: %default)")
         parser.add_option("--cachedir", dest="cachedir", default=os.path.normpath(os.path.dirname(os.path.realpath(__file__)) + "/../../cache"),
                           help="Directory for caching pregenerated datadirs")
         parser.add_option("--tmpdir", dest="tmpdir", help="Root directory for datadirs")
@@ -141,7 +141,7 @@ class BitcoinTestFramework():
             if self.nodes:
                 self.stop_nodes()
         else:
-            self.log.info("Note: bitcoinds were not stopped and may still be running")
+            self.log.info("Note: ubcds were not stopped and may still be running")
 
         if not self.options.nocleanup and not self.options.noshutdown and success != TestStatus.FAILED:
             self.log.info("Cleaning up")
@@ -284,9 +284,9 @@ class BitcoinTestFramework():
                         raise AssertionError("Expected error \"" + expected_msg + "\" not found in:\n" + stderr)
             else:
                 if expected_msg is None:
-                    assert_msg = "bitcoind should have exited with an error"
+                    assert_msg = "ubcd should have exited with an error"
                 else:
-                    assert_msg = "bitcoind should have exited with expected error " + expected_msg
+                    assert_msg = "ubcd should have exited with expected error " + expected_msg
                 raise AssertionError(assert_msg)
 
     def wait_for_node_exit(self, i, timeout):

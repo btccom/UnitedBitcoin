@@ -56,7 +56,6 @@ class TestNode():
         # Most callers will just need to add extra args to the standard list below. For those callers that need more flexibity, they can just set the args property directly.
         self.extra_args = extra_args
         self.args = [self.binary, "-datadir=" + self.datadir, "-server", "-keypool=1", "-discover=0", "-rest", "-logtimemicros", "-debug", "-debugexclude=libevent", "-debugexclude=leveldb", "-mocktime=" + str(mocktime), "-uacomment=testnode%d" % i]
-
         self.cli = TestNodeCLI(os.getenv("BITCOINCLI", "ubc-cli"), self.datadir)
 
         self.running = False
@@ -81,7 +80,7 @@ class TestNode():
             stderr = self.stderr
         self.process = subprocess.Popen(self.args + extra_args, stderr=stderr)
         self.running = True
-        self.log.debug("bitcoind started, waiting for RPC to come up")
+        self.log.debug("ubcd started, waiting for RPC to come up")
 
     def wait_for_rpc_connection(self):
         """Sets up an RPC connection to the bitcoind process. Returns False if unable to connect."""

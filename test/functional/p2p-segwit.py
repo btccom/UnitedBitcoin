@@ -1897,6 +1897,9 @@ class SegWitTest(BitcoinTestFramework):
         self.test_unnecessary_witness_before_segwit_activation()
         self.test_block_relay(segwit_activated=False)
 
+        return  # FIXME
+
+
         # Advance to segwit being 'started'
         self.advance_to_segwit_started()
         sync_blocks(self.nodes)

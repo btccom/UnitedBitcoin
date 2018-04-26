@@ -328,6 +328,7 @@ def log_filename(dirname, n_node, logname):
 
 def get_bip9_status(node, key):
     info = node.getblockchaininfo()
+    print(info)
     return info['bip9_softforks'][key]
 
 def set_node_times(nodes, t):
@@ -553,7 +554,7 @@ def create_lots_of_big_transactions(node, txouts, utxos, num, fee):
         newtx = rawtx[0:92]
         newtx = newtx + txouts
         newtx = newtx + rawtx[94:]
-        signresult = node.signrawtransaction(newtx, None, None, "NONE")
+        signresult = node.signrawtransaction(newtx, None, None, "NONE|FORKID")
         txid = node.sendrawtransaction(signresult["hex"], True)
         txids.append(txid)
     return txids

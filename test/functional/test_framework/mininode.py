@@ -86,7 +86,7 @@ class NodeConn(asyncore.dispatcher):
         self.network = net
         self.disconnect = False
 
-        logger.info('Connecting to Bitcoin Node: %s:%d' % (self.dstaddr, self.dstport))
+        logger.info('Connecting to UBTC Node: %s:%d' % (self.dstaddr, self.dstport))
 
         try:
             self.connect((dstaddr, dstport))
@@ -166,6 +166,8 @@ class NodeConn(asyncore.dispatcher):
                 t = MESSAGEMAP[command]()
                 t.deserialize(f)
                 self._log_message("receive", t)
+                if str(t).startswith('msg_pong') or str(t).startswith('msg_reject'):
+                    print(t)  # FIXME: REMOVEIT
                 self.on_message(t)
         except Exception as e:
             logger.exception('Error reading message:', repr(e))

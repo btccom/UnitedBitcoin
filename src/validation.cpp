@@ -563,8 +563,8 @@ static bool CheckAddContractTxToMempoolAvailable(const CTransaction& tx, CCoinsV
     }
     // check withdraw-from-info correct
     if (!testExecResult.match_contract_withdraw_infos(resultConvertContractTx.contract_withdraw_infos)) {
-        error_out = "bad-contracttx-execution";
-        short_error_out = "bad-contracttx-execution";
+        error_out = "bad-contracttx-execution-with-invalid-withdraw-infos";
+        short_error_out = "bad-contracttx-execution-with-invalid-withdraw-infos";
         return false;
     }
     // commit changes than can generate new root state hash
@@ -4107,8 +4107,10 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
     // checks that use witness data may be performed here.
 
     // Size limits
-    if (block.vtx.empty() || block.vtx.size() * WITNESS_SCALE_FACTOR > MaxBlockSize(std::numeric_limits<uint64_t>::max()) || ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * WITNESS_SCALE_FACTOR > MaxBlockSize(std::numeric_limits<uint64_t>::max()))
-        return state.DoS(100, false, REJECT_INVALID, "bad-blk-length", false, "size limits failed");
+	if (block.vtx.empty() || block.vtx.size() * WITNESS_SCALE_FACTOR > MaxBlockSize(chainActive.Height() + 1) || ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * WITNESS_SCALE_FACTOR > MaxBlockSize(chainActive.Height() + 1)) {
+		auto block_serialized_size = ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS);
+		return state.DoS(100, false, REJECT_INVALID, "bad-blk-length", false, "size limits failed");
+	}
 
     // First transaction must be coinbase, the rest must not be
     if (block.vtx.empty() || !block.vtx[0]->IsCoinBase())
