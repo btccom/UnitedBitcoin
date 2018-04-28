@@ -9,4 +9,4 @@ test:
     - mkdir -p build
     - ./configure
     - make
-    - test/functional/test_runner.py --combinedlogslen=4000 --coverage --quite false
+    - test/functional/test_runner.py --combinedlogslen=4000 --coverage
