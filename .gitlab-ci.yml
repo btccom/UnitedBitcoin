@@ -8,4 +8,4 @@ test:
     - ./autogen.sh
     - mkdir -p build
     - ./configure
-    - test/functional/test_runner.py --combinedlogslen=4000 --coverage --quiet false
+    - test/functional/test_runner.py --combinedlogslen=4000 --coverage

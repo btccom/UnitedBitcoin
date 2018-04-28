@@ -1,7 +1,8 @@
 UnitedBitcoin
 =====================================
 
-[![Build Status](https://travis-ci.org/bitcoin/bitcoin.svg?branch=master)](https://travis-ci.org/bitcoin/bitcoin)
+[![pipeline status](https://gitlab.com/bygage/UnitedBitcoin/badges/contractdev/pipeline.svg)](https://gitlab.com/bygage/UnitedBitcoin/commits/contractdev)
+
 
 http://www.ub.com
 
