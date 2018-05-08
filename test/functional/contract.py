@@ -301,7 +301,7 @@ class SmartContractTest(BitcoinTestFramework):
         print("test_create_native_contract")
         self.split_accounts()
         node1 = self.nodes[0]
-        new_contract_addr = create_new_native_contract(node1, self.address1, 'demo')
+        new_contract_addr = create_new_native_contract(node1, self.address1, 'dgp')
         generate_block(node1, self.address1)
         print("new contract address: %s" % new_contract_addr)
         return new_contract_addr
@@ -1075,7 +1075,7 @@ class SmartContractTest(BitcoinTestFramework):
         self.created_contract_addr = self.test_create_contract()
         native_contract_addr = self.test_create_native_contract()
 
-        self.test_demo_native_contract()
+        # self.test_demo_native_contract()
         self.test_dgp_native_contract()
         self.test_get_contract_info()
         self.test_get_simple_contract_info()

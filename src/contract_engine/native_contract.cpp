@@ -12,9 +12,7 @@ namespace blockchain {
 
         bool native_contract_finder::has_native_contract_with_key(const std::string& key)
         {
-			// FIXME: remove the demo native contract
 			std::vector<std::string> native_contract_keys = {
-					demo_native_contract::native_contract_key(),
 					dgp_native_contract::native_contract_key()
             };
             return std::find(native_contract_keys.begin(), native_contract_keys.end(), key) != native_contract_keys.end();
@@ -22,11 +20,7 @@ namespace blockchain {
         std::shared_ptr<abstract_native_contract> native_contract_finder::create_native_contract_by_key(
 			blockchain::contract::PendingState* pending_state, const std::string& key, const std::string& contract_address, const native_contract_sender& sender)
         {
-            if (key == demo_native_contract::native_contract_key())
-            {
-                return std::make_shared<demo_native_contract>(pending_state, contract_address, sender);
-            }
-			else if (key == dgp_native_contract::native_contract_key()) {
+            if (key == dgp_native_contract::native_contract_key()) {
 				return std::make_shared<dgp_native_contract>(pending_state, contract_address, sender);
 			}
             else
@@ -122,34 +116,6 @@ namespace blockchain {
             const auto& api_names = apis();
             return api_names.find(api_name) != api_names.end();
         }
-
-		// demo native contract
-		std::string demo_native_contract::contract_key() const
-		{
-			return demo_native_contract::native_contract_key();
-		}
-		std::string demo_native_contract::contract_address() const {
-			return contract_id;
-		}
-		std::set<std::string> demo_native_contract::apis() const {
-			return { "init", "hello", "contract_balance", "withdraw", "on_deposit" };
-		}
-		std::set<std::string> demo_native_contract::offline_apis() const {
-			return {};
-		}
-		std::set<std::string> demo_native_contract::events() const {
-			return {};
-		}
-
-		ContractExecResult demo_native_contract::invoke(const std::string& api_name, const std::string& api_arg) {
-			ContractExecResult result;
-			printf("demo native contract called\n");
-			printf("api %s called with arg %s\n", api_name.c_str(), api_arg.c_str());
-			merge_storage_changes_to_exec_result();
-			result.contract_storage_changes = _contract_exec_result.contract_storage_changes;
-			result.api_result = "demo result";
-			return result;
-		}
 
 		// dgp native contract
 		std::string dgp_native_contract::contract_key() const
@@ -478,11 +444,22 @@ namespace blockchain {
 				return jsondiff::json_dumps(dgp_params[param_name]);
 		}
 
+		static const std::map<std::string, DgpChangeIntParamType> dgp_params_int_mapping = {
+			{ "min_gas_price", DgpChangeIntParamType::DGP_MIN_GAS_PRICE_CHANGE_ITEM },
+			{ "block_gas_limit", DgpChangeIntParamType::DGP_BLOCK_GAS_LIMIT_CHANGE_ITEM },
+			{ "min_gas_count", DgpChangeIntParamType::DGP_MIN_GAS_COUNT_CHANGE_ITEM },
+			{ "max_contract_bytecode_store_fee_gas_count", DgpChangeIntParamType::DGP_MAX_CONTRACT_BYTECODE_STORE_FEE_GAS_COUNT_CHANGE_ITEM }
+		};
+
 		void dgp_native_contract::set_dgp_param(const std::string& param_name, const jsondiff::JsonValue& value)
 		{
 			auto dgp_params = get_contract_storage(contract_id, "dgp_params").as<jsondiff::JsonObject>();
 			dgp_params[param_name] = value;
 			set_contract_storage(contract_id, "dgp_params", dgp_params);
+			if (dgp_params_int_mapping.find(param_name) != dgp_params_int_mapping.end() && value.is_integer()) {
+				auto& int_param_type = dgp_params_int_mapping.at(param_name);
+				_contract_exec_result.dgp_int_params_changes[int_param_type] = value.as_int64();
+			}
 		}
 
 		std::string dgp_native_contract::min_gas_price_api(const std::string& api_name, const std::string& api_arg)

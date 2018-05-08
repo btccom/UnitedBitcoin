@@ -651,6 +651,13 @@ struct ResultExecute {
     std::vector<ContractBaseInfoForUpdate> contract_upgrade_infos;
 };
 
+enum DgpChangeIntParamType {
+	DGP_MIN_GAS_PRICE_CHANGE_ITEM = 0,
+	DGP_BLOCK_GAS_LIMIT_CHANGE_ITEM = 1,
+	DGP_MIN_GAS_COUNT_CHANGE_ITEM = 2,
+	DGP_MAX_CONTRACT_BYTECODE_STORE_FEE_GAS_COUNT_CHANGE_ITEM = 3
+};
+
 // contract result for bitcoin
 struct ContractExecResult {
     uint64_t usedGas = 0;
@@ -662,6 +669,9 @@ struct ContractExecResult {
     std::vector<ContractResultTransferInfo> balance_changes;
     std::vector<ContractBaseInfoForUpdate> contract_upgrade_infos;
 	std::vector<::contract::storage::ContractEventInfo> events;
+
+	std::map<DgpChangeIntParamType, int64_t> dgp_int_params_changes; // changes of dgp params. not all native dgp contracts will change chain's dgp params.
+
 
     bool match_contract_withdraw_infos(const std::vector<ContractWithdrawInfo> withdraw_infos) const;
 

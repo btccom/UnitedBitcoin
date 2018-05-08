@@ -173,7 +173,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     coinbaseTx.vout[0].nValue = nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus());
     coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
     originalRewardTx = coinbaseTx;
-    pblock->vtx[0] = MakeTransactionRef(coinbaseTx);
+    pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
 
     //////////////////////////////////////////////////////// contract
 	auto allow_contract = nHeight >= Params().GetConsensus().UBCONTRACT_Height;
@@ -212,12 +212,14 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 
     if(allow_contract) {
         const auto &root_state_hash_after_add_txs = service->current_root_state_hash();
-        coinbaseTx.vout.resize(2);
-        coinbaseTx.vout[1].scriptPubKey =
-                CScript() << ValtypeUtils::string_to_vch(root_state_hash_after_add_txs) << OP_ROOT_STATE_HASH;
-        coinbaseTx.vout[1].nValue = 0;
-		originalRewardTx = coinbaseTx;
-        pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
+		CTxOut root_state_hash_out;
+		root_state_hash_out.scriptPubKey =
+			CScript() << ValtypeUtils::string_to_vch(root_state_hash_after_add_txs) << OP_ROOT_STATE_HASH;
+		root_state_hash_out.nValue = 0;
+		CMutableTransaction txCoinBaseToChange(*(pblock->vtx[0]));
+		txCoinBaseToChange.vout.push_back(root_state_hash_out);
+		originalRewardTx = txCoinBaseToChange;
+        pblock->vtx[0] = MakeTransactionRef(std::move(txCoinBaseToChange));
     }
 
 	// rollback root state hash
@@ -258,7 +260,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 }
 
 void BlockAssembler::RebuildRefundTransaction() {
-	CMutableTransaction contrTx(originalRewardTx);
+	CMutableTransaction contrTx(*(pblock->vtx[0]));
 	contrTx.vout[0].nValue = nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus());
 	pblock->vtx[0] = MakeTransactionRef(std::move(contrTx));
 }

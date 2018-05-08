@@ -7,6 +7,7 @@
 
 namespace blockchain {
     namespace contract {
+
         struct PendingState
         {
             PendingState(::contract::storage::ContractStorageService* _storage_service);
@@ -22,6 +23,8 @@ namespace blockchain {
             std::vector<ContractResultTransferInfo> balance_changes;
             std::vector<ContractBaseInfoForUpdate> contract_upgrade_infos;
 			std::vector<::contract::storage::ContractEventInfo> events;
+
+			std::map<DgpChangeIntParamType, int64_t> dgp_int_params_changes; // changes of dgp params. not all native dgp contracts will change chain's dgp params.
 
             void add_balance_change(const std::string& address, bool is_contract, bool add, uint64_t amount);
 
