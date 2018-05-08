@@ -1067,7 +1067,7 @@ class SmartContractTest(BitcoinTestFramework):
         try:
             self.test_create_contract()
             self.assertTrue(False, "contract is disabled before height 1500")
-        except Exception as _:
+        except Exception as e:
             pass
         generate_block(node1, self.address3, 1)
 

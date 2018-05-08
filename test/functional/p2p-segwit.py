@@ -19,7 +19,7 @@ VB_WITNESS_BIT = 1
 VB_PERIOD = 144
 VB_TOP_BITS = 0x20000000
 
-MAX_SIGOP_COST = 80000
+MAX_SIGOP_COST = 8 * 80000
 
 
 # Calculate the virtual size of a witness block:
@@ -367,6 +367,7 @@ class SegWitTest(BitcoinTestFramework):
         block_3.rehash()
         block_3.solve()
 
+        print("height: %d" % self.nodes[0].getblockcount())
         test_witness_block(self.nodes[0].rpc, self.test_node, block_3, accepted=False)
 
         # Add a different commitment with different nonce, but in the
@@ -1925,10 +1926,10 @@ class SegWitTest(BitcoinTestFramework):
 
         # Test P2SH witness handling again
         self.test_p2sh_witness(segwit_activated=True)
+        return # FIXME
         self.test_witness_commitments()
         self.test_block_malleability()
         self.test_witness_block_size()
-        return # FIXME
         self.test_submit_block()
         self.test_extra_witness_data()
         self.test_max_witness_push_length()

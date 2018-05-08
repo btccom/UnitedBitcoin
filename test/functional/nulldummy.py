@@ -35,7 +35,6 @@ def trueDummy(tx):
     tx.vin[0].scriptSig = CScript(newscript)
     tx.rehash()
 
-import pdb
 
 class NULLDUMMYTest(BitcoinTestFramework):
 
@@ -53,7 +52,7 @@ class NULLDUMMYTest(BitcoinTestFramework):
         self.wit_ms_address = self.nodes[0].addwitnessaddress(self.ms_address)
 
         NetworkThread().start() # Start up network handling in another thread
-        # pdb.set_trace()
+
         self.coinbase_blocks = self.nodes[0].generate(2) # Block 2
         coinbase_txid = []
         for i in self.coinbase_blocks:
