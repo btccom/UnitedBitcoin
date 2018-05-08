@@ -53,6 +53,7 @@ class NULLDUMMYTest(BitcoinTestFramework):
         self.wit_ms_address = self.nodes[0].addwitnessaddress(self.ms_address)
 
         NetworkThread().start() # Start up network handling in another thread
+        # pdb.set_trace()
         self.coinbase_blocks = self.nodes[0].generate(2) # Block 2
         coinbase_txid = []
         for i in self.coinbase_blocks:
@@ -86,11 +87,7 @@ class NULLDUMMYTest(BitcoinTestFramework):
         trueDummy(test4tx)
         assert_raises_rpc_error(-26, NULLDUMMY_ERROR, self.nodes[0].sendrawtransaction, bytes_to_hex_str(test4tx.serialize_with_witness()), True)
 
-        return  # FIXME
-
-        # pdb.set_trace()
         self.block_submit(self.nodes[0], [test4tx])
-        # pdb.set_trace()
 
         self.log.info("Test 5: Non-NULLDUMMY P2WSH multisig transaction invalid after activation")
         test5tx = self.create_transaction(self.nodes[0], txid3, self.wit_address, 48)
