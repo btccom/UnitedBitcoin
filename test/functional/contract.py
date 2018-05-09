@@ -46,6 +46,7 @@ def get_utxo(node, caller_addr):
         return False
 
     not_used_items = list(filter(lambda x: not in_using(x), having_amount_items))
+    not_used_items = sorted(not_used_items, key = lambda x : x.get('amount'), reverse=True)
     utxo = not_used_items[0]
     using_utxos.append(utxo)
     return utxo
@@ -561,6 +562,52 @@ class SmartContractTest(BitcoinTestFramework):
             print(e)
             print("error invoke contract passed successfully")
 
+    def test_invalidate_contract_block(self):
+        """generate a block with contract txs, then invalidate it."""
+        print("test_invalidate_contract_block")
+        node1 = self.nodes[0]
+        contract_addr = create_new_contract(node1, self.address1, os.path.dirname(__file__) + os.path.sep + "test.gpc")
+        generate_block(node1, self.address1, 1)
+
+        old_root_state_hash = node1.currentrootstatehash()
+        block_height1 = node1.getblockcount()
+        balance0 = get_address_balance(node1, self.address1)
+        deposit_amount = 10
+        deposit_to_contract(node1, self.address1, contract_addr, deposit_amount, 'hi')
+        balance1 = get_address_balance(node1, self.address1)
+        self.assertTrue(balance0 > balance1 + deposit_amount) # some utxo is used for deposit and call contract
+        block_hash = generate_block(node1, self.address2, 1)[0]
+        print("block hash: %s" % block_hash)
+
+        contract_info = node1.getsimplecontractinfo(contract_addr)
+        print(contract_info)
+        self.assertEqual(contract_info['id'], contract_addr)
+        balance2 = get_address_balance(node1, self.address1)
+        # self.assertTrue(balance1 > balance2)
+        block_height2 = node1.getblockcount()
+        self.assertEqual(block_height1 + 1, block_height2)
+        root_state_hash_after_block = node1.currentrootstatehash()
+        self.assertTrue(old_root_state_hash != root_state_hash_after_block)
+
+        node1.invalidateblock(block_hash)
+        block_height3 = node1.getblockcount()
+        self.assertEqual(block_height1, block_height3)
+
+        try:
+            contract_info = node1.getsimplecontractinfo(contract_addr)
+            print(contract_info)
+            self.assertTrue(False, "shouldn't get contract info after rollbacked")
+        except Exception as _:
+            pass
+        root_state_hash_after_invalidate = node1.currentrootstatehash()
+        self.assertEqual(old_root_state_hash, root_state_hash_after_invalidate)
+
+        balance3 = get_address_balance(node1, self.address1)
+        print("balance0: %s, balance1: %s, balance2: %s, balance3: %s" % (str(balance0), str(balance1), str(balance2), str(balance3)))
+        self.assertTrue(balance1 == balance3)  # txs in block invalated will back to mempool
+
+        generate_block(node1, self.address2, 1)
+
     def deposit_to_contract(self, mine=True):
         print("deposit_to_contract")
         if mine:
@@ -1075,6 +1122,9 @@ class SmartContractTest(BitcoinTestFramework):
         self.created_contract_addr = self.test_create_contract()
         native_contract_addr = self.test_create_native_contract()
 
+        # self.test_invalidate_contract_block()
+        # return
+
         # self.test_demo_native_contract()
         self.test_dgp_native_contract()
         self.test_get_contract_info()
@@ -1101,8 +1151,9 @@ class SmartContractTest(BitcoinTestFramework):
         self.test_price_feeder_contract()
         self.test_constant_value_token_contract()
 
+        generate_block(self.nodes[0], self.address1, 1)
         self.sync_all()
-        print("block-height after tests is: %d" % self.nodes[0].getblockcount())
+        print("block-height after all tests is: %d" % self.nodes[0].getblockcount())
         self.assertEqual(self.nodes[0].getblockcount(), self.nodes[1].getblockcount())
 
 

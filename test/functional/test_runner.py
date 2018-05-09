@@ -76,6 +76,7 @@ BASE_SCRIPTS= [
     'merkle_blocks.py',
     'receivedby.py',
     'abandonconflict.py',
+    'contract.py',
     'bip68-112-113-p2p.py',
     'rawtransactions.py',
     'reindex.py',
