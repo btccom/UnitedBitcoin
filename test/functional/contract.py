@@ -606,7 +606,7 @@ class SmartContractTest(BitcoinTestFramework):
         print("balance0: %s, balance1: %s, balance2: %s, balance3: %s" % (str(balance0), str(balance1), str(balance2), str(balance3)))
         self.assertTrue(balance1 == balance3)  # txs in block invalated will back to mempool
 
-        generate_block(node1, self.address2, 1)
+        generate_block(node1, self.address1, 1)  # can't same user mine this block again in unittest
 
     def deposit_to_contract(self, mine=True):
         print("deposit_to_contract")
@@ -1108,6 +1108,9 @@ class SmartContractTest(BitcoinTestFramework):
         self.address1 = node1.getnewaddress(self.account1)
         self.address2 = node1.getnewaddress(self.account2)
         self.address3 = node1.getnewaddress(self.account3)
+
+        print("address1: %s\naddress2: %s\naddress3: %s" % (self.address1, self.address2, self.address3))
+
         generate_block(node1, self.address1, 700)
         generate_block(node1, self.address2, 700)
         generate_block(node1, self.address3, 99)
@@ -1121,9 +1124,6 @@ class SmartContractTest(BitcoinTestFramework):
     def run_test(self):
         self.created_contract_addr = self.test_create_contract()
         native_contract_addr = self.test_create_native_contract()
-
-        # self.test_invalidate_contract_block()
-        # return
 
         # self.test_demo_native_contract()
         self.test_dgp_native_contract()
@@ -1150,6 +1150,7 @@ class SmartContractTest(BitcoinTestFramework):
         self.test_token_contract()
         self.test_price_feeder_contract()
         self.test_constant_value_token_contract()
+        self.test_invalidate_contract_block()
 
         generate_block(self.nodes[0], self.address1, 1)
         self.sync_all()
