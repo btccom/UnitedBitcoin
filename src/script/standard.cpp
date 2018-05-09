@@ -8,6 +8,7 @@
 #include <pubkey.h>
 #include <script/script.h>
 #include <policy/policy.h>
+#include <chainparams.h>
 #include <validation.h>
 #include <util.h>
 #include <utilstrencodings.h>
@@ -120,14 +121,17 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
     }
 
 	// process root_state_hash template
-	if (scriptPubKey.size() >= 2 && scriptPubKey[scriptPubKey.size() - 1] == OP_ROOT_STATE_HASH) {
-		std::vector<unsigned char> result;
-		opcodetype opcode;
-		auto pc = scriptPubKey.begin();
-		if (scriptPubKey.GetOp(pc, opcode, result)) {
-			typeRet = TX_ROOT_STATE_HASH;
-			vSolutionsRet.push_back(result);
-			return true;
+	auto allow_contract = (chainActive.Height() + 1) >= Params().GetConsensus().UBCONTRACT_Height;
+	if (allow_contract) {
+		if (scriptPubKey.size() >= 2 && scriptPubKey[scriptPubKey.size() - 1] == OP_ROOT_STATE_HASH) {
+			std::vector<unsigned char> result;
+			opcodetype opcode;
+			auto pc = scriptPubKey.begin();
+			if (scriptPubKey.GetOp(pc, opcode, result)) {
+				typeRet = TX_ROOT_STATE_HASH;
+				vSolutionsRet.push_back(result);
+				return true;
+			}
 		}
 	}
 
