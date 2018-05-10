@@ -608,6 +608,68 @@ class SmartContractTest(BitcoinTestFramework):
 
         generate_block(node1, self.address1, 1)  # can't same user mine this block again in unittest
 
+    def test_spend_utxo_withdrawed_from_contract(self):
+        self.log.info("test_spend_utxo_withdrawed_from_contract")
+        node1 = self.nodes[0]
+        caller_addr = self.address1
+        contract_addr = self.created_contract_addr
+        contract = node1.getcontractinfo(contract_addr)
+        print("contract info: ", contract)
+        deposit_amount1 = 0.3
+        deposit_to_contract(node1, caller_addr, contract_addr, deposit_amount1, "memo123")
+        generate_block(node1, caller_addr, 1)
+
+        # withdraw from contract
+        withdraw_amount = "0.3"
+        withdraw_txid = invoke_contract_api(node1, caller_addr, contract_addr, "withdraw",
+                                          str(int(Decimal(withdraw_amount) * config['PRECISION'])), {
+                                              caller_addr: Decimal(withdraw_amount)
+                                          }, {
+                                              contract_addr: Decimal(withdraw_amount)
+                                          })
+        withdraw_received_amount = Decimal(withdraw_amount) - Decimal(0.01)
+        generate_block(node1, self.address3, 1)
+        withdraw_tx = node1.decoderawtransaction(node1.getrawtransaction(withdraw_txid))
+        print("withdraw tx: ", withdraw_tx)
+        withdraw_tx_out = list(filter(lambda o : o['scriptPubKey']['type'] == 'pubkeyhash' and len(o['scriptPubKey'].get('addresses', []))>0 and o['scriptPubKey']['addresses'][0] == caller_addr, withdraw_tx['vout']))[0]['n']
+        withdraw_tx_outpoint = withdraw_tx['vout'][withdraw_tx_out]
+        print("withdraw out: ", withdraw_tx_outpoint)
+        generate_block(node1, self.address3, 100)  # make sure no new matured block-rewards
+
+        old_balance_of_address1 = get_address_balance(node1, self.address1)
+        old_balance_of_address2 = get_address_balance(node1, self.address2)
+        # spend the tx-out
+        fee = 0.0001
+        vin = [
+            {'txid': withdraw_txid, 'vout': withdraw_tx_out},
+        ]
+        vout = {
+            self.address2: '%.6f' % float(Decimal(withdraw_received_amount) - Decimal(fee)),
+        }
+        # vout too large, need change
+        if withdraw_tx_outpoint['value'] > Decimal(withdraw_received_amount):
+            vout[self.address1] = "%.6f" % float(Decimal(withdraw_tx_outpoint['value']) - Decimal(withdraw_received_amount))
+
+        print("vin", vin)
+        print("vout", vout)
+        spend_tx_hex = node1.createrawtransaction(vin, vout)
+        address1_pubkey = node1.validateaddress(self.address1)['scriptPubKey']
+        print(spend_tx_hex)
+        print(address1_pubkey)
+        signed_spend_tx_hex = node1.signrawtransaction(spend_tx_hex, [
+            {
+                'txid': withdraw_txid, 'vout': withdraw_tx_out, 'scriptPubKey': address1_pubkey,
+            }
+        ])['hex']
+        spend_txid = node1.sendrawtransaction(signed_spend_tx_hex)
+        generate_block(node1, self.address3, 1)
+        new_balance_of_address1 = get_address_balance(node1, self.address1)
+        new_balance_of_address2 = get_address_balance(node1, self.address2)
+        self.log.info("withdraw_received_amount: %.6f" % float(withdraw_received_amount))
+        print(old_balance_of_address1, old_balance_of_address2, new_balance_of_address1, new_balance_of_address2)
+        self.assertEqual("%.6f" % float(new_balance_of_address2), "%.6f" % float(Decimal(old_balance_of_address2) + Decimal(withdraw_received_amount) - Decimal(fee)))
+        self.assertEqual("%.6f" % float(new_balance_of_address1), "%.6f" % float(Decimal(old_balance_of_address1) - Decimal(withdraw_received_amount)))
+
     def deposit_to_contract(self, mine=True):
         print("deposit_to_contract")
         if mine:
@@ -1125,7 +1187,6 @@ class SmartContractTest(BitcoinTestFramework):
         self.created_contract_addr = self.test_create_contract()
         native_contract_addr = self.test_create_native_contract()
 
-        # self.test_demo_native_contract()
         self.test_dgp_native_contract()
         self.test_get_contract_info()
         self.test_get_simple_contract_info()
@@ -1151,6 +1212,7 @@ class SmartContractTest(BitcoinTestFramework):
         self.test_price_feeder_contract()
         self.test_constant_value_token_contract()
         self.test_invalidate_contract_block()
+        self.test_spend_utxo_withdrawed_from_contract()
 
         generate_block(self.nodes[0], self.address1, 1)
         self.sync_all()
