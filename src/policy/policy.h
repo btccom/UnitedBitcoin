@@ -16,6 +16,17 @@
 class CCoinsViewCache;
 class CTxOut;
 
+static const uint64_t DEFAULT_MIN_GAS_PRICE = 10;
+static const uint64_t MIN_GAS_PRICE_HARD_MAX_LIMIT = 100000; // hard limit of biggest min_gas_price
+static const uint64_t DEFAULT_BLOCK_GAS_LIMIT = 40000000;
+static const uint64_t DEFAULT_MIN_GAS_COUNT = 10;
+static const uint64_t MAX_CONTRACT_BYTECODE_STORE_FEE_GAS = 10000;
+static const uint64_t MaxBlockSerSize = 8000000;
+
+/** Default for -blockmaxsize, which controls the maximum size of block the mining code will create **/
+// static const unsigned int DEFAULT_BLOCK_MAX_SIZE = 3200000;
+/** Default for -blockprioritysize, maximum space for zero/low-fee transactions **/
+static const unsigned int DEFAULT_BLOCK_PRIORITY_SIZE = 0;
 /** Default for -blockmaxweight, which controls the range of block weights the mining code will create **/
 static const unsigned int DEFAULT_BLOCK_MAX_WEIGHT = MaxBlockSize(std::numeric_limits<uint64_t>::max()) - 4000;
 

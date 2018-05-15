@@ -43,13 +43,28 @@
 #include <warnings.h>
 #include <pubkey.h>
 #include <base58.h>
+
+#include <btc_uvm_api.h>
+#include <contract_engine/contract_helper.hpp>
+#include <contract_engine/pending_state.hpp>
+#include <contract_engine/native_contract.hpp>
+
 #include <future>
 #include <atomic>
 #include <sstream>
+#include <list>
 
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <boost/thread.hpp>
+#include <boost/scope_exit.hpp>
+#include <fc/array.hpp>
+#include <fc/crypto/ripemd160.hpp>
+#include <fc/crypto/elliptic.hpp>
+#include <fc/crypto/base58.hpp>
+#include <boost/uuid/sha1.hpp>
+#include <exception>
+#include <contract_storage/contract_storage.hpp>
 
 #if defined(NDEBUG)
 # error "Bitcoin cannot be compiled without assertions."
@@ -163,7 +178,7 @@ public:
     bool AcceptBlock(const std::shared_ptr<const CBlock>& pblock, CValidationState& state, const CChainParams& chainparams, CBlockIndex** ppindex, bool fRequested, const CDiskBlockPos* dbp, bool* fNewBlock);
 
     // Block (dis)connection on a given view:
-    DisconnectResult DisconnectBlock(const CBlock& block, const CBlockIndex* pindex, CCoinsViewCache& view);
+    DisconnectResult DisconnectBlock(const CBlock& block, const CBlockIndex* pindex, CCoinsViewCache& view, bool only_reset_root_state_hash=false);
     bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pindex,
                     CCoinsViewCache& view, const CChainParams& chainparams, bool fJustCheck = false);
 
@@ -540,12 +555,116 @@ static bool CheckInputsFromMempoolAndCache(const CTransaction& tx, CValidationSt
     return CheckInputs(tx, state, view, true, flags, cacheSigStore, true, txdata);
 }
 
+static bool CheckAddContractTxToMempoolAvailable(const CTransaction& tx, CCoinsViewCache& view, CAmount& txMinGasPrice, std::string& error_out, std::string& short_error_out)
+{
+	if (!tx.HasContractOp())
+		return false;
+    ContractTxConverter converter(tx, &view, nullptr);
+    ExtractContractTX resultConvertContractTx;
+    if (!converter.extractionContractTransactions(resultConvertContractTx)) {
+        error_out = "Contract transaction of the wrong format";
+        short_error_out = "bad-tx-bad-contract-format";
+        return false;
+    }
+
+    uint64_t gasAllTxs = 0;
+    uint64_t sumGas = 0;
+    CAmount nTxFee = view.GetValueIn(tx) - tx.GetValueOut();
+
+    uint64_t blockGasLimit = UINT64_MAX;
+
+    auto minGasPrice = DEFAULT_MIN_GAS_PRICE;
+    auto hardBlockGasLimit = DEFAULT_BLOCK_GAS_LIMIT;
+    auto softBlockGasLimit = hardBlockGasLimit;
+    softBlockGasLimit = std::min(softBlockGasLimit, hardBlockGasLimit);
+
+    size_t contract_call_vout_count = 0;
+    for (const CTxOut& o : tx.vout)
+        contract_call_vout_count += o.scriptPubKey.HasContractOp() ? 1 : 0;
+    for(const auto& withdrawInfo : resultConvertContractTx.contract_withdraw_infos)
+    {
+        nTxFee += withdrawInfo.amount;
+    }
+    auto service = get_contract_storage_service();
+    service->open();
+	std::string error_str;
+    for (ContractTransaction &ctx : resultConvertContractTx.txs) {
+		if (!ctx.is_params_valid(service, nTxFee, sumGas, gasAllTxs, blockGasLimit, error_str)) {
+			error_out = error_str;
+			short_error_out = error_str;
+			return false;
+		}
+        sumGas += ctx.params.gasLimit * ctx.params.gasPrice;
+        nTxFee -= ctx.params.deposit_amount;
+        gasAllTxs += ctx.params.gasLimit;
+        if (txMinGasPrice != 0) {
+            txMinGasPrice = std::min(txMinGasPrice, (CAmount) ctx.params.gasPrice);
+        }
+        else {
+            txMinGasPrice = ctx.params.gasPrice;
+        }
+    }
+    if (contract_call_vout_count > resultConvertContractTx.txs.size()) {
+        error_out = "bad-txns-incorrect-format";
+        short_error_out = "bad-txns-incorrect-format";
+        return false;
+    }
+    // attempt to evaluate this contract transaction
+    const auto& old_root_state_hash = service->current_root_state_hash();
+    CBlock block;
+    block.vtx.push_back(MakeTransactionRef(CTransaction(tx)));
+    ContractExec exec(service.get(), block, resultConvertContractTx.txs, hardBlockGasLimit, nTxFee);
+    BOOST_SCOPE_EXIT_ALL(&) {
+        service->rollback_contract_state(old_root_state_hash);
+    };
+
+    if (!exec.performByteCode()) {
+        //error, don't add contract
+        if(!exec.pending_contract_exec_result.error_message.empty()) {
+            error_out = exec.pending_contract_exec_result.error_message;
+            short_error_out = exec.pending_contract_exec_result.error_message;
+            return false;
+        }
+        else {
+            error_out = "bad-contracttx-execution";
+            short_error_out = "bad-contracttx-execution";
+            return false;
+        }
+    }
+    ContractExecResult testExecResult;
+    if (!exec.processingResults(testExecResult)) {
+        error_out = "bad-contracttx-execution";
+        short_error_out = "bad-contracttx-execution";
+        return false;
+    }
+    if (testExecResult.usedGas > softBlockGasLimit) {
+        //if this transaction could cause block gas limit to be exceeded, then don't add it
+        error_out = "bad-contracttx-execution";
+        short_error_out = "bad-contracttx-execution";
+        return false;
+    }
+    // check withdraw-from-info correct
+    if (!testExecResult.match_contract_withdraw_infos(resultConvertContractTx.contract_withdraw_infos)) {
+        error_out = "bad-contracttx-execution-with-invalid-withdraw-infos";
+        short_error_out = "bad-contracttx-execution-with-invalid-withdraw-infos";
+        return false;
+    }
+    // commit changes than can generate new root state hash
+    if (!exec.commit_changes(service)) {
+        error_out = "bad-contracttx-execution";
+        short_error_out = "bad-contracttx-execution";
+        return false;
+    }
+    return true;
+}
+
 static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool& pool, CValidationState& state, const CTransactionRef& ptx,
                               bool* pfMissingInputs, int64_t nAcceptTime, std::list<CTransactionRef>* plTxnReplaced,
                               bool bypass_limits, const CAmount& nAbsurdFee, std::vector<COutPoint>& coins_to_uncache)
 {
     const CTransaction& tx = *ptx;
     const uint256 hash = tx.GetHash();
+	CAmount nValueIn = 0;
     AssertLockHeld(cs_main);
     LOCK(pool.cs); // mempool "read lock" (held through GetMainSignals().TransactionAddedToMempool())
     if (pfMissingInputs) {
@@ -658,6 +777,7 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 
         // Bring the best block into scope
         view.GetBestBlock();
+		nValueIn = view.GetValueIn(tx);
 
         // we have all inputs cached now, so switch back to dummy, so we don't need to keep lock on mempool
         view.SetBackend(dummy);
@@ -685,6 +805,24 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
 
         int64_t nSigOpsCost = GetTransactionSigOpCost(tx, view, STANDARD_SCRIPT_VERIFY_FLAGS);
 
+		CAmount nValueOut = tx.GetValueOut();
+		CAmount txMinGasPrice = 0;
+
+		bool allow_contract = chainActive.Tip() && ((chainActive.Tip()->nHeight + 1) >= Params().GetConsensus().UBCONTRACT_Height);
+		if(!allow_contract && (tx.HasContractOp() || tx.HasOpSpend()))
+			return state.DoS(100, error("ConnectBlock(): Contract tx not allowed"), REJECT_INVALID, "contract-tx-not-allowed");
+		// contract
+		if (tx.HasContractOp()) {
+			std::string error_out;
+			std::string short_error_out;
+			if (!CheckAddContractTxToMempoolAvailable(tx, view, txMinGasPrice, error_out, short_error_out)) {
+				return state.DoS(100, error("AcceptContractTxToMempool(): %s", error_out.c_str()), REJECT_INVALID, short_error_out.c_str());
+			}
+		} else if(tx.HasOpSpend()) {
+            return state.DoS(100, false, REJECT_INVALID, "bad-contracttx-incorrect-format");
+        }
+		// end contract
+
         // nModifiedFees includes any fee deltas from PrioritiseTransaction
         CAmount nModifiedFees = nFees;
         pool.ApplyDelta(hash, nModifiedFees);
@@ -701,7 +839,7 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
         }
 
         CTxMemPoolEntry entry(ptx, nFees, nAcceptTime, chainActive.Height(),
-                              fSpendsCoinbase, nSigOpsCost, lp);
+                              fSpendsCoinbase, nSigOpsCost, lp, txMinGasPrice);
         unsigned int nSize = entry.GetTxSize();
 
         // Check that the transaction doesn't have an excessive number of
@@ -1034,7 +1172,6 @@ bool GetTransaction(const uint256& hash, CTransactionRef& txOut, const Consensus
                     return error("%s: txid mismatch", __func__);
                 return true;
             }
-
             // transaction not found in index, nothing more can be done
             return false;
         }
@@ -1060,10 +1197,6 @@ bool GetTransaction(const uint256& hash, CTransactionRef& txOut, const Consensus
 
     return false;
 }
-
-
-
-
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -1110,8 +1243,12 @@ bool ReadBlockFromDisk(CBlock& block, const CDiskBlockPos& pos, const Consensus:
     }
 
     // Check the header
-    if (!CheckProofOfWork(block.GetHash(), block.hashPrevBlock, block.nBits, consensusParams))
-        return error("ReadBlockFromDisk: Errors in block header at %s", pos.ToString());
+        
+	if (!block.IsProofOfStake()) 
+	{
+        if (!CheckProofOfWork(block.GetHash(), block.hashPrevBlock, block.nBits, consensusParams))
+            return error("ReadBlockFromDisk: Errors in block header at %s", pos.ToString());
+    }
 
     return true;
 }
@@ -1578,7 +1715,7 @@ int ApplyTxInUndo(Coin&& undo, CCoinsViewCache& view, const COutPoint& out)
 
 /** Undo the effects of this block (with given index) on the UTXO set represented by coins.
  *  When FAILED is returned, view is left in an indeterminate state. */
-DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockIndex* pindex, CCoinsViewCache& view)
+DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockIndex* pindex, CCoinsViewCache& view, bool only_reset_root_state_hash)
 {
     bool fClean = true;
 
@@ -1598,6 +1735,10 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
         const CTransaction &tx = *(block.vtx[i]);
         uint256 hash = tx.GetHash();
         bool is_coinbase = tx.IsCoinBase();
+		bool is_coinstake = tx.IsCoinStake();
+		
+		if(is_coinstake)
+			is_coinbase = is_coinstake;
 
         // Check that all outputs are available and match the outputs in the block itself
         // exactly.
@@ -1606,6 +1747,8 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
                 COutPoint out(hash, o);
                 Coin coin;
                 bool is_spent = view.SpendCoin(out, &coin);
+				if(is_coinstake && tx.vout[o].IsEmpty())
+					continue;
                 if (!is_spent || tx.vout[o] != coin.out || pindex->nHeight != coin.nHeight || is_coinbase != coin.fCoinBase) {
                     fClean = false; // transaction output mismatch
                 }
@@ -1631,6 +1774,37 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
 
     // move best block pointer to prevout block
     view.SetBestBlock(pindex->pprev->GetBlockHash());
+
+    // contract storage service rollback
+    if(pindex->nHeight >= Params().GetConsensus().UBCONTRACT_Height) {
+        auto prev_block_index = pindex->pprev;
+		if (prev_block_index) {
+			CBlock prev_block;
+			auto res = ReadBlockFromDisk(prev_block, prev_block_index, Params().GetConsensus());
+			if(!res)
+				return DISCONNECT_FAILED;
+			const auto& coinbase_tx = *(prev_block.vtx[0]);
+			// get root state hash from prev_block coinbase vout
+			auto maybe_block_root_state_hash = get_root_state_hash_from_block(&prev_block);
+			std::string block_root_state_hash = maybe_block_root_state_hash ? *maybe_block_root_state_hash : std::string(EMPTY_COMMIT_ID);
+			
+			auto service = get_contract_storage_service();
+			service->open();
+			try {
+				if (only_reset_root_state_hash)
+					service->reset_root_state_hash(block_root_state_hash);
+				else
+					service->rollback_contract_state(block_root_state_hash);
+			}
+			catch (const ::contract::storage::ContractStorageException& e) {
+				std::cout << "DisconnectBlock(): " << e.what() << std::endl;
+				return DISCONNECT_FAILED;
+			}
+		}
+		else {
+			return DISCONNECT_FAILED;
+		}
+    }
 
     return fClean ? DISCONNECT_OK : DISCONNECT_UNCLEAN;
 }
@@ -1708,11 +1882,12 @@ void ThreadScriptCheck() {
 
 // Protected by cs_main
 VersionBitsCache versionbitscache;
-
-int32_t ComputeBlockVersion(const CBlockIndex* pindexPrev, const Consensus::Params& params)
+int32_t ComputeBlockVersion(const CBlockIndex* pindexPrev, const Consensus::Params& params, uint32_t miningType)
 {
     LOCK(cs_main);
     int32_t nVersion = VERSIONBITS_TOP_BITS;
+    if(pindexPrev!=nullptr && pindexPrev->nHeight+1 >= Params().GetConsensus().UBCONTRACT_Height)
+        nVersion = VERSIONBITS_TOP_BITS|miningType;
 
     for (int i = 0; i < (int)Consensus::MAX_VERSION_BITS_DEPLOYMENTS; i++) {
         ThresholdState state = VersionBitsState(pindexPrev, params, (Consensus::DeploymentPos)i, versionbitscache);
@@ -1742,9 +1917,15 @@ public:
 
     bool Condition(const CBlockIndex* pindex, const Consensus::Params& params) const override
     {
+    	uint32_t miningType = MINING_TYPE_POW;
+		if (pindex->IsProofOfWork())
+			miningType = MINING_TYPE_POW;
+		else
+			miningType = MINING_TYPE_POS;
+	
         return ((pindex->nVersion & VERSIONBITS_TOP_MASK) == VERSIONBITS_TOP_BITS) &&
                ((pindex->nVersion >> bit) & 1) != 0 &&
-               ((ComputeBlockVersion(pindex->pprev, params) >> bit) & 1) == 0;
+               ((ComputeBlockVersion(pindex->pprev, params,miningType) >> bit) & 1) == 0;
     }
 };
 
@@ -1793,6 +1974,955 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex* pindex, const Consens
 }
 
 
+namespace uvm {
+    namespace blockchain {
+
+#define PRINTABLE_CHAR(chr) \
+if (chr >= 0 && chr <= 9)  \
+    chr = chr + '0'; \
+else \
+    chr = chr + 'a' - 10;
+
+        static std::string to_printable_hex(unsigned char chr)
+        {
+            unsigned char high = chr >> 4;
+            unsigned char low = chr & 0x0F;
+            char tmp[16];
+
+            PRINTABLE_CHAR(high);
+            PRINTABLE_CHAR(low);
+
+            snprintf(tmp, sizeof(tmp), "%c%c", high, low);
+            return std::string(tmp);
+        }
+
+        std::string Code::GetHash() const
+        {
+            std::string hashstr = "";
+            boost::uuids::detail::sha1 sha;
+            unsigned int check_digest[5];
+            sha.process_bytes(code.data(), code.size());
+            sha.get_digest(check_digest);
+            for (int i = 0; i < 5; ++i)
+            {
+                unsigned char chr1 = (check_digest[i] & 0xFF000000) >> 24;
+                unsigned char chr2 = (check_digest[i] & 0x00FF0000) >> 16;
+                unsigned char chr3 = (check_digest[i] & 0x0000FF00) >> 8;
+                unsigned char chr4 = (check_digest[i] & 0x000000FF);
+
+                hashstr = hashstr + to_printable_hex(chr1) + to_printable_hex(chr2) +
+                          to_printable_hex(chr3) + to_printable_hex(chr4);
+            }
+            return hashstr;
+        }
+
+        void Code::SetApis(char* module_apis[], int count, int api_type)
+        {
+            if (api_type == ContractApiType::chain)
+            {
+                abi.clear();
+                for (int i = 0; i < count; i++)
+                    abi.insert(module_apis[i]);
+            }
+            else if (api_type == ContractApiType::offline)
+            {
+                offline_abi.clear();
+                for (int i = 0; i < count; i++)
+                    offline_abi.insert(module_apis[i]);
+            }
+            else if (api_type == ContractApiType::event)
+            {
+                events.clear();
+                for (int i = 0; i < count; i++)
+                    events.insert(module_apis[i]);
+            }
+        }
+
+        bool Code::valid() const
+        {
+            //FC_ASSERT(0);
+            //return false;
+            return true;
+        }
+
+        std::vector<char> Code::pack() const
+        {
+            return fc::raw::pack(*this);
+        }
+
+        // this may cause exception
+        Code Code::unpack(const std::vector<unsigned char>& data)
+        {
+            std::vector<char> char_datas(data.size());
+            memcpy(char_datas.data(), data.data(), data.size());
+            return fc::raw::unpack<Code>(char_datas);
+        }
+
+        // this may cause exception
+        Code Code::unpack(const std::vector<char>& data)
+        {
+            return fc::raw::unpack<Code>(data);
+        }
+
+    }
+}
+
+
+using uvm::lua::api::global_uvm_chain_api;
+
+bool ContractExec::performByteCode()
+{
+    if(!global_uvm_chain_api)
+    {
+        global_uvm_chain_api = new uvm::lua::api::BtcUvmChainApi();
+    }
+    for(ContractTransaction &tx : txs)
+    {
+        blockchain::contract_engine::ContractEngineBuilder engine_builder;
+        const auto &params = tx.params;
+        if(params.version != CONTRACT_MAJOR_VERSION) // now only support specific contract verion
+        {
+            pending_contract_exec_result.exit_code = 1;
+            pending_contract_exec_result.error_message = "contract version invalid";
+            return false;
+        }
+		if ((0 != params.gasLimit) && (params.gasLimit < DEFAULT_MIN_GAS_COUNT)) {
+			pending_contract_exec_result.exit_code = 1;
+			pending_contract_exec_result.error_message = "too little gas limit";
+			return false;
+		}
+        const auto &caller = params.caller;
+        const auto &caller_address = params.caller_address;
+
+		blockchain::contract::native_contract_sender sender;
+		sender.caller_address = caller_address;
+		sender.block_number = chainActive.Height();
+
+        engine_builder.set_caller(caller, caller_address);
+        auto engine = engine_builder.build();
+        engine->set_gas_limit(params.gasLimit);
+		CAmount gas_used_of_native_contract = 0;
+		bool is_native_contract_exec = false;
+        std::string api_result_json_string;
+
+		blockchain::contract::PendingState pending_state(storage_service);
+        pending_state.tx_id = tx.tx_id;
+        pending_state.nTxFee = nTxFee;
+		pending_state.origin_opcode = tx.opcode;
+		std::shared_ptr<blockchain::contract::abstract_native_contract> native_contract_info;
+
+		if (OP_CREATE == tx.opcode)
+		{
+            ContractInfo contract_info;
+            contract_info.address = params.contract_address;
+            for (const auto& item : params.code.abi)
+                contract_info.apis.push_back(item);
+            std::sort(contract_info.apis.begin(), contract_info.apis.end());
+            for (const auto& item : params.code.offline_abi)
+                contract_info.offline_apis.push_back(item);
+            std::sort(contract_info.offline_apis.begin(), contract_info.offline_apis.end());
+            contract_info.code = params.code;
+			pending_state.pending_contracts_to_create[contract_info.address] = contract_info;
+		}
+		else if (OP_CREATE_NATIVE == tx.opcode) {
+			is_native_contract_exec = true;
+			ContractInfo contract_info;
+			contract_info.address = params.contract_address;
+			native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(&pending_state, params.template_name, params.contract_address, sender);
+			if (!native_contract_info) {
+				pending_contract_exec_result.exit_code = 1;
+				pending_contract_exec_result.error_message = std::string("Can't find contract template ") + params.template_name;
+				return false;
+			}
+			for (const auto& item : native_contract_info->apis())
+				contract_info.apis.push_back(item);
+			std::sort(contract_info.apis.begin(), contract_info.apis.end());
+			for (const auto& item : native_contract_info->offline_apis())
+				contract_info.offline_apis.push_back(item);
+			std::sort(contract_info.offline_apis.begin(), contract_info.offline_apis.end());
+			contract_info.native_contract_info = native_contract_info.get();
+			pending_state.pending_contracts_to_create[contract_info.address] = contract_info;
+		}
+
+		engine->set_state_pointer_value("evaluator", &pending_state);
+		engine->set_state_pointer_value("storage_service", storage_service);
+
+        if(OP_CREATE == tx.opcode) {
+            try {
+                engine->execute_contract_init_by_address(params.contract_address, params.api_arg, &api_result_json_string);
+            }
+            catch(uvm::core::UvmException& e)
+            {
+                pending_contract_exec_result.exit_code = 1;
+                pending_contract_exec_result.error_message = e.what();
+                return false;
+            }
+		}
+		else if (OP_CREATE_NATIVE == tx.opcode) {
+			try {
+				is_native_contract_exec = true;
+				const CAmount gas_needed = DEFAULT_MIN_GAS_COUNT;
+				const auto& exec_result = native_contract_info->invoke("init", params.api_arg);
+				pending_state.contract_storage_changes = exec_result.contract_storage_changes;
+				pending_state.balance_changes = exec_result.balance_changes;
+				pending_state.contract_upgrade_infos = exec_result.contract_upgrade_infos;
+				pending_state.events = exec_result.events;
+				api_result_json_string = exec_result.api_result;
+				gas_used_of_native_contract = gas_needed;
+			}
+			catch (uvm::core::UvmException& e)
+			{
+				pending_contract_exec_result.exit_code = 1;
+				pending_contract_exec_result.error_message = e.what();
+				return false;
+			}
+		}
+		else if (OP_CALL == tx.opcode) {
+            if(params.api_name.empty()) {
+                pending_contract_exec_result.exit_code = 1;
+                pending_contract_exec_result.error_message = "contract api name to be called can't be empty";
+                return false;
+            }
+			auto contract_info = storage_service->get_contract_info(params.contract_address);
+			if (!contract_info) {
+				pending_contract_exec_result.exit_code = 1;
+				pending_contract_exec_result.error_message = std::string("Can't find contract ") + params.contract_address;
+				return false;
+			}
+            try {
+				if ((std::find(contract_info->apis.begin(), contract_info->apis.end(), params.api_name) == contract_info->apis.end())
+					&& (std::find(contract_info->offline_apis.begin(), contract_info->offline_apis.end(), params.api_name) == contract_info->offline_apis.end())) {
+					auto error_str = std::string("Can't find api ") + params.api_name + " in contract " + contract_info->id;
+					throw uvm::core::UvmException(error_str.c_str());
+				}
+				if (contract_info->is_native) {
+					is_native_contract_exec = true;
+					native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(&pending_state, contract_info->contract_template_key, contract_info->id, sender);
+					if (!native_contract_info) {
+						auto error_str = std::string("Can't find native contract template ") + contract_info->contract_template_key;
+						throw uvm::core::UvmException(error_str.c_str());
+					}
+					const CAmount gas_needed = DEFAULT_MIN_GAS_COUNT;
+					const auto& exec_result = native_contract_info->invoke(params.api_name, params.api_arg);
+					pending_state.contract_storage_changes = exec_result.contract_storage_changes;
+					pending_state.balance_changes = exec_result.balance_changes;
+					pending_state.contract_upgrade_infos = exec_result.contract_upgrade_infos;
+					pending_state.events = exec_result.events;
+					api_result_json_string = exec_result.api_result;
+					gas_used_of_native_contract = gas_needed;
+				}
+				else {
+					engine->execute_contract_api_by_address(params.contract_address, params.api_name, params.api_arg, &api_result_json_string);
+				}
+            }
+            catch(uvm::core::UvmException &e)
+            {
+                pending_contract_exec_result.exit_code = 1;
+                pending_contract_exec_result.error_message = e.what();
+                return false;
+            }
+        } else if(OP_UPGRADE == tx.opcode) {
+            // check exist of contract name
+            const auto& exist_contract_with_name = storage_service->find_contract_id_by_name(params.contract_name);
+            if(!exist_contract_with_name.empty())
+            {
+                pending_contract_exec_result.exit_code = 1;
+                pending_contract_exec_result.error_message = "contract name duplicate";
+                return false;
+            }
+            try {
+                auto contract_info = storage_service->get_contract_info(params.contract_address);
+                if (!contract_info) {
+                    auto error_msg = std::string("Can't find this contract ") + params.contract_address;
+                    throw uvm::core::UvmException(error_msg.c_str());
+                }
+                if(contract_info->name.size() > 0) {
+                    auto error_msg = std::string("Can't upgrade contract ") + params.contract_address + " again";
+                    throw uvm::core::UvmException(error_msg.c_str());
+                }
+				
+				if (std::find(contract_info->apis.begin(), contract_info->apis.end(), "on_upgrade") != contract_info->apis.end()) {
+					if (contract_info->is_native) {
+						is_native_contract_exec = true;
+						native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(&pending_state, contract_info->contract_template_key, contract_info->id, sender);
+						if (!native_contract_info) {
+							auto error_str = std::string("Can't find native contract template ") + contract_info->contract_template_key;
+							throw uvm::core::UvmException(error_str.c_str());
+						}
+						const CAmount gas_needed = DEFAULT_MIN_GAS_COUNT;
+						const auto& exec_result = native_contract_info->invoke("on_upgrade", params.api_arg);
+						pending_state.contract_storage_changes = exec_result.contract_storage_changes;
+						pending_state.balance_changes = exec_result.balance_changes;
+						pending_state.events = exec_result.events;
+						api_result_json_string = exec_result.api_result;
+						gas_used_of_native_contract = gas_needed;
+					}
+					else {
+						engine->execute_contract_api_by_address(params.contract_address, "on_upgrade", "",
+							&api_result_json_string);
+					}
+				}
+                ContractBaseInfoForUpdate upgrade_info;
+                upgrade_info.address = params.contract_address;
+                upgrade_info.name = params.contract_name;
+                upgrade_info.description = params.contract_desc;
+                pending_state.contract_upgrade_infos.push_back(upgrade_info);
+            }
+            catch(uvm::core::UvmException &e)
+            {
+                pending_contract_exec_result.exit_code = 1;
+                pending_contract_exec_result.error_message = e.what();
+                return false;
+            }
+        } else if(tx.opcode == OP_DEPOSIT_TO_CONTRACT) {
+            std::string deposit_arg = std::to_string(params.deposit_amount);
+            try {
+				auto contract_info = storage_service->get_contract_info(params.contract_address);
+				if (!contract_info) {
+					auto error_msg = std::string("Can't find this contract ") + params.contract_address;
+					throw uvm::core::UvmException(error_msg.c_str());
+				}
+				if (std::find(contract_info->apis.begin(), contract_info->apis.end(), "on_deposit") != contract_info->apis.end())
+				{
+					if (contract_info->is_native) {
+						is_native_contract_exec = true;
+						native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(&pending_state, contract_info->contract_template_key, contract_info->id, sender);
+						if (!native_contract_info) {
+							auto error_str = std::string("Can't find native contract template ") + contract_info->contract_template_key;
+							throw uvm::core::UvmException(error_str.c_str());
+						}
+						const CAmount gas_needed = DEFAULT_MIN_GAS_COUNT;
+						const auto& exec_result = native_contract_info->invoke("on_deposit", params.api_arg);
+						pending_state.contract_storage_changes = exec_result.contract_storage_changes;
+						pending_state.balance_changes = exec_result.balance_changes;
+						pending_state.events = exec_result.events;
+						api_result_json_string = exec_result.api_result;
+						gas_used_of_native_contract = gas_needed;
+					}
+					else {
+						engine->execute_contract_api_by_address(params.contract_address, "on_deposit", deposit_arg, &api_result_json_string);
+					}
+				}
+                // add balance to contract in storage service
+                pending_state.add_balance_change(params.contract_address, true, true, params.deposit_amount);
+            }
+            catch(uvm::core::UvmException &e)
+            {
+                pending_contract_exec_result.exit_code = 1;
+                pending_contract_exec_result.error_message = e.what();
+                return false;
+            }
+        } else {
+            pending_contract_exec_result.exit_code = 1;
+            pending_contract_exec_result.error_message = std::string("not supported contract opcode ") + std::to_string(tx.opcode);
+            return false;
+        }
+
+		pending_contract_exec_result.contract_storage_changes = pending_state.contract_storage_changes;
+        pending_contract_exec_result.balance_changes = pending_state.balance_changes;
+        pending_contract_exec_result.contract_upgrade_infos = pending_state.contract_upgrade_infos;
+		pending_contract_exec_result.events = pending_state.events;
+		pending_contract_exec_result.api_result = api_result_json_string;
+		pending_contract_exec_result.usedGas = is_native_contract_exec ? gas_used_of_native_contract : engine->gas_used();
+		if (pending_contract_exec_result.usedGas < DEFAULT_MIN_GAS_COUNT)
+			pending_contract_exec_result.usedGas = DEFAULT_MIN_GAS_COUNT;
+		// gas fee of new contract bytecode store
+        if(OP_CREATE == tx.opcode) {
+            auto contract_bytecode_length = params.code.code.size();
+            auto bytecode_store_gas_count = uint64_t(contract_bytecode_length/100); // it cost 1 gas to store each 10 bytes of bytecode
+            if(bytecode_store_gas_count > MAX_CONTRACT_BYTECODE_STORE_FEE_GAS) {
+                bytecode_store_gas_count = MAX_CONTRACT_BYTECODE_STORE_FEE_GAS;
+            }
+            if(pending_contract_exec_result.usedGas > UINT64_MAX - bytecode_store_gas_count) {
+                pending_contract_exec_result.exit_code = 1;
+                pending_contract_exec_result.error_message = "too large gas";
+                return false;
+            }
+            pending_contract_exec_result.usedGas += bytecode_store_gas_count;
+        }
+    }
+    return true;
+}
+
+bool ContractExec::processingResults(ContractExecResult &result)
+{
+    // put result of transfers and valueTransfers, storage changes to contract exec result
+    result = pending_contract_exec_result;
+    return true;
+}
+
+bool ContractExec::commit_changes(std::shared_ptr<::contract::storage::ContractStorageService> service)
+{
+    jsondiff::JsonDiff differ;
+	if (txs.size() > 0 && (OP_CREATE == txs[0].opcode || OP_CREATE_NATIVE == txs[0].opcode))
+	{
+		// save contract info
+		const auto& con_tx = txs[0];
+		auto new_contract_info_to_commit = std::make_shared<::contract::storage::ContractInfo>();
+		new_contract_info_to_commit->id = con_tx.params.contract_address;
+		new_contract_info_to_commit->name = "";
+		new_contract_info_to_commit->is_native = OP_CREATE_NATIVE == txs[0].opcode;
+		new_contract_info_to_commit->txid = txs[0].tx_id.ToString();
+        new_contract_info_to_commit->creator_address = con_tx.params.caller_address;
+		new_contract_info_to_commit->version = con_tx.params.version;
+		::blockchain::contract::native_contract_sender sender;
+		sender.caller_address = con_tx.params.caller_address;
+		sender.block_number = chainActive.Height();
+		if(new_contract_info_to_commit->is_native) {
+		    new_contract_info_to_commit->contract_template_key = con_tx.params.template_name;
+			const auto& native_contract_info = blockchain::contract::native_contract_finder::create_native_contract_by_key(nullptr, con_tx.params.template_name, con_tx.params.contract_address, sender);
+			if (!native_contract_info)
+				return false;
+			for (const auto &api : native_contract_info->apis()) {
+				new_contract_info_to_commit->apis.push_back(api);
+			}
+			for (const auto &api : native_contract_info->offline_apis()) {
+				new_contract_info_to_commit->offline_apis.push_back(api);
+			}
+		} else {
+            new_contract_info_to_commit->bytecode = con_tx.params.code.code;
+            for (const auto &api : con_tx.params.code.abi) {
+                new_contract_info_to_commit->apis.push_back(api);
+            }
+            for (const auto &api : con_tx.params.code.offline_abi) {
+                new_contract_info_to_commit->offline_apis.push_back(api);
+            }
+            for (const auto &p : con_tx.params.code.storage_properties) {
+                new_contract_info_to_commit->storage_types[p.first] = p.second.value;
+            }
+        }
+		service->save_contract_info(new_contract_info_to_commit);
+	}
+	// save contract invoke result
+	// save exec result transfers and storage changes
+	auto contract_changes = std::make_shared<::contract::storage::ContractChanges>();
+	for (const auto& p : pending_contract_exec_result.contract_storage_changes)
+	{
+		const auto& contract_id = p.first;
+		const auto& changes = p.second;
+		if (!changes || changes->is_undefined())
+			continue;
+		const auto& changes_values = changes->value();
+		if (!changes_values.is_object())
+			continue;
+		const auto& changes_value_items = changes_values.as<jsondiff::JsonObject>();
+		::contract::storage::ContractStorageChange change;
+		change.contract_id = contract_id;
+		// ordered iterate changes_value_items keys
+		std::list<std::string> changed_storage_names;
+		for (auto it = changes_value_items.begin(); it != changes_value_items.end(); it++)
+		{
+			changed_storage_names.push_back(it->key());
+		}
+		changed_storage_names.sort();
+		for (const auto& storage_name : changed_storage_names)
+		{
+			const auto& storage_item_changes = changes_value_items[storage_name];
+			::contract::storage::ContractStorageItemChange item_change;
+			item_change.name = storage_name;
+			item_change.diff = std::make_shared<jsondiff::DiffResult>(storage_item_changes);
+			change.items.push_back(item_change);
+		}
+		contract_changes->storage_changes.push_back(change);
+	}
+    // put balance changes
+    for(const auto& transfer_info : pending_contract_exec_result.balance_changes)
+    {
+		if (!transfer_info.is_contract)
+			continue;
+        ::contract::storage::ContractBalanceChange change;
+        change.asset_id = 0;
+        change.address = transfer_info.address;
+        change.amount = transfer_info.amount;
+        change.add = transfer_info.add;
+        change.is_contract = transfer_info.is_contract;
+        change.memo = "";
+        contract_changes->balance_changes.push_back(change);
+    }
+    for(const auto& info : pending_contract_exec_result.contract_upgrade_infos)
+    {
+        ::contract::storage::ContractUpgradeInfo upgrade_info;
+        upgrade_info.contract_id = info.address;
+        if(!ContractHelper::is_valid_contract_name_format(info.name))
+            return false;
+        upgrade_info.name_diff = differ.diff("", info.name);
+        if(info.description != "")
+            upgrade_info.description_diff = differ.diff("", info.description);
+        contract_changes->upgrade_infos.push_back(upgrade_info);
+    }
+	for (const auto& event_info : pending_contract_exec_result.events)
+	{
+		contract_changes->events.push_back(event_info);
+	}
+	try {
+		service->commit_contract_changes(contract_changes);
+	}
+	catch (const ::contract::storage::ContractStorageException& e)
+	{
+		return false;
+	}
+	return true;
+}
+
+bool ContractTxConverter::extractionContractTransactions(ExtractContractTX& contractTx) {
+    std::vector<ContractTransaction> resultTX;
+    std::vector<ContractTransactionParams> resultETP;
+    size_t contract_op_count = 0;
+    size_t spend_op_count = 0;
+
+    for(size_t i = 0; i < txBitcoin.vout.size(); i++) {
+        if(txBitcoin.vout[i].scriptPubKey.HasContractOp()){
+            if(txBitcoin.vout[i].nValue != 0)
+                return false;
+            contract_op_count++;
+            if(receiveStack(txBitcoin.vout[i].scriptPubKey)){
+                ContractTransactionParams params;
+                if(parseContractTXParams(params, i)){
+                    resultTX.push_back(createContractTX(params, i));
+                    resultETP.push_back(params);
+                }else{
+                    return false;
+                }
+            }else{
+                return false;
+            }
+        }
+        else if(txBitcoin.vout[i].scriptPubKey.HasOpSpend()) {
+            if(txBitcoin.vout[i].nValue != 0)
+                return false;
+            spend_op_count++;
+            // get withdraw from contract balance info
+            if(receiveStack(txBitcoin.vout[i].scriptPubKey)){
+                ContractTransactionParams params;
+                if(parseContractTXParams(params, i)){
+                    ContractWithdrawInfo withdrawInfo;
+                    withdrawInfo.from_contract_address = params.withdraw_from_contract_address;
+                    withdrawInfo.amount = params.withdraw_amount;
+                    for(const auto& item : contractTx.contract_withdraw_infos) {
+                        if(item.from_contract_address == withdrawInfo.from_contract_address) {
+                            return false; // withdraw from contract sources must be unique
+                        }
+                    }
+                    contractTx.contract_withdraw_infos.push_back(withdrawInfo);
+                }else{
+                    return false;
+                }
+            }else{
+                return false;
+            }
+        }
+    }
+    if(contract_op_count<1)
+        return false;
+    contractTx.txs = resultTX;
+    contractTx.txs_params = resultETP;
+    return true;
+}
+
+bool ContractTxConverter::receiveStack(const CScript& scriptPubKey) {
+    EvalScript(stack, scriptPubKey, SCRIPT_EXEC_BYTE_CODE, BaseSignatureChecker(), SIGVERSION_BASE, nullptr); // maybe bug here
+    if (stack.empty())
+        return false;
+    CScript scriptRest(stack.back().begin(), stack.back().end());
+    stack.pop_back();
+    opcode = (opcodetype)(*scriptRest.begin());
+    // check contract opcode and operands format
+    if((opcode == OP_CREATE && stack.size() < 5)
+       || (opcode == OP_CREATE_NATIVE && stack.size() < 5)
+       || (opcode == OP_CALL && stack.size() < 7)
+       || (opcode == OP_UPGRADE && stack.size() < 7)
+       || (opcode == OP_DESTROY && stack.size() < 5)
+       || (opcode == OP_DEPOSIT_TO_CONTRACT && stack.size() < 6)
+       || (opcode == OP_SPEND && stack.size() < 2)){
+        stack.clear();
+        return false;
+    }
+    return true;
+}
+
+static std::string GetSenderAddress(const CTransaction& tx, const CCoinsViewCache* coinsView, const std::vector<CTransactionRef>* blockTxs) {
+	CScript script;
+	bool scriptFilled = false; //can't use script.empty() because an empty script is technically valid
+
+							   // First check the current (or in-progress) block for zero-confirmation change spending that won't yet be in txindex
+	if (blockTxs) {
+		for (auto btx : *blockTxs) {
+			if (btx->GetHash() == tx.vin[0].prevout.hash) {
+				script = btx->vout[tx.vin[0].prevout.n].scriptPubKey;
+				scriptFilled = true;
+				break;
+			}
+		}
+	}
+	if (!scriptFilled && coinsView) {
+		script = coinsView->AccessCoin(tx.vin[0].prevout).out.scriptPubKey;
+		scriptFilled = true;
+	}
+	if (!scriptFilled)
+	{
+		CTransactionRef txPrevout;
+		uint256 hashBlock;
+		if (GetTransaction(tx.vin[0].prevout.hash, txPrevout, Params().GetConsensus(), hashBlock, true)) {
+			script = txPrevout->vout[tx.vin[0].prevout.n].scriptPubKey;
+		}
+		else {
+			LogPrintf("Error fetching transaction details of tx %s. This will probably cause more errors", tx.vin[0].prevout.hash.ToString());
+			return "";
+		}
+	}
+
+	CTxDestination addressBit;
+	if (ExtractDestination(script, addressBit)) {
+		if (addressBit.type() == typeid(CKeyID)) {
+			return EncodeDestination(addressBit);
+			// CKeyID senderAddress(boost::get<CKeyID>(addressBit));
+			// return valtype(senderAddress.begin(), senderAddress.end());
+		}
+	}
+	//prevout is not a standard transaction format, so just return 0
+	return "";
+}
+
+bool ContractTransactionParams::check_upgrade_contract_caller(opcodetype opcode, std::shared_ptr<::contract::storage::ContractStorageService> service) const
+{
+    if(opcode != OP_UPGRADE)
+        return true;
+    auto contract_info = service->get_contract_info(contract_address);
+    if(!contract_info)
+        return false;
+    if(contract_info->creator_address != caller_address)
+        return false;
+    if(!contract_info->name.empty())
+        return false;
+    return true;
+}
+
+static bool set_error_str(std::string& error_str, const char* msg) {
+	error_str = msg;
+	return false;
+}
+
+bool ContractTransaction::is_params_valid(std::shared_ptr<::contract::storage::ContractStorageService> service, CAmount nTxFeeRemaining, CAmount sumGasCoin, CAmount gasCountOfAllTxsInBlock, CAmount blockGasLimit, std::string& error_str) const
+{
+	if (nTxFeeRemaining >= 0 && params.deposit_amount >= nTxFeeRemaining)
+		return set_error_str(error_str, "bad-txns-fee-notenough");
+    auto sumGasCoinRemaining = sumGasCoin + params.gasLimit * params.gasPrice;
+	if (sumGasCoinRemaining > UINT64_MAX)
+		return set_error_str(error_str, "bad-tx-gas-stipend-overflow");
+	if (nTxFeeRemaining >= 0 && (sumGasCoinRemaining > (nTxFeeRemaining - params.deposit_amount)))
+		return set_error_str(error_str, "bad-txns-fee-notenough");
+	if (params.gasLimit > DEFAULT_BLOCK_GAS_LIMIT)
+		return set_error_str(error_str, "bad-tx-too-much-gas");
+	if (gasCountOfAllTxsInBlock + params.gasLimit > blockGasLimit)
+		return set_error_str(error_str, "bad-txns-gas-exceeds-blockgaslimit");
+	if ((uint64_t)params.gasPrice < DEFAULT_MIN_GAS_PRICE)
+		return set_error_str(error_str, "bad-tx-low-gas-price");
+	if (!params.check_upgrade_contract_caller(opcode, service))
+		return set_error_str(error_str, "bad-contract-upgrader");
+	return true;
+}
+
+bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& params, size_t contract_op_vout_index) {
+    try{
+        uint64_t gasLimit = 0;
+        uint64_t gasPrice = 0;
+        valtype apiArg;
+        valtype api_name;
+        valtype caller_address;
+        valtype bytecode;
+        valtype template_name;
+        valtype contract_address;
+        valtype contract_name;
+        valtype contract_desc;
+        valtype withdraw_from_contract_address;
+        valtype deposit_memo; // deposit to contract memo
+        uint64_t deposit_amount = 0;
+        uint64_t withdraw_amount = 0;
+        uint32_t version = 0;
+        bool is_create = false;
+        // get contract args from stack
+        switch (opcode) {
+            case OP_CREATE: {
+                // OP_CREATE gasPrice gasLimit caller_address contract_data version
+                gasPrice = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                gasLimit = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                caller_address = stack.back();
+                stack.pop_back();
+                bytecode = stack.back();
+                stack.pop_back();
+                version = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                is_create = true;
+            } break;
+            case OP_CREATE_NATIVE: {
+                // OP_CREATE_NATIVE gasPrice gasLimit caller_address template_name version
+                gasPrice = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                gasLimit = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                caller_address = stack.back();
+                stack.pop_back();
+                template_name = stack.back();
+                stack.pop_back();
+                version = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                is_create = true;
+            } break;
+            case OP_CALL: {
+                // OP_CALL gasPrice gasLimit caller_address contract_address api_name api_arg version
+                gasPrice = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                gasLimit = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                caller_address = stack.back();
+                stack.pop_back();
+                contract_address = stack.back();
+                stack.pop_back();
+                api_name = stack.back();
+                stack.pop_back();
+                apiArg = stack.back();
+                stack.pop_back();
+                version = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+            } break;
+            case OP_UPGRADE: {
+                // OP_UPGRADE gasPrice gasLimit caller_address contract_address contract_name contract_description version
+                gasPrice = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                gasLimit = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                caller_address = stack.back();
+                stack.pop_back();
+                contract_address = stack.back();
+                stack.pop_back();
+                contract_name = stack.back();
+                stack.pop_back();
+                contract_desc = stack.back();
+                stack.pop_back();
+                version = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+            } break;
+            case OP_DEPOSIT_TO_CONTRACT: {
+                // OP_DEPOSIT_TO_CONTRACT gasPrice gasLimit caller_address contract_address amount deposit_arg version
+                gasPrice = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                gasLimit = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                caller_address = stack.back();
+                stack.pop_back();
+                contract_address = stack.back();
+                stack.pop_back();
+                deposit_amount = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                deposit_memo = stack.back();
+                stack.pop_back();
+                version = CScriptNum::vch_to_uint64(stack.back());
+                stack.pop_back();
+                if(deposit_memo.size()>DEPOSIT_TO_CONTRACT_MEMO_MAX_LENGTH)
+                    return false;
+            } break;
+            case OP_SPEND: {
+                // OP_SPEND contract_address withdraw_amount
+				withdraw_from_contract_address = stack.back();
+				stack.pop_back();
+				withdraw_amount = CScriptNum::vch_to_uint64(stack.back());
+				stack.pop_back();
+                if(withdraw_amount <= 0)
+                    return false;
+                if(withdraw_from_contract_address.empty())
+                    return false;
+                ignore_sender_check = true;
+			} break;
+            default: {
+                return false;
+            }
+        }
+        params.version = version;
+        params.gasLimit = gasLimit;
+        if(params.gasLimit < 0)
+            return false;
+        params.gasPrice = gasPrice;
+        if(params.gasPrice <= 0 && opcode != OP_SPEND)
+            return false;
+        params.caller_address = ValtypeUtils::vch_to_string(caller_address);
+
+        if(opcode != OP_SPEND) {
+            CBitcoinAddress caller_addr_obj(params.caller_address);
+            if (!caller_addr_obj.IsValid()) {
+                return false;
+            }
+        }
+
+        if(OP_SPEND == opcode) {
+            if(withdraw_amount <= 0)
+                return false;
+            params.withdraw_amount = withdraw_amount;
+            params.withdraw_from_contract_address = ValtypeUtils::vch_to_string(withdraw_from_contract_address);
+        }
+
+        // check caller_address in vin owners(signed in tx). must be same with first input's address
+		if (txBitcoin.vin.empty())
+			return false;
+		if (!ignore_sender_check)
+		{
+			std::string sender_address;
+			if (view)
+			{
+				Coin first_coin;
+				const auto& first_vin = txBitcoin.vin[0];
+				view->GetCoin(first_vin.prevout, first_coin);
+				const auto& first_coin_script_pub_key = first_coin.out.scriptPubKey;
+				CTxDestination first_vin_address;
+				bool fValidAddress = ExtractDestination(first_coin_script_pub_key, first_vin_address);
+
+				if (!fValidAddress)
+					return false;
+				sender_address = EncodeDestination(first_vin_address);
+			}
+			else
+			{
+				sender_address = GetSenderAddress(txBitcoin, view, blockTransactions);
+			}
+			if (sender_address != params.caller_address)
+				return false;
+		}
+
+        params.caller = "";
+        params.api_name = ValtypeUtils::vch_to_string(api_name);
+        params.api_arg = ValtypeUtils::vch_to_string(apiArg);
+        params.deposit_amount = deposit_amount;
+        params.deposit_memo = ValtypeUtils::vch_to_string(deposit_memo);
+        if(OP_DEPOSIT_TO_CONTRACT == opcode) {
+            if(params.deposit_amount <= 0)
+                return false;
+            if(!ContractHelper::is_valid_deposit_memo_format(params.deposit_memo))
+                return false;
+        }
+        if(bytecode.size() > 0 && is_create) {
+            try {
+                params.code = ContractHelper::load_contract_from_gpc_data(bytecode);
+            } catch (uvm::core::UvmException &e) {
+                LogPrintf(e.what());
+                return false;
+            }
+        } else if(template_name.size() > 0 && is_create) {
+            params.is_native = true;
+            params.template_name = ValtypeUtils::vch_to_string(template_name);
+			if (!blockchain::contract::native_contract_finder::has_native_contract_with_key(params.template_name)) {
+				LogPrintf("can't find native contract template %s\n", params.template_name.c_str());
+				return false;
+			}
+        } else if(is_create) {
+            LogPrintf("empty contract data and template name of create-contract params\n");
+            return false;
+        }
+
+		if (opcode != OP_SPEND)
+		{
+			if (!is_create) {
+				params.contract_address = ValtypeUtils::vch_to_string(contract_address);
+				if (!ContractHelper::is_valid_contract_address_format(params.contract_address))
+					return false;
+			}
+			else {
+				params.contract_address = ContractHelper::generate_contract_address(params.caller_address, txBitcoin, contract_op_vout_index);
+			}
+		}
+
+        if(opcode == OP_UPGRADE) {
+            params.contract_name = ValtypeUtils::vch_to_string(contract_name);
+            if(!ContractHelper::is_valid_contract_name_format(params.contract_name))
+                return false;
+            params.contract_desc = ValtypeUtils::vch_to_string(contract_desc);
+            if(!ContractHelper::is_valid_contract_desc_format(params.contract_desc))
+                return false;
+        }
+        return true;
+    }
+    catch(const scriptnum_error& err){
+        LogPrintf("Incorrect parameters to VM.");
+        return false;
+    }
+}
+ContractTransaction ContractTxConverter::createContractTX(const ContractTransactionParams& etp, const uint32_t nOut) {
+    ContractTransaction txContract;
+    auto &params = txContract.params;
+	params = etp;
+    txContract.opcode = opcode;
+    txContract.tx_id = txBitcoin.GetHash();
+    return txContract;
+}
+
+bool ContractExecResult::match_contract_withdraw_infos(const std::vector<ContractWithdrawInfo> withdraw_infos) const
+{
+    uint32_t withdraw_from_contract_count = 0;
+    for(const auto& transfer_info : balance_changes) {
+        if(transfer_info.is_contract && !transfer_info.add) {
+            // this is withdraw from contract transfer info
+            bool found = false;
+            for(const auto& withdrawInfo : withdraw_infos) {
+                if(withdrawInfo.from_contract_address == transfer_info.address) {
+                    found = true;
+                    if(withdrawInfo.amount != transfer_info.amount)
+                        return false;
+                    break;
+                }
+            }
+            if(!found)
+                return false;
+            withdraw_from_contract_count++;
+        }
+    }
+    if(withdraw_from_contract_count != withdraw_infos.size()) {
+        return false;
+    }
+    return true;
+}
+
+void ContractExecResult::clear() {
+	*this = ContractExecResult();
+}
+
+std::shared_ptr<::contract::storage::ContractStorageService> get_contract_storage_service()
+{
+	fs::path storage_db_path = GetDataDir() / CONTRACT_STORAGE_DB_PATH;
+	fs::path storage_sql_db_path = GetDataDir() / CONTRACT_STORAGE_SQL_DB_PATH;
+	auto service = ::contract::storage::ContractStorageService::get_instance(CONTRACT_STORAGE_MAGIC_NUMBER, storage_db_path.string(), storage_sql_db_path.string());
+	auto chain_height = chainActive.Height();
+	service->set_current_block_height(chain_height);
+	return service;
+}
+
+std::shared_ptr<std::string> get_root_state_hash_from_block(const CBlock* block) {
+    if(block->vtx.empty())
+        return nullptr;
+    const auto& tx = block->vtx[0];
+    if(!tx->IsCoinBase())
+        return nullptr;
+    for (const auto& txout : tx->vout)
+    {
+        txnouttype whichType;
+        std::vector<std::vector<unsigned char> > vSolutions;
+		if (txout.scriptPubKey.size() == 1 && txout.scriptPubKey[0] == OP_TRUE)
+			continue;
+        if (!Solver(txout.scriptPubKey, whichType, vSolutions))
+            return false;
+        if (whichType == TX_ROOT_STATE_HASH)
+        {
+            if (vSolutions.empty())
+            {
+                return nullptr;
+            }
+            if(txout.nValue != 0)
+                return nullptr;
+            const auto& block_root_state_hash = ValtypeUtils::vch_to_string(vSolutions[0]);
+            return std::make_shared<std::string>(block_root_state_hash);
+        }
+    }
+    return nullptr;
+}
 
 static int64_t nTimeCheck = 0;
 static int64_t nTimeForks = 0;
@@ -1936,13 +3066,46 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     blockundo.vtxundo.reserve(block.vtx.size() - 1);
     std::vector<PrecomputedTransactionData> txdata;
     txdata.reserve(block.vtx.size()); // Required so that pointers to individual PrecomputedTransactionData don't get invalidated
+
+    uint64_t blockGasUsed = 0;
+	CBlockIndex* pindexPrev = chainActive.Tip();
+	auto nHeight = pindexPrev->nHeight + 1;
+
+	std::string block_root_state_hash;
+	bool allow_contract = nHeight >= Params().GetConsensus().UBCONTRACT_Height;
+
+    std::shared_ptr<::contract::storage::ContractStorageService> service;
+    std::string old_root_state_hash_before_connect_block;
+    if(allow_contract) {
+        service = get_contract_storage_service();
+        service->open();
+        old_root_state_hash_before_connect_block = service->current_root_state_hash();
+    }
+    bool success_connect_block = false;
+    bool rollbacked = false;
+    BOOST_SCOPE_EXIT_ALL(&) {
+        if(allow_contract && !rollbacked && !success_connect_block) {
+            service->rollback_contract_state(old_root_state_hash_before_connect_block);
+        }
+    };
+
+    if(allow_contract) {
+        auto maybe_root_state_hash_in_block = get_root_state_hash_from_block(&block);
+        if (!maybe_root_state_hash_in_block) {
+            return state.DoS(100, error("can't find root state hash in block"), REJECT_INVALID, "invalid-block-root-state-hash");
+        }
+        block_root_state_hash = *maybe_root_state_hash_in_block;
+    }
+
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
         const CTransaction &tx = *(block.vtx[i]);
+        if(!allow_contract && (tx.HasContractOp() || tx.HasOpSpend()))
+            return false;
 
         nInputs += tx.vin.size();
 
-        if (!tx.IsCoinBase())
+        if (!tx.IsCoinBase() && !(block.IsProofOfStake() && tx.IsCoinStake()))
         {
             CAmount txfee = 0;
             if (!Consensus::CheckTxInputs(tx, state, view, pindex->nHeight, txfee)) {
@@ -1978,7 +3141,10 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
                              REJECT_INVALID, "bad-blk-sigops");
 
         txdata.emplace_back(tx);
-        if (!tx.IsCoinBase())
+
+        auto hasOpSpend = tx.HasOpSpend();
+
+        if (!tx.IsCoinBase() && !(block.IsProofOfStake() && tx.IsCoinStake()))
         {
             std::vector<CScriptCheck> vChecks;
             bool fCacheResults = fJustCheck; /* Don't cache results if we're actually connecting blocks (still consult the cache, though) */
@@ -1986,6 +3152,77 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
                 return error("ConnectBlock(): CheckInputs on %s failed with %s",
                     tx.GetHash().ToString(), FormatStateMessage(state));
             control.Add(vChecks);
+        }
+
+        if(allow_contract) {
+            uint64_t blockGasLimit = UINT64_MAX;
+            if (tx.HasContractOp()) {
+                ContractTxConverter converter(tx, &view, &block.vtx);
+                ExtractContractTX resultConvertContractTx;
+                if (!converter.extractionContractTransactions(resultConvertContractTx)) {
+                    return state.DoS(100, error("ConnectBlock(): Contract transaction of the wrong format"),
+                                     REJECT_INVALID, "bad-tx-bad-contract-format");
+                }
+                uint64_t gasAllTxs = 0;
+                uint64_t sumGas = 0;
+                CAmount nTxFee = view.GetValueIn(tx) - tx.GetValueOut();
+                for (const auto &withdrawInfo : resultConvertContractTx.contract_withdraw_infos) {
+                    nTxFee += withdrawInfo.amount;
+                }
+				std::string error_str;
+                for (ContractTransaction &ctx : resultConvertContractTx.txs) {
+					if (!ctx.is_params_valid(service, nTxFee, sumGas, gasAllTxs, blockGasLimit, error_str)) {
+						std::string full_error_str = std::string("ConnectBlock(): ") + error_str;
+						return state.DoS(100, error(full_error_str.c_str()),
+							REJECT_INVALID, error_str);
+					}
+                    sumGas += ctx.params.gasLimit * ctx.params.gasPrice;
+                    nTxFee -= ctx.params.deposit_amount;
+                    gasAllTxs += ctx.params.gasLimit;
+                }
+
+                ContractExec exec(service.get(), block, resultConvertContractTx.txs, blockGasLimit, nTxFee);
+                const auto &old_root_hash = service->current_root_state_hash();
+                bool success = false;
+                BOOST_SCOPE_EXIT_ALL(service, &old_root_hash, &success) {
+                    if (!success)
+                        service->rollback_contract_state(old_root_hash);
+                };
+                auto execRes = exec.performByteCode();
+                if (!execRes) {
+                    return state.DoS(100,
+                                     error("ConnectBlock(): exec bytecode error"),
+                                     REJECT_INVALID, exec.pending_contract_exec_result.error_message);
+                }
+                ContractExecResult contract_exec_result;
+                exec.processingResults(contract_exec_result);
+                if (contract_exec_result.exit_code != 0)
+                    return state.DoS(100,
+                                     error("ConnectBlock(): exec bytecode error"),
+                                     REJECT_INVALID, exec.pending_contract_exec_result.error_message);
+
+				if (!exec.commit_changes(service)) {
+					return state.DoS(100,
+						error("ConnectBlock(): commit contract result error"),
+						REJECT_INVALID, exec.pending_contract_exec_result.error_message);
+				}
+
+                blockGasUsed += contract_exec_result.usedGas;
+                if (blockGasUsed > blockGasLimit) {
+                    return state.DoS(1000, error("ConnectBlock(): Block exceeds gas limit"), REJECT_INVALID,
+                                     "bad-blk-gaslimit");
+                }
+                // check withdraw-from-contract info correct
+                if (!contract_exec_result.match_contract_withdraw_infos(
+                        resultConvertContractTx.contract_withdraw_infos)) {
+                    return state.DoS(1000, error("ConnectBlock(): Contract tx withdraw info error"), REJECT_INVALID,
+                                     "bad-tx-contractwithdrawinfo");
+                }
+                success = true;
+            } else if (tx.HasOpSpend()) {
+                return state.DoS(1000, error("ConnectBlock(): Contract tx format error"), REJECT_INVALID,
+                                 "bad-tx-contracttx-format");
+            }
         }
 
         CTxUndo undoDummy;
@@ -2009,8 +3246,19 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     int64_t nTime4 = GetTimeMicros(); nTimeVerify += nTime4 - nTime2;
     LogPrint(BCLog::BENCH, "    - Verify %u txins: %.2fms (%.3fms/txin) [%.2fs (%.2fms/blk)]\n", nInputs - 1, MILLI * (nTime4 - nTime2), nInputs <= 1 ? 0 : MILLI * (nTime4 - nTime2) / (nInputs-1), nTimeVerify * MICRO, nTimeVerify * MILLI / nBlocksTotal);
 
-    if (fJustCheck)
-        return true;
+	if (fJustCheck) {
+		return true;
+	}
+
+    if(allow_contract) {
+        const auto &end_root_state_hash = service->current_root_state_hash();
+        if (allow_contract) {
+            if (end_root_state_hash != block_root_state_hash) {
+                return state.DoS(100, error("block contract txs result state not matched with block root state hash"),
+                                 REJECT_INVALID, "block-root-state-hash-invalid-after-contract-exec");
+            }
+        }
+    }
 
     if (!WriteUndoDataForBlock(blockundo, state, pindex, chainparams))
         return false;
@@ -2033,6 +3281,7 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     int64_t nTime6 = GetTimeMicros(); nTimeCallbacks += nTime6 - nTime5;
     LogPrint(BCLog::BENCH, "    - Callbacks: %.2fms [%.2fs (%.2fms/blk)]\n", MILLI * (nTime6 - nTime5), nTimeCallbacks * MICRO, nTimeCallbacks * MILLI / nBlocksTotal);
 
+    success_connect_block = true;
     return true;
 }
 
@@ -2200,7 +3449,12 @@ void static UpdateTip(const CBlockIndex *pindexNew, const CChainParams& chainPar
         // Check the version of the last 100 blocks to see if we need to upgrade:
         for (int i = 0; i < 100 && pindex != nullptr; i++)
         {
-            int32_t nExpectedVersion = ComputeBlockVersion(pindex->pprev, chainParams.GetConsensus());
+			uint32_t miningType = MINING_TYPE_POW;
+			if (pindex->IsProofOfWork())
+				miningType = MINING_TYPE_POW;
+			else
+				miningType = MINING_TYPE_POS;
+            int32_t nExpectedVersion = ComputeBlockVersion(pindex->pprev, chainParams.GetConsensus(),miningType);
             if (pindex->nVersion > VERSIONBITS_LAST_OLD_BLOCK_VERSION && (pindex->nVersion & ~nExpectedVersion) != 0)
                 ++nUpgraded;
             pindex = pindex->pprev;
@@ -2249,7 +3503,7 @@ bool CChainState::DisconnectTip(CValidationState& state, const CChainParams& cha
     {
         CCoinsViewCache view(pcoinsTip.get());
         assert(view.GetBestBlock() == pindexDelete->GetBlockHash());
-        if (DisconnectBlock(block, pindexDelete, view) != DISCONNECT_OK)
+        if (DisconnectBlock(block, pindexDelete, view, false) != DISCONNECT_OK)
             return error("DisconnectTip(): DisconnectBlock %s failed", pindexDelete->GetBlockHash().ToString());
         bool flushed = view.Flush();
         assert(flushed);
@@ -2987,9 +4241,28 @@ static bool FindUndoPos(CValidationState &state, int nFile, CDiskBlockPos &pos, 
 static bool CheckBlockHeader(const CBlockHeader& block, CValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)
 {
     // Check proof of work matches claimed amount
-    if (fCheckPOW && !CheckProofOfWork(block.GetHash(), block.hashPrevBlock, block.nBits, consensusParams))
-        return state.DoS(50, false, REJECT_INVALID, "high-hash", false, "proof of work failed");
-
+	if(fCheckPOW)
+	{
+		if (!block.IsProofOfStake()) 
+		{
+            if (!CheckProofOfWork(block.GetHash(), block.hashPrevBlock, block.nBits, consensusParams))
+                return state.DoS(50, false, REJECT_INVALID, "high-hash", false, "proof of work failed");
+        }
+		else 
+		{
+			uint256 pblockPrevHash = block.hashPrevBlock;
+			auto iter = mapBlockIndex.find(pblockPrevHash);
+			if (iter == mapBlockIndex.end()) 
+				return state.DoS(50, false, REJECT_INVALID, "high-hash", false, "check prev header not exist failed");
+	
+			CBlockIndex* pblockPrev = mapBlockIndex[pblockPrevHash];
+			
+			uint32_t nbits = GetNextWorkRequired(pblockPrev, &block, consensusParams);
+			if (nbits != block.nBits)
+				return state.DoS(50, false, REJECT_INVALID, "high-hash", false, "check block nbits failed");
+	
+		}
+    }
     return true;
 }
 
@@ -3026,14 +4299,30 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
     // checks that use witness data may be performed here.
 
     // Size limits
-    if (block.vtx.empty() || block.vtx.size() * WITNESS_SCALE_FACTOR > MaxBlockSize(std::numeric_limits<uint64_t>::max()) || ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * WITNESS_SCALE_FACTOR > MaxBlockSize(std::numeric_limits<uint64_t>::max()))
-        return state.DoS(100, false, REJECT_INVALID, "bad-blk-length", false, "size limits failed");
+	if (block.vtx.empty() || block.vtx.size() * WITNESS_SCALE_FACTOR > MaxBlockSize(chainActive.Height() + 1) || ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * WITNESS_SCALE_FACTOR > MaxBlockSize(chainActive.Height() + 1)) {
+		auto block_serialized_size = ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS);
+		return state.DoS(100, false, REJECT_INVALID, "bad-blk-length", false, "size limits failed");
+	}
 
     // First transaction must be coinbase, the rest must not be
     if (block.vtx.empty() || !block.vtx[0]->IsCoinBase())
         return state.DoS(100, false, REJECT_INVALID, "bad-cb-missing", false, "first tx is not coinbase");
 
-	// prevblock hash
+	if (block.IsProofOfStake() && !block.vtx[1]->IsCoinStake()) 
+		return state.DoS(100, false, REJECT_INVALID, "bad-cb-missing", false, "ProofOfStake: second tx is not coinstake");
+    // when at POS state, should check whether the pubscript of coinbase is same to the pubscript of coinstake
+    if (block.IsProofOfStake()) 
+    {
+        // ignore mistake POS block's validation
+        if (block.vtx[0]->vout[0].scriptPubKey != block.vtx[1]->vout[1].scriptPubKey)
+            return state.DoS(100, false, REJECT_INVALID, "bad-cb-missing", false, "scriptPubKey of coinbase and scriptPubKey of coinstake is not same");
+    }
+            
+    // disable contract opcodes in coinbase
+    if(block.vtx[0]->HasContractOp())
+        return state.DoS(100, false, REJECT_INVALID, "coinbase-with-contract-op-not-allowed", false, "coinbase tx can't contains contract op");
+
+    // prevblock hash
 	uint256 hashPrevBlock = block.hashPrevBlock;
 	if (hashPrevBlock != uint256()) 
 	{
@@ -3080,6 +4369,9 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
     for (unsigned int i = 1; i < block.vtx.size(); i++)
         if (block.vtx[i]->IsCoinBase())
             return state.DoS(100, false, REJECT_INVALID, "bad-cb-multiple", false, "more than one coinbase");
+    for (unsigned int i = 2; i < block.vtx.size(); i++)
+        if (block.vtx[i]->IsCoinStake())
+            return state.DoS(100, false, REJECT_INVALID, "bad-cb-multiple", false, "more than one coinbase");
 
     // Check transactions
     for (const auto& tx : block.vtx)
@@ -3095,7 +4387,7 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
     if (nSigOps * WITNESS_SCALE_FACTOR > MaxBlockSigops(std::numeric_limits<uint64_t>::max()))
         return state.DoS(100, false, REJECT_INVALID, "bad-blk-sigops", false, "out-of-bounds SigOpCount");
 
-    if (fCheckPOW && fCheckMerkleRoot)
+    if (fCheckMerkleRoot)
         block.fChecked = true;
 
     return true;
@@ -4031,6 +5323,12 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
     int nGoodTransactions = 0;
     CValidationState state;
     int reportDone = 0;
+
+    auto service = get_contract_storage_service();
+    service->open();
+    const auto& old_root_state_hash = service->current_root_state_hash();
+    service->close();
+
     LogPrintf("[0%%]...");
     for (CBlockIndex* pindex = chainActive.Tip(); pindex && pindex->pprev; pindex = pindex->pprev)
     {
@@ -4069,7 +5367,7 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
         // check level 3: check for inconsistencies during memory-only disconnect of tip blocks
         if (nCheckLevel >= 3 && pindex == pindexState && (coins.DynamicMemoryUsage() + pcoinsTip->DynamicMemoryUsage()) <= nCoinCacheUsage) {
             assert(coins.GetBestBlock() == pindex->GetBlockHash());
-            DisconnectResult res = g_chainstate.DisconnectBlock(block, pindex, coins);
+            DisconnectResult res = g_chainstate.DisconnectBlock(block, pindex, coins, true);
             if (res == DISCONNECT_FAILED) {
                 return error("VerifyDB(): *** irrecoverable inconsistency in block data at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
             }
@@ -4097,9 +5395,21 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
             CBlock block;
             if (!ReadBlockFromDisk(block, pindex, chainparams.GetConsensus()))
                 return error("VerifyDB(): *** ReadBlockFromDisk failed at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
-            if (!g_chainstate.ConnectBlock(block, state, pindex, coins, chainparams))
-                return error("VerifyDB(): *** found unconnectable block at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
+            service->open();
+            const auto& old_root_state_hash = service->current_root_state_hash();
+            service->close();
+            if (!g_chainstate.ConnectBlock(block, state, pindex, coins, chainparams)) {
+                service->open();
+                service->rollback_contract_state(old_root_state_hash);
+                service->close();
+                return error("VerifyDB(): *** found unconnectable block at %d, hash=%s", pindex->nHeight,
+                             pindex->GetBlockHash().ToString());
+            }
         }
+    } else {
+        service->open();
+        service->reset_root_state_hash(old_root_state_hash);
+        service->close();
     }
 
     LogPrintf("[DONE].\n");
@@ -4116,23 +5426,28 @@ bool CChainState::RollforwardBlock(const CBlockIndex* pindex, CCoinsViewCache& i
     if (!ReadBlockFromDisk(block, pindex, params.GetConsensus())) {
         return error("ReplayBlock(): ReadBlockFromDisk failed at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
     }
-
-    for (const CTransactionRef& tx : block.vtx) {
-        if (!tx->IsCoinBase()) {
-            for (const CTxIn &txin : tx->vin) {
-                inputs.SpendCoin(txin.prevout);
-            }
-        }
-        // Pass check = true as every addition may be an overwrite.
-        AddCoins(inputs, *tx, pindex->nHeight, true);
-    }
+    CValidationState state;
+    CBlockIndex* pindex_mod = const_cast<CBlockIndex*>(pindex);
+    ConnectBlock(block, state, pindex_mod, inputs, params, false); // TODO: check whether can merge RollforwardBlock with ConnectBlock
+//    for (const CTransactionRef& tx : block.vtx) {
+//        if (!tx->IsCoinBase()) {
+//            for (const CTxIn &txin : tx->vin) {
+//                inputs.SpendCoin(txin.prevout);
+//            }
+//        }
+//        // TODO: evaluate contracts when tx is contract tx
+//        // Pass check = true as every addition may be an overwrite.
+//        AddCoins(inputs, *tx, pindex->nHeight, true);
+//    }
+    auto service = get_contract_storage_service();
+    service->open();
+    const auto& root_state_hash = service->current_root_state_hash();
     return true;
 }
 
 bool CChainState::ReplayBlocks(const CChainParams& params, CCoinsView* view)
 {
     LOCK(cs_main);
-
     CCoinsViewCache cache(view);
 
     std::vector<uint256> hashHeads = view->GetHeadBlocks();
@@ -4140,7 +5455,6 @@ bool CChainState::ReplayBlocks(const CChainParams& params, CCoinsView* view)
     if (hashHeads.size() != 2) return error("ReplayBlocks(): unknown inconsistent state");
 
     uiInterface.ShowProgress(_("Replaying blocks..."), 0, false);
-    LogPrintf("Replaying blocks\n");
 
     const CBlockIndex* pindexOld = nullptr;  // Old tip during the interrupted flush.
     const CBlockIndex* pindexNew;            // New tip during the interrupted flush.
@@ -4159,7 +5473,6 @@ bool CChainState::ReplayBlocks(const CChainParams& params, CCoinsView* view)
         pindexFork = LastCommonAncestor(pindexOld, pindexNew);
         assert(pindexFork != nullptr);
     }
-
     // Rollback along the old branch.
     while (pindexOld != pindexFork) {
         if (pindexOld->nHeight > 0) { // Never disconnect the genesis block.
@@ -4190,6 +5503,7 @@ bool CChainState::ReplayBlocks(const CChainParams& params, CCoinsView* view)
 
     cache.SetBestBlock(pindexNew->GetBlockHash());
     cache.Flush();
+
     uiInterface.ShowProgress("", 100, false);
     return true;
 }
@@ -4726,6 +6040,47 @@ int VersionBitsTipStateSinceHeight(const Consensus::Params& params, Consensus::D
     return VersionBitsStateSinceHeight(chainActive.Tip(), params, pos, versionbitscache);
 }
 
+
+int ReCheckContractTxsInMempool()
+{
+	bool allow_contract = chainActive.Tip() && (chainActive.Tip()->nHeight > Params().GetConsensus().UBCONTRACT_Height);
+	if (!allow_contract)
+		return 0;
+	AssertLockHeld(cs_main);
+	LOCK(mempool.cs);
+	std::vector<const CTransaction*> failedTx;
+
+	std::vector<TxMempoolInfo> vinfo;
+	{
+		vinfo = mempool.infoAll();
+	}
+	int count = 0;
+	for(auto mi= vinfo.begin();mi!= vinfo.end();mi++)
+	{
+		if (count > 1000)
+			break;
+		const auto& tx = mi->tx;
+
+		if (tx->HasContractOp()) {
+			++count;
+			CAmount txMinGasPrice = 0;
+			CCoinsView dummy;
+			CCoinsViewCache view(&dummy);
+			std::string error_out;
+			std::string short_error_out;
+			bool success = CheckAddContractTxToMempoolAvailable(*tx, view, txMinGasPrice, error_out, short_error_out);
+			if (!success) {
+				failedTx.push_back(&(*tx));
+			}
+		}
+	}
+	// remove failedTxs from mempool
+	for (const auto& tx : failedTx) {
+		mempool.removeRecursive(*tx);
+	}
+	return failedTx.size();
+}
+
 static const uint64_t MEMPOOL_DUMP_VERSION = 1;
 
 bool LoadMempool(void)
@@ -4845,7 +6200,7 @@ bool DumpMempool(void)
         file.fclose();
         RenameOver(GetDataDir() / "mempool.dat.new", GetDataDir() / "mempool.dat");
         int64_t last = GetTimeMicros();
-        LogPrintf("Dumped mempool: %gs to copy, %gs to dump\n", (mid-start)*MICRO, (last-mid)*MICRO);
+        LogPrintf("Dumped mempool: %gs to copy, %gs to dump, %d txs\n", (mid-start)*MICRO, (last-mid)*MICRO, vinfo.size());
     } catch (const std::exception& e) {
         LogPrintf("Failed to dump mempool: %s. Continuing anyway.\n", e.what());
         return false;

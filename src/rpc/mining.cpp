@@ -132,8 +132,8 @@ UniValue generateBlocks(std::shared_ptr<CReserveScript> coinbaseScript, int nGen
 		if (godMode) {
 			break;
 		}
-		
-        std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(Params()).CreateNewBlock(coinbaseScript->reserveScript));
+		int64_t nTotalFee = 0;
+        std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(Params()).CreateNewBlock(coinbaseScript->reserveScript, true, &nTotalFee, 0, GetAdjustedTime()+POW_MINER_MAX_TIME));
         if (!pblocktemplate.get())
             throw JSONRPCError(RPC_INTERNAL_ERROR, "Couldn't create new block");
         CBlock *pblock = &pblocktemplate->block;
@@ -650,6 +650,7 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
             }
         }
     }
+    pblock->nVersion = 0x22000000;
     result.push_back(Pair("version", pblock->nVersion));
     result.push_back(Pair("rules", aRules));
     result.push_back(Pair("vbavailable", vbavailable));

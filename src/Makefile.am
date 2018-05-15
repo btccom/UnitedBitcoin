@@ -21,6 +21,7 @@ endif
 BITCOIN_INCLUDES=-I$(builddir) $(BDB_CPPFLAGS) $(BOOST_CPPFLAGS) $(LEVELDB_CPPFLAGS) $(CRYPTO_CFLAGS) $(SSL_CFLAGS)
 
 BITCOIN_INCLUDES += -I$(srcdir)/secp256k1/include
+BITCOIN_INCLUDES += -I$(srcdir)/../include
 BITCOIN_INCLUDES += $(UNIVALUE_CFLAGS)
 
 LIBBITCOIN_SERVER=libbitcoin_server.a
@@ -31,6 +32,7 @@ LIBBITCOIN_UTIL=libbitcoin_util.a
 LIBBITCOIN_CRYPTO=crypto/libbitcoin_crypto.a
 LIBBITCOINQT=qt/libbitcoinqt.a
 LIBSECP256K1=secp256k1/libsecp256k1.la
+
 
 if ENABLE_ZMQ
 LIBBITCOIN_ZMQ=libbitcoin_zmq.a
@@ -180,7 +182,7 @@ BITCOIN_CORE_H = \
 obj/build.h: FORCE
 	@$(MKDIR_P) $(builddir)/obj
 	@$(top_srcdir)/share/genbuild.sh "$(abs_top_builddir)/src/obj/build.h" \
-	  "$(abs_top_srcdir)"
+      "$(abs_top_srcdir)"
 libbitcoin_util_a-clientversion.$(OBJEXT): obj/build.h
 
 # server: shared between bitcoind and bitcoin-qt
@@ -225,6 +227,67 @@ libbitcoin_server_a_SOURCES = \
   validation.cpp \
   validationinterface.cpp \
   versionbits.cpp \
+    uvm/uvm_api_types.cpp \
+    uvm/uvm_lib.cpp \
+    uvm/uvm_lutil.cpp \
+    uvm/uvm_state_scope.cpp \
+    uvm/uvm_storage.cpp \
+    uvm/uvm_tokenparser.cpp \
+    uvm/lapi.cpp \
+    uvm/lauxlib.cpp \
+    uvm/lbaselib.cpp \
+    uvm/lbitlib.cpp \
+    uvm/lcode.cpp \
+    uvm/lcorolib.cpp \
+    uvm/lctype.cpp \
+    uvm/ldblib.cpp \
+    uvm/ldebug.cpp \
+    uvm/ldo.cpp \
+    uvm/ldump.cpp \
+    uvm/lfunc.cpp \
+    uvm/lgc.cpp \
+    uvm/lhashmap.cpp \
+    uvm/lhttplib.cpp \
+    uvm/linit.cpp \
+    uvm/liolib.cpp \
+    uvm/ljsonlib.cpp \
+    uvm/ljsonrpclib.cpp \
+    uvm/llex.cpp \
+    uvm/lmathlib.cpp \
+    uvm/lmem.cpp \
+    uvm/lnetlib.cpp \
+    uvm/loadlib.cpp \
+    uvm/lobject.cpp \
+    uvm/lopcodes.cpp \
+    uvm/loslib.cpp \
+    uvm/lparser.cpp \
+    uvm/lprefix.cpp \
+    uvm/lstate.cpp \
+    uvm/lstring.cpp \
+    uvm/lstrlib.cpp \
+    uvm/ltable.cpp \
+    uvm/ltablib.cpp \
+    uvm/ltimelib.cpp \
+    uvm/ltm.cpp \
+    uvm/lundump.cpp \
+    uvm/lutf8lib.cpp \
+    uvm/lvm.cpp \
+    uvm/lzio.cpp \
+    btc_uvm_api.cpp \
+    contract_engine/contract_engine.cpp \
+    contract_engine/contract_engine_builder.cpp \
+    contract_engine/uvm_contract_engine.cpp \
+    contract_engine/contract_helper.cpp \
+    contract_engine/pending_state.cpp \
+    contract_engine/native_contract.cpp \
+    jsondiff/diff_result.cpp \
+    jsondiff/helper.cpp \
+    jsondiff/json_value_types.cpp \
+    jsondiff/jsondiff.cpp \
+    sqlite3.c \
+    contract_storage/change.cpp \
+    contract_storage/contract_info.cpp \
+    contract_storage/contract_storage.cpp \
   $(BITCOIN_CORE_H)
 
 if ENABLE_ZMQ
@@ -401,7 +464,7 @@ ubcd_LDADD = \
   $(LIBMEMENV) \
   $(LIBSECP256K1)
 
-ubcd_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS)
+ubcd_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS) -lfc
 
 # bitcoin-cli binary #
 ubc_cli_SOURCES = bitcoin-cli.cpp

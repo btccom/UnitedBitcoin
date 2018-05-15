@@ -38,7 +38,11 @@
 #include <condition_variable>
 #include <fstream>
 
-
+#include <contract_storage/contract_storage.hpp>
+#include <contract_engine/contract_helper.hpp>
+#include <contract_engine/native_contract.hpp>
+#include <fc/crypto/base64.hpp>
+#include <boost/scope_exit.hpp>
 
 struct CUpdatedBlock
 {
@@ -52,6 +56,67 @@ static std::mutex cs_blockchange;
 static std::condition_variable cond_blockchange;
 static CUpdatedBlock latestblock;
 extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
+
+double GetPowDifficulty(const CBlockIndex* blockindex)
+{
+    if (blockindex == nullptr)
+    {
+        if (chainActive.Tip() == nullptr)
+            return 1.0;
+        else
+            blockindex = GetLastBlockIndex(chainActive.Tip(), false, Params().GetConsensus());
+    }
+
+    int nShift = (blockindex->nBits >> 24) & 0xff;
+
+    double dDiff =
+        (double)0x0000ffff / (double)(blockindex->nBits & 0x00ffffff);
+
+    while (nShift < 29)
+    {
+        dDiff *= 256.0;
+        nShift++;
+    }
+    while (nShift > 29)
+    {
+        dDiff /= 256.0;
+        nShift--;
+    }
+
+    return dDiff;
+}
+
+double GetPosDifficulty(const CBlockIndex* blockindex)
+{
+    if (blockindex == nullptr)
+    {
+        if (chainActive.Tip() == nullptr)
+            return 1.0;
+        else
+            blockindex = GetLastBlockIndex(chainActive.Tip(), true, Params().GetConsensus());
+    }
+
+    int nShift = (blockindex->nBits >> 24) & 0xff;
+
+    double dDiff =
+        (double)0x0000ffff / (double)(blockindex->nBits & 0x00ffffff);
+
+    while (nShift < 29)
+    {
+        dDiff *= 256.0;
+        nShift++;
+    }
+    while (nShift > 29)
+    {
+        dDiff /= 256.0;
+        nShift--;
+    }
+
+    return dDiff;
+}
+
+
+
 
 double GetDifficulty(const CChain& chain, const CBlockIndex* blockindex)
 {
@@ -104,7 +169,7 @@ UniValue blockheaderToJSON(const CBlockIndex* blockindex)
     result.push_back(Pair("mediantime", (int64_t)blockindex->GetMedianTimePast()));
     result.push_back(Pair("nonce", (uint64_t)blockindex->nNonce));
     result.push_back(Pair("bits", strprintf("%08x", blockindex->nBits)));
-    result.push_back(Pair("difficulty", GetDifficulty(blockindex)));
+    result.push_back(Pair("difficulty", (blockindex->nVersion & MINING_TYPE_POS)?GetPosDifficulty(blockindex):GetPowDifficulty(blockindex)));
     result.push_back(Pair("chainwork", blockindex->nChainWork.GetHex()));
 
     if (blockindex->pprev)
@@ -149,7 +214,7 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool tx
     result.push_back(Pair("mediantime", (int64_t)blockindex->GetMedianTimePast()));
     result.push_back(Pair("nonce", (uint64_t)block.nNonce));
     result.push_back(Pair("bits", strprintf("%08x", block.nBits)));
-    result.push_back(Pair("difficulty", GetDifficulty(blockindex)));
+    result.push_back(Pair("difficulty", (blockindex->nVersion & MINING_TYPE_POS)?GetPosDifficulty(blockindex): GetPowDifficulty(blockindex)));
     result.push_back(Pair("chainwork", blockindex->nChainWork.GetHex()));
 
     if (blockindex->pprev)
@@ -346,7 +411,7 @@ UniValue getdifficulty(const JSONRPCRequest& request)
     if (request.fHelp || request.params.size() != 0)
         throw std::runtime_error(
             "getdifficulty\n"
-            "\nReturns the proof-of-work difficulty as a multiple of the minimum difficulty.\n"
+            "\nReturns the last block difficulty as a multiple of the minimum difficulty.\n"
             "\nResult:\n"
             "n.nnn       (numeric) the proof-of-work difficulty as a multiple of the minimum difficulty.\n"
             "\nExamples:\n"
@@ -357,6 +422,43 @@ UniValue getdifficulty(const JSONRPCRequest& request)
     LOCK(cs_main);
     return GetDifficulty();
 }
+
+
+UniValue getpowdifficulty(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() != 0)
+        throw std::runtime_error(
+            "getpowdifficulty\n"
+            "\nReturns the proof-of-work difficulty as a multiple of the minimum difficulty.\n"
+            "\nResult:\n"
+            "n.nnn       (numeric) the proof-of-work difficulty as a multiple of the minimum difficulty.\n"
+            "\nExamples:\n"
+            + HelpExampleCli("getpowdifficulty", "")
+            + HelpExampleRpc("getpowdifficulty", "")
+        );
+
+    LOCK(cs_main);
+    
+    return GetPowDifficulty();
+}
+
+UniValue getposdifficulty(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() != 0)
+        throw std::runtime_error(
+            "getposdifficulty\n"
+            "\nReturns the proof-of-work difficulty as a multiple of the minimum difficulty.\n"
+            "\nResult:\n"
+            "n.nnn       (numeric) the proof-of-stake difficulty as a multiple of the minimum difficulty.\n"
+            "\nExamples:\n"
+            + HelpExampleCli("getposdifficulty", "")
+            + HelpExampleRpc("getposdifficulty", "")
+        );
+
+    LOCK(cs_main);
+    return GetPosDifficulty();
+}
+
 
 std::string EntryDescriptionString()
 {
@@ -1754,6 +1856,749 @@ UniValue preciousblock(const JSONRPCRequest& request)
     return NullUniValue;
 }
 
+///// contract
+UniValue getsimplecontractinfo(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 1)
+        throw runtime_error(
+                "getsimplecontractinfo \"addressOrName\" ( string )\n"
+                        "\nArgument:\n"
+                        "1. \"addressOrName\"          (string, required) The contract address or contract name\n"
+        );
+
+    LOCK(cs_main);
+
+    std::string strAddr = request.params[0].get_str();
+    auto service = get_contract_storage_service();
+    service->open();
+	::contract::storage::ContractInfoP contract_info;
+	if (ContractHelper::is_valid_contract_address_format(strAddr)) {
+		contract_info = service->get_contract_info(strAddr);
+	} else {
+		if (!ContractHelper::is_valid_contract_name_format(strAddr)) {
+			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Address does not exist");
+		}
+		auto contract_addr = service->find_contract_id_by_name(strAddr);
+		if (contract_addr.empty())
+			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Contract address or name does not exist");
+		contract_info = service->get_contract_info(contract_addr);
+	}
+	if(!contract_info)
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Contract address or name does not exist");
+
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("id", contract_info->id));
+    result.push_back(Pair("creator_address", contract_info->creator_address));
+    result.push_back(Pair("name", contract_info->name));
+    result.push_back(Pair("description", contract_info->description));
+	result.push_back(Pair("txid", contract_info->txid));
+	result.push_back(Pair("version", uint64_t(contract_info->version)));
+	result.push_back(Pair("type", contract_info->is_native ? "native" : "bytecode"));
+	result.push_back(Pair("template_name", contract_info->contract_template_key));
+	{
+		UniValue apis(UniValue::VARR);
+		for (const auto& api : contract_info->apis) {
+			UniValue item(UniValue::VOBJ);
+			item.push_back(Pair("name", api));
+			apis.push_back(item);
+		}
+		result.push_back(Pair("apis", apis));
+	}
+	{
+		UniValue offline_apis(UniValue::VARR);
+		for (const auto& api : contract_info->offline_apis) {
+			UniValue item(UniValue::VOBJ);
+			item.push_back(Pair("name", api));
+			offline_apis.push_back(item);
+		}
+		result.push_back(Pair("offline_apis", offline_apis));
+	}
+	{
+		UniValue storages(UniValue::VARR);
+		for (const auto& p : contract_info->storage_types) {
+			UniValue item(UniValue::VOBJ);
+			item.push_back(Pair("name", p.first));
+			item.push_back(Pair("type", (uint64_t)p.second));
+			storages.push_back(item);
+		}
+		result.push_back(Pair("storages", storages));
+	}
+	{
+		UniValue balances(UniValue::VARR);
+		for (const auto& b : contract_info->balances) {
+			UniValue item(UniValue::VOBJ);
+			item.push_back(Pair("asset_id", uint64_t(b.asset_id)));
+			item.push_back(Pair("amount", b.amount));
+			balances.push_back(item);
+		}
+		result.push_back(Pair("balances", balances));
+	}
+
+    return result;
+}
+
+UniValue getcontractinfo(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 1)
+        throw runtime_error(
+                "getcontractinfo \"addressOrName\" ( string )\n"
+                        "\nArgument:\n"
+                        "1. \"addressOrName\"          (string, required) The contract address or name\n"
+        );
+
+    LOCK(cs_main);
+
+    std::string strAddr = request.params[0].get_str();
+    auto service = get_contract_storage_service();
+    service->open();
+	::contract::storage::ContractInfoP contract_info;
+	if (ContractHelper::is_valid_contract_address_format(strAddr)) {
+		contract_info = service->get_contract_info(strAddr);
+	} else {
+		if (!ContractHelper::is_valid_contract_name_format(strAddr)) {
+			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Address does not exist");
+		}
+		auto contract_addr = service->find_contract_id_by_name(strAddr);
+		if (contract_addr.empty())
+			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Contract address or name does not exist");
+		contract_info = service->get_contract_info(contract_addr);
+	}
+	if (!contract_info)
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Contract address or name does not exist");
+
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("id", contract_info->id));
+    result.push_back(Pair("creator_address", contract_info->creator_address));
+    result.push_back(Pair("name", contract_info->name));
+    result.push_back(Pair("description", contract_info->description));
+	result.push_back(Pair("txid", contract_info->txid));
+	result.push_back(Pair("version", uint64_t(contract_info->version)));
+	result.push_back(Pair("type", contract_info->is_native ? "native" : "bytecode"));
+	result.push_back(Pair("template_name", contract_info->contract_template_key));
+	{
+		UniValue apis(UniValue::VARR);
+		for (const auto& api : contract_info->apis) {
+			UniValue item(UniValue::VOBJ);
+			item.push_back(Pair("name", api));
+			apis.push_back(item);
+		}
+		result.push_back(Pair("apis", apis));
+	}
+	{
+		UniValue offline_apis(UniValue::VARR);
+		for (const auto& api : contract_info->offline_apis) {
+			UniValue item(UniValue::VOBJ);
+			item.push_back(Pair("name", api));
+			offline_apis.push_back(item);
+		}
+		result.push_back(Pair("offline_apis", offline_apis));
+	}
+	auto bytecode_base64 = fc::base64_encode(contract_info->bytecode.data(), contract_info->bytecode.size());
+	result.push_back(Pair("code", bytecode_base64));
+	{
+		UniValue storages(UniValue::VARR);
+		for (const auto& p : contract_info->storage_types) {
+			UniValue item(UniValue::VOBJ);
+			item.push_back(Pair("name", p.first));
+			item.push_back(Pair("type", (uint64_t)p.second));
+			storages.push_back(item);
+		}
+		result.push_back(Pair("storages", storages));
+	}
+	{
+		UniValue balances(UniValue::VARR);
+		for (const auto& b : contract_info->balances) {
+			UniValue item(UniValue::VOBJ);
+			item.push_back(Pair("asset_id", uint64_t(b.asset_id)));
+			item.push_back(Pair("amount", b.amount));
+			balances.push_back(item);
+		}
+		result.push_back(Pair("balances", balances));
+	}
+
+    return result;
+}
+
+UniValue gettransactionevents(const JSONRPCRequest& request)
+{
+	if (request.fHelp || request.params.size() < 1)
+		throw runtime_error(
+			"gettransactionevents \"txid\" ( string )\n"
+			"\nArgument:\n"
+			"1. \"txid\"          (string, required) The transaction id\n"
+		);
+
+	LOCK(cs_main);
+
+	std::string txid = request.params[0].get_str();
+	auto service = get_contract_storage_service();
+	service->open();
+	::contract::storage::ContractInfoP contract_info;
+	
+	auto events = service->get_transaction_events(txid);
+
+
+	UniValue result(UniValue::VARR);
+	for (auto i = 0; i < events->size(); i++) {
+		const ::contract::storage::ContractEventInfo& event_info = (*events)[i];
+		UniValue item(UniValue::VOBJ);
+		item.push_back(Pair("txid", event_info.transaction_id));
+		item.push_back(Pair("event_name", event_info.event_name));
+		item.push_back(Pair("event_arg", event_info.event_arg));
+		item.push_back(Pair("contract_address", event_info.contract_id));
+		result.push_back(item);
+	}
+	
+	return result;
+}
+
+UniValue currentrootstatehash(const JSONRPCRequest& request)
+{
+    LOCK(cs_main);
+    auto service = get_contract_storage_service();
+    const auto& root_state_hash = service->current_root_state_hash();
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("root_state_hash", root_state_hash));
+    return result;
+}
+
+UniValue blockrootstatehash(const JSONRPCRequest& request)
+{
+	if (request.fHelp || request.params.size() < 1)
+		throw runtime_error(
+			"currentrootstatehash \"block_height\" ( int )\n"
+			"\nArgument:\n"
+			"1. \"block_height\"          (int, required) The block height to get root state hash\n"
+		);
+
+	LOCK(cs_main);
+	auto height = request.params[0].get_int();
+	if (height <= 0 || height > chainActive.Height())
+		throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid block height");
+	if (height < Params().GetConsensus().UBCONTRACT_Height)
+		throw JSONRPCError(RPC_INVALID_PARAMETER, "contract feature is not allowed in this block height");
+	auto bindex = chainActive.Tip()->GetAncestor(height);
+	if (bindex->nHeight != height)
+		throw JSONRPCError(RPC_INVALID_PARAMETER, "can't find valid block of this height");
+	CBlock block;
+	auto res = ReadBlockFromDisk(block, bindex, Params().GetConsensus());
+	if (!res)
+		throw JSONRPCError(RPC_INVALID_PARAMETER, "can't find valid block of this height");
+	auto maybe_root_state_hash_in_block = get_root_state_hash_from_block(&block);
+	auto root_state_hash = maybe_root_state_hash_in_block ? *maybe_root_state_hash_in_block : std::string(EMPTY_COMMIT_ID);
+	UniValue result(UniValue::VOBJ);
+	result.push_back(Pair("root_state_hash", root_state_hash));
+	return result;
+}
+
+UniValue getcreatecontractaddress(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 1)
+        throw runtime_error(
+                "getcreatecontractaddress \"tx\" ( tx )\n"
+                        "\nArgument:\n"
+                        "1. \"tx\"          (string, required) The contract tx hex string\n"
+        );
+
+    LOCK(cs_main);
+    RPCTypeCheck(request.params, { UniValue::VSTR }, true);
+
+    CMutableTransaction mtx;
+    if (!DecodeHexTx(mtx, request.params[0].get_str(), true))
+        throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "TX decode failed");
+
+    // Fetch previous transactions (inputs):
+    CCoinsView viewDummy;
+    CCoinsViewCache view(&viewDummy);
+    {
+        LOCK(mempool.cs);
+        CCoinsViewCache &viewChain = *pcoinsTip;
+        CCoinsViewMemPool viewMempool(&viewChain, mempool);
+        view.SetBackend(viewMempool); // temporarily switch cache backend to db+mempool view
+
+        for (const CTxIn& txin : mtx.vin) {
+            view.AccessCoin(txin.prevout); // Load entries from viewChain into view; can fail.
+        }
+
+        view.SetBackend(viewDummy); // switch back to avoid locking mempool for too long
+    }
+
+    // Script verification errors
+    UniValue vErrors(UniValue::VARR);
+    std::string contract_address;
+
+    // Use CTransaction for the constant parts of the
+    // transaction to avoid rehashing.
+    const CTransaction txConst(mtx);
+    if(txConst.HasContractOp() && !txConst.HasOpSpend()) {
+        CBlock block;
+        block.vtx.push_back(MakeTransactionRef(txConst));
+        CCoinsViewCache &view = *pcoinsTip;
+        ContractTxConverter converter(txConst, &view, &block.vtx, true);
+        ExtractContractTX resultConvertContractTx;
+        if (!converter.extractionContractTransactions(resultConvertContractTx)) {
+            throw runtime_error("decode contract tx failed");
+        }
+        if(resultConvertContractTx.txs.size() < 1)
+        {
+            throw runtime_error("decode contract tx failed");
+        }
+        else
+        {
+            const auto& con_tx = resultConvertContractTx.txs[0];
+            if((OP_CREATE == con_tx.opcode) || (OP_CREATE_NATIVE == con_tx.opcode))
+            {
+                contract_address = con_tx.params.contract_address;
+            }
+            else
+            {
+                throw runtime_error("this is not create contract transaction");
+            }
+        }
+    } else {
+        throw runtime_error("this is not create contract transaction");
+    }
+
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("address", contract_address));
+    return result;
+}
+
+UniValue invokecontractoffline(const JSONRPCRequest& request)
+{
+	if (request.fHelp || request.params.size() < 4)
+		throw runtime_error(
+			"invokecontractoffline \"caller_address\" \"contract_address\" \"api_name\" \"api_arg\" ( caller_address, contract_address, api_name, api_arg )\n"
+			"\nArgument:\n"
+			"1. \"caller_address\"            (string, required) The caller address\n"
+			"2. \"contract_address\"          (string, required) The contract address\n"
+			"3. \"api_name\" (string, required) The contract api name to be invoked\n"
+			"4. \"api_arg\" (string, required) The contract api argument\n"
+		);
+
+	LOCK(cs_main);
+	std::string caller_address = request.params[0].get_str();
+	if (caller_address.length()<20) // FIXME
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect address");
+    // TODO: check whether has secret of caller_address
+	std::string contract_address = request.params[1].get_str();
+	if (!ContractHelper::is_valid_contract_address_format(contract_address))
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect address");
+	std::string api_name = request.params[2].get_str();
+	if(api_name.empty())
+		throw JSONRPCError(RPC_INVALID_PARAMETER, "Incorrect contract api name");
+	std::string api_arg = request.params[3].get_str();
+
+    auto service = get_contract_storage_service();
+	service->open();
+
+	const auto& old_root_state_hash = service->current_root_state_hash();
+
+	auto contract_info = service->get_contract_info(contract_address);
+	if (!contract_info)
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Address does not exist");
+
+	BOOST_SCOPE_EXIT_ALL(&service, old_root_state_hash) {
+		service->open();
+		service->rollback_contract_state(old_root_state_hash);
+		service->close();
+	};
+
+	CBlock block;
+	CMutableTransaction tx;
+	uint64_t gas_limit = 0;
+	uint64_t gas_price = 40;
+
+	valtype version;
+	version.push_back(0x01);
+	tx.vout.push_back(CTxOut(0, CScript() << version << ToByteVector(api_arg) << ToByteVector(api_name) << ToByteVector(contract_address) << ToByteVector(caller_address) << gas_limit << gas_price << OP_CALL));
+	block.vtx.push_back(MakeTransactionRef(CTransaction(tx)));
+
+	std::vector<ContractTransaction> contractTransactions;
+	ContractTransaction contract_tx;
+	contract_tx.opcode = OP_CALL;
+	contract_tx.params.caller_address = caller_address;
+	contract_tx.params.caller = "";
+	contract_tx.params.api_name = api_name;
+	contract_tx.params.api_arg = api_arg;
+	contract_tx.params.contract_address = contract_address;
+	contract_tx.params.gasPrice = gas_price;
+	contract_tx.params.gasLimit = gas_limit;
+	contract_tx.params.version = CONTRACT_MAJOR_VERSION;
+	contractTransactions.push_back(contract_tx);
+
+	ContractExec exec(service.get(), block, contractTransactions, gas_limit, 0);
+	if (!exec.performByteCode()) {
+		//error, don't add contract
+		return false;
+	}
+	ContractExecResult execResult;
+	if (!exec.processingResults(execResult)) {
+		return false;
+	}
+
+	UniValue result(UniValue::VOBJ);
+	result.push_back(Pair("result", execResult.api_result));
+	result.push_back(Pair("gasCount", execResult.usedGas));
+	// balance changes
+	UniValue balance_changes(UniValue::VARR);
+	for (auto i = 0; i < execResult.balance_changes.size(); i++) {
+		const auto& change = execResult.balance_changes[i];
+		UniValue item(UniValue::VOBJ);
+		item.push_back(Pair("is_contract", change.is_contract));
+		item.push_back(Pair("address", change.address));
+		item.push_back(Pair("is_add", change.add));
+		item.push_back(Pair("amount", change.amount));
+		balance_changes.push_back(item);
+	}
+	result.push_back(Pair("balanceChanges", balance_changes));
+	
+	return result;
+}
+
+UniValue registercontracttesting(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 2)
+        throw runtime_error(
+                "registercontracttesting \"caller_address\" \"bytecode_hex\" ( caller_address, bytecode_hex )\n"
+                        "\nArgument:\n"
+                        "1. \"caller_address\"            (string, required) The caller address\n"
+                        "2. \"bytecode_hex\"          (string, required) The contract bytecode hex\n"
+        );
+
+    LOCK(cs_main);
+    std::string caller_address = request.params[0].get_str();
+    if (caller_address.length()<20) // FIXME
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect address");
+    // TODO: check whether has secret of caller_address
+    const auto& bytecode_hex = request.params[1].get_str();
+
+    std::vector<unsigned char> contract_data = ParseHexV(bytecode_hex,"Data");
+
+    auto service = get_contract_storage_service();
+    service->open();
+
+    const auto& old_root_state_hash = service->current_root_state_hash();
+
+
+    BOOST_SCOPE_EXIT_ALL(&service, old_root_state_hash) {
+        service->open();
+        service->rollback_contract_state(old_root_state_hash);
+        service->close();
+    };
+
+    CBlock block;
+    CMutableTransaction tx;
+    uint64_t gas_limit = 0;
+    uint64_t gas_price = 40;
+
+    valtype version;
+    version.push_back(0x01);
+    tx.vout.push_back(CTxOut(0, CScript() << version << contract_data << ToByteVector(caller_address) << gas_limit << gas_price << OP_CREATE));
+    block.vtx.push_back(MakeTransactionRef(CTransaction(tx)));
+
+    std::vector<ContractTransaction> contractTransactions;
+    ContractTransaction contract_tx;
+    contract_tx.opcode = OP_CREATE;
+    contract_tx.params.caller_address = caller_address;
+    contract_tx.params.caller = "";
+    contract_tx.params.api_name = "";
+    contract_tx.params.api_arg = "";
+    contract_tx.params.gasPrice = gas_price;
+    contract_tx.params.gasLimit = gas_limit;
+    contract_tx.params.code = ContractHelper::load_contract_from_gpc_data(contract_data);
+	contract_tx.params.contract_address = "local_contract";
+    contract_tx.params.version = CONTRACT_MAJOR_VERSION;
+    contractTransactions.push_back(contract_tx);
+
+    ContractExec exec(service.get(), block, contractTransactions, gas_limit, 0);
+    if (!exec.performByteCode()) {
+        //error, don't add contract
+        return false;
+    }
+    ContractExecResult execResult;
+    if (!exec.processingResults(execResult)) {
+        return false;
+    }
+
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("gasCount", execResult.usedGas));
+	// balance changes
+	UniValue balance_changes(UniValue::VARR);
+	for (auto i = 0; i < execResult.balance_changes.size(); i++) {
+		const auto& change = execResult.balance_changes[i];
+		UniValue item(UniValue::VOBJ);
+		item.push_back(Pair("is_contract", change.is_contract));
+		item.push_back(Pair("address", change.address));
+		item.push_back(Pair("is_add", change.add));
+		item.push_back(Pair("amount", change.amount));
+		balance_changes.push_back(item);
+	}
+	result.push_back(Pair("balanceChanges", balance_changes));
+    return result;
+}
+
+UniValue registernativecontracttesting(const JSONRPCRequest& request)
+{
+	if (request.fHelp || request.params.size() < 2)
+		throw runtime_error(
+			"registernativecontracttesting \"caller_address\" \"template_name\" ( caller_address, bytecode_hex )\n"
+			"\nArgument:\n"
+			"1. \"caller_address\"            (string, required) The caller address\n"
+			"2. \"template_name\"          (string, required) The contract template name\n"
+		);
+
+	LOCK(cs_main);
+	std::string caller_address = request.params[0].get_str();
+	if (caller_address.length()<20) // FIXME
+		throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect address");
+	// TODO: check whether has secret of caller_address
+	const auto& template_name = request.params[1].get_str();
+	if(!blockchain::contract::native_contract_finder::has_native_contract_with_key(template_name))
+		throw JSONRPCError(RPC_INVALID_PARAMETER, "Incorrect native contract template name");
+
+	auto service = get_contract_storage_service();
+	service->open();
+
+	const auto& old_root_state_hash = service->current_root_state_hash();
+
+
+	BOOST_SCOPE_EXIT_ALL(&service, old_root_state_hash) {
+		service->open();
+		service->rollback_contract_state(old_root_state_hash);
+		service->close();
+	};
+
+	CBlock block;
+	CMutableTransaction tx;
+	uint64_t gas_limit = 0;
+	uint64_t gas_price = 40;
+
+	valtype version;
+	version.push_back(0x01);
+	tx.vout.push_back(CTxOut(0, CScript() << version << ToByteVector(template_name) << ToByteVector(caller_address) << gas_limit << gas_price << OP_CREATE_NATIVE));
+	block.vtx.push_back(MakeTransactionRef(CTransaction(tx)));
+
+	std::vector<ContractTransaction> contractTransactions;
+	ContractTransaction contract_tx;
+	contract_tx.opcode = OP_CREATE_NATIVE;
+	contract_tx.params.caller_address = caller_address;
+	contract_tx.params.caller = "";
+	contract_tx.params.api_name = "";
+	contract_tx.params.api_arg = "";
+	contract_tx.params.gasPrice = gas_price;
+	contract_tx.params.gasLimit = gas_limit;
+	contract_tx.params.is_native = true;
+	contract_tx.params.template_name = template_name;
+	contract_tx.params.contract_address = "local_contract";
+	contract_tx.params.version = CONTRACT_MAJOR_VERSION;
+	contractTransactions.push_back(contract_tx);
+
+	ContractExec exec(service.get(), block, contractTransactions, gas_limit, 0);
+	if (!exec.performByteCode()) {
+		//error, don't add contract
+		return false;
+	}
+	ContractExecResult execResult;
+	if (!exec.processingResults(execResult)) {
+		return false;
+	}
+
+	UniValue result(UniValue::VOBJ);
+	result.push_back(Pair("gasCount", execResult.usedGas));
+	// balance changes
+	UniValue balance_changes(UniValue::VARR);
+	for (auto i = 0; i < execResult.balance_changes.size(); i++) {
+		const auto& change = execResult.balance_changes[i];
+		UniValue item(UniValue::VOBJ);
+		item.push_back(Pair("is_contract", change.is_contract));
+		item.push_back(Pair("address", change.address));
+		item.push_back(Pair("is_add", change.add));
+		item.push_back(Pair("amount", change.amount));
+		balance_changes.push_back(item);
+	}
+	result.push_back(Pair("balanceChanges", balance_changes));
+	return result;
+}
+
+UniValue upgradecontracttesting(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 4)
+        throw runtime_error(
+                "upgradecontracttesting \"caller_address\" \"contract address\" \"new contract name\" \"contract description\"\n"
+                        "\nArgument:\n"
+                        "1. \"caller_address\"            (string, required) The caller address\n"
+                        "2. \"contract address\"          (string, required) The contract address to upgrade\n"
+                        "3. \"new contract name\"         (string, required) The new contract name\n"
+                        "4. \"contract description\"         (string, required) The contract description\n"
+
+        );
+
+    LOCK(cs_main);
+    const auto& caller_address = request.params[0].get_str();
+    if (caller_address.length()<20) // FIXME
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect address");
+    // TODO: check whether has secret of caller_address
+    const auto& contract_address = request.params[1].get_str();
+    if(!ContractHelper::is_valid_contract_address_format(contract_address))
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect contract address");
+    const auto& contract_name = request.params[2].get_str();
+    if(!ContractHelper::is_valid_contract_name_format(contract_name))
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Incorrect contract name format");
+    const auto& contract_desc = request.params[3].get_str();
+    if(!ContractHelper::is_valid_contract_desc_format(contract_desc))
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Incorrect contract description format");
+
+    auto service = get_contract_storage_service();
+    service->open();
+    const auto& old_root_state_hash = service->current_root_state_hash();
+    BOOST_SCOPE_EXIT_ALL(&service, old_root_state_hash) {
+        service->open();
+        service->rollback_contract_state(old_root_state_hash);
+        service->close();
+    };
+
+    CBlock block;
+    CMutableTransaction tx;
+    uint64_t gas_limit = 0;
+    uint64_t gas_price = 40;
+
+    valtype version;
+    version.push_back(0x01);
+    tx.vout.push_back(CTxOut(0, CScript() << version << ToByteVector(contract_desc) << ToByteVector(contract_name) << ToByteVector(contract_address) << ToByteVector(caller_address) << gas_limit << gas_price << OP_UPGRADE));
+    block.vtx.push_back(MakeTransactionRef(CTransaction(tx)));
+
+    std::vector<ContractTransaction> contractTransactions;
+    ContractTransaction contract_tx;
+    contract_tx.opcode = OP_UPGRADE;
+    contract_tx.params.caller_address = caller_address;
+    contract_tx.params.caller = "";
+    contract_tx.params.api_name = "";
+    contract_tx.params.api_arg = "";
+    contract_tx.params.gasPrice = gas_price;
+    contract_tx.params.gasLimit = gas_limit;
+    contract_tx.params.contract_address = contract_address;
+    contract_tx.params.contract_name = contract_name;
+    contract_tx.params.contract_desc = contract_desc;
+    contract_tx.params.version = CONTRACT_MAJOR_VERSION;
+    contractTransactions.push_back(contract_tx);
+
+    ContractExec exec(service.get(), block, contractTransactions, gas_limit, 0);
+    if (!exec.performByteCode()) {
+        //error, don't add contract
+        return false;
+    }
+    ContractExecResult execResult;
+    if (!exec.processingResults(execResult)) {
+        return false;
+    }
+
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("gasCount", execResult.usedGas));
+	// balance changes
+	UniValue balance_changes(UniValue::VARR);
+	for (auto i = 0; i < execResult.balance_changes.size(); i++) {
+		const auto& change = execResult.balance_changes[i];
+		UniValue item(UniValue::VOBJ);
+		item.push_back(Pair("is_contract", change.is_contract));
+		item.push_back(Pair("address", change.address));
+		item.push_back(Pair("is_add", change.add));
+		item.push_back(Pair("amount", change.amount));
+		balance_changes.push_back(item);
+	}
+	result.push_back(Pair("balanceChanges", balance_changes));
+    return result;
+}
+
+UniValue deposittocontracttesting(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 4)
+        throw runtime_error(
+                "deposittocontracttesting \"caller_address\" \"contract address\" \"deposit amount with precision(int)\" \"deposit memo\"\n"
+                        "\nArgument:\n"
+                        "1. \"caller_address\"            (string, required) The caller address\n"
+                        "2. \"contract address\"          (string, required) The contract address to upgrade\n"
+                        "3. \"deposit amount with precision(int)\"         (int, required) deposit amount with precision(int)\n"
+                        "4. \"deposit memo\"         (string, required) The deposit memo\n"
+
+        );
+
+    LOCK(cs_main);
+    const auto& caller_address = request.params[0].get_str();
+    if (caller_address.length()<20) // FIXME
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect address");
+    // TODO: check whether has secret of caller_address
+    const auto& contract_address = request.params[1].get_str();
+    if(!ContractHelper::is_valid_contract_address_format(contract_address))
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Incorrect contract address");
+    auto deposit_amount = request.params[2].get_int64();
+    if(deposit_amount<=0)
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Incorrect deposit amount");
+    const auto& memo = request.params[3].get_str();
+
+    auto service = get_contract_storage_service();
+    service->open();
+    const auto& old_root_state_hash = service->current_root_state_hash();
+    BOOST_SCOPE_EXIT_ALL(&service, old_root_state_hash) {
+        service->open();
+        service->rollback_contract_state(old_root_state_hash);
+        service->close();
+    };
+
+    CBlock block;
+    CMutableTransaction tx;
+    uint64_t gas_limit = 0;
+    uint64_t gas_price = 40;
+
+    valtype version;
+    version.push_back(0x01);
+    tx.vout.push_back(CTxOut(0, CScript() << version << ToByteVector(memo) << deposit_amount << ToByteVector(contract_address) << ToByteVector(caller_address) << gas_limit << gas_price << OP_DEPOSIT_TO_CONTRACT));
+    block.vtx.push_back(MakeTransactionRef(CTransaction(tx)));
+
+    std::vector<ContractTransaction> contractTransactions;
+    ContractTransaction contract_tx;
+    contract_tx.opcode = OP_DEPOSIT_TO_CONTRACT;
+    contract_tx.params.caller_address = caller_address;
+    contract_tx.params.caller = "";
+    contract_tx.params.api_name = "";
+    contract_tx.params.api_arg = "";
+    contract_tx.params.gasPrice = gas_price;
+    contract_tx.params.gasLimit = gas_limit;
+    contract_tx.params.contract_address = contract_address;
+    contract_tx.params.deposit_amount = deposit_amount;
+    contract_tx.params.deposit_memo = memo;
+    contract_tx.params.version = CONTRACT_MAJOR_VERSION;
+    contractTransactions.push_back(contract_tx);
+
+    ContractExec exec(service.get(), block, contractTransactions, gas_limit, 0);
+    if (!exec.performByteCode()) {
+        //error, don't add contract
+        return false;
+    }
+    ContractExecResult execResult;
+    if (!exec.processingResults(execResult)) {
+        return false;
+    }
+
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("gasCount", execResult.usedGas));
+	// balance changes
+	UniValue balance_changes(UniValue::VARR);
+	for (auto i = 0; i < execResult.balance_changes.size(); i++) {
+		const auto& change = execResult.balance_changes[i];
+		UniValue item(UniValue::VOBJ);
+		item.push_back(Pair("is_contract", change.is_contract));
+		item.push_back(Pair("address", change.address));
+		item.push_back(Pair("is_add", change.add));
+		item.push_back(Pair("amount", change.amount));
+		balance_changes.push_back(item);
+	}
+	result.push_back(Pair("balanceChanges", balance_changes));
+    return result;
+}
+
+///// end contract code
+
 UniValue invalidateblock(const JSONRPCRequest& request)
 {
     if (request.fHelp || request.params.size() != 1)
@@ -1939,6 +2784,8 @@ static const CRPCCommand commands[] =
     { "blockchain",         "getblockheader",         &getblockheader,         {"blockhash","verbose"} },
     { "blockchain",         "getchaintips",           &getchaintips,           {} },
     { "blockchain",         "getdifficulty",          &getdifficulty,          {} },
+    { "blockchain",         "getpowdifficulty",          &getpowdifficulty,    {} },
+    { "blockchain",         "getposdifficulty",          &getposdifficulty,    {} },
     { "blockchain",         "getmempoolancestors",    &getmempoolancestors,    {"txid","verbose"} },
     { "blockchain",         "getmempooldescendants",  &getmempooldescendants,  {"txid","verbose"} },
     { "blockchain",         "getmempoolentry",        &getmempoolentry,        {"txid"} },
@@ -1953,6 +2800,19 @@ static const CRPCCommand commands[] =
     { "blockchain",         "getwhitelist",           &getwhitelist,           {"blocknum"} },
     { "blockchain",         "readwhitelist",           &readwhitelist,           {"filename"} },
     { "blockchain",         "preciousblock",          &preciousblock,          {"blockhash"} },
+
+    { "blockchain",         "getcontractinfo",        &getcontractinfo,        {"contract_address"} },
+	{ "blockchain",         "getsimplecontractinfo",  &getsimplecontractinfo,{ "contract_address" } },
+	{ "blockchain",         "gettransactionevents",   &gettransactionevents,   {"txid"} },
+    { "blockchain",         "getcreatecontractaddress", &getcreatecontractaddress, {"contact_tx"} },
+	{ "blockchain",         "invokecontractoffline",  &invokecontractoffline,  {"caller_address", "contract_address", "api_name", "api_arg"} },
+    { "blockchain",         "registercontracttesting",  &registercontracttesting,  {"caller_address", "bytecode_hex"} },
+    { "blockchain",         "registernativecontracttesting",  &registernativecontracttesting,  {"caller_address", "contract_template_name"} },
+    { "blockchain",         "upgradecontracttesting",  &upgradecontracttesting, {"caller_address", "contract_address", "contract_name", "contract_desc"} },
+    { "blockchain",         "deposittocontracttesting", &deposittocontracttesting, {"caller_address", "contract_address", "deposit_amount", "deposit_memo"} },
+
+    { "blockchain",         "currentrootstatehash", &currentrootstatehash, {} },
+	{ "blockchain",         "blockrootstatehash", &blockrootstatehash,{"block_height"} },
 
     /* Not shown in help */
     { "hidden",             "invalidateblock",        &invalidateblock,        {"blockhash"} },

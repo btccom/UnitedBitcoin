@@ -50,6 +50,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <memory>
+#include <condition_variable>
+#include <mutex>
 
 #ifndef WIN32
 #include <signal.h>
@@ -62,6 +64,8 @@
 #include <boost/interprocess/sync/file_lock.hpp>
 #include <boost/thread.hpp>
 #include <openssl/crypto.h>
+#include <chrono>
+#include <thread>
 
 #if ENABLE_ZMQ
 #include <zmq/zmqnotificationinterface.h>
@@ -89,6 +93,11 @@ static CZMQNotificationInterface* pzmqNotificationInterface = nullptr;
 #endif
 
 static const char* FEE_ESTIMATES_FILENAME="fee_estimates.dat";
+static void ThreadStakeMiner(CWallet *pwallet);
+
+
+unsigned int nMinerSleep;
+extern bool ThreadPOSstate;
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -121,6 +130,7 @@ std::atomic<bool> fDumpMempoolLater(false);
 void StartShutdown()
 {
     fRequestShutdown = true;
+	ThreadPOSstate=false;
 }
 bool ShutdownRequested()
 {
@@ -619,6 +629,33 @@ void CleanupBlockRevFiles()
     }
 }
 
+std::condition_variable cv_mempool_loaded;
+std::mutex mutex_mempool_load;
+
+/**
+ * check contract txs in txmempool every period time(eg. period = 120min)
+ */
+void ReCheckMemPoolThreadWorker()
+{
+	RenameThread("bitcoin-recheck-contract-tx-mempool");
+	std::unique_lock<std::mutex> lock(mutex_mempool_load);
+	cv_mempool_loaded.wait_until(lock, std::chrono::system_clock::now() + std::chrono::seconds(3));
+	auto period = std::chrono::minutes(120);
+	auto last_time = std::chrono::system_clock::now() - 2 * period;
+    while(!fRequestShutdown) {
+		{
+			if (std::chrono::system_clock::now() - last_time >= period) {
+				last_time = std::chrono::system_clock::now();
+				auto res = ReCheckContractTxsInMempool();
+				if (res > 0) {
+					LogPrintf("removed %d contract txs from txmempool when rechecking\n", res);
+				}
+			}
+		}
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+}
+
 void ThreadImport(std::vector<fs::path> vImportFiles)
 {
     const CChainParams& chainparams = Params();
@@ -689,6 +726,10 @@ void ThreadImport(std::vector<fs::path> vImportFiles)
     } // End scope of CImportingNow
     if (gArgs.GetArg("-persistmempool", DEFAULT_PERSIST_MEMPOOL)) {
         LoadMempool();
+		
+		std::unique_lock<std::mutex> lock_mempool_load(mutex_mempool_load);
+		cv_mempool_loaded.notify_one();
+
         fDumpMempoolLater = !fRequestShutdown;
     }
 }
@@ -1598,6 +1639,17 @@ bool AppInitMain()
 #ifdef ENABLE_WALLET
     if (!OpenWallets())
         return false;
+
+    if (!ParseMoney(gArgs.GetArg("-reservebalance", "0"), nReserveBalance)) {
+        LogPrintf("Invalid amount for -reservebalance=<amount>");
+        return false;
+    }
+	
+    if (!gArgs.GetBoolArg("-staking", false))
+        LogPrintf("Staking disabled\n");
+	else if (!vpwallets.empty())
+		threadGroup.create_thread(boost::bind(&ThreadStakeMiner, vpwallets[0]));
+	
 #else
     LogPrintf("No wallet support compiled in!\n");
 #endif
@@ -1629,6 +1681,8 @@ bool AppInitMain()
     if (!CheckDiskSpace())
         return false;
 
+	nMinerSleep = gArgs.GetArg("-minersleep", 500);
+
     // Either install a handler to notify us when genesis activates, or set fHaveGenesis directly.
     // No locking, as this happens before any background thread is started.
     if (chainActive.Tip() == nullptr) {
@@ -1646,6 +1700,7 @@ bool AppInitMain()
     }
 
     threadGroup.create_thread(boost::bind(&ThreadImport, vImportFiles));
+	threadGroup.create_thread(boost::bind(&ReCheckMemPoolThreadWorker));
 
     // Wait for genesis block to be processed
     {
@@ -1751,3 +1806,97 @@ bool AppInitMain()
 
     return true;
 }
+
+
+static void ThreadStakeMiner(CWallet *pwallet)
+{
+    // Make this thread recognisable as the mining thread
+    RenameThread("lte-pos-miner");
+    bool fTryToSync = true;
+
+    LogPrintf("ThreadStakeMiner start.\n");
+
+    while (ThreadPOSstate)
+    {
+        if(nullptr == pindexBestHeader)
+			MilliSleep(1000);
+		else
+		{
+    		while ((pindexBestHeader->nHeight)+1 < Params().GetConsensus().UBCONTRACT_Height) {
+    		    if(!ThreadPOSstate)
+    		        break;
+                MilliSleep(1000);
+            }	
+    
+    		while (pwallet->IsLocked()) {
+                MilliSleep(1000);
+            }
+
+			/*
+            while (g_connman->GetNodeCount(CConnman::CONNECTIONS_ALL) == 0 || IsInitialBlockDownload()) {
+                fTryToSync = true;
+                MilliSleep(1000);
+            }
+    
+            if (fTryToSync) {
+                fTryToSync = false;
+                if (g_connman->GetNodeCount(CConnman::CONNECTIONS_ALL) < 3 || pindexBestHeader->GetBlockTime() < GetTime() - 10 * 60) {
+                    MilliSleep(1000);
+                    continue;
+                }
+            }
+            */
+
+		/*	while (g_connman->GetNodeCount(CConnman::CONNECTIONS_ALL) == 0 || IsInitialBlockDownload()) {
+				MilliSleep(1000);
+			}
+
+			if((g_connman->GetNodeCount(CConnman::CONNECTIONS_ALL) < 3) || (chainActive.Tip()->GetBlockTime() < (GetTime() - 2 * 60))) {
+				MilliSleep(1000);
+            	continue;
+			}
+             */
+            //
+            // Create new block
+            //
+            std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(Params()).CreateNewBlockPos(pwallet));
+            if (!pblocktemplate.get()) {
+    			MilliSleep(500);
+                continue;
+            }
+
+    		LogPrintf("ThreadStakeMiner:CreateNewBlockPos success.\n");
+    		
+            CBlock *pblock = &pblocktemplate->block;
+            if (!CheckStake(pblock)) {
+            	MilliSleep(500);
+    			continue;
+            }
+
+            LogPrintf("ThreadStakeMiner:CheckStake  success.\n");
+    		// Found a solution
+    	    {
+    	        LOCK(cs_main);
+    	        if (pblock->hashPrevBlock != *(pindexBestHeader->phashBlock))
+    	        	{
+    				MilliSleep(500);
+    				continue;
+    	        	}
+    
+    
+    	        // Process this block the same as if we had received it from another node
+    	        std::shared_ptr<const CBlock> shared_pblock = std::make_shared<const CBlock>(*pblock);
+    	        if (!ProcessNewBlock(Params(), shared_pblock, true, nullptr))
+    				{
+    	        	MilliSleep(500);
+    				continue;
+    	        	}
+    	    }
+    		MilliSleep(500);
+		}
+
+    }
+}
+
+
+

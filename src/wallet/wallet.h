@@ -28,6 +28,9 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <set>
+
+extern CAmount nReserveBalance;
 
 typedef CWallet* CWalletRef;
 extern std::vector<CWalletRef> vpwallets;
@@ -267,6 +270,7 @@ public:
 
     const uint256& GetHash() const { return tx->GetHash(); }
     bool IsCoinBase() const { return tx->IsCoinBase(); }
+	bool IsCoinStake() const {return tx->IsCoinStake(); }
 };
 
 /** 
@@ -702,6 +706,8 @@ private:
     TxSpends mapTxSpends;
     void AddToSpends(const COutPoint& outpoint, const uint256& wtxid);
     void AddToSpends(const uint256& wtxid);
+    void EraseFromSpends(const COutPoint& outpoint, const uint256& wtxid);
+    void EraseFromSpends(const uint256& wtxid);
 
     /* Mark a transaction (and its in-wallet descendants) as conflicting with a particular block. */
     void MarkConflicted(const uint256& hashBlock, const uint256& hashTx);
@@ -838,6 +844,8 @@ public:
     std::map<CTxDestination, CAddressBookData> mapAddressBook;
 
     std::set<COutPoint> setLockedCoins;
+    bool fDisconnt = false;
+
 
     const CWalletTx* GetWalletTx(const uint256& hash) const;
 
@@ -1168,6 +1176,11 @@ public:
      * This function will automatically add the necessary scripts to the wallet.
      */
     CTxDestination AddAndGetDestinationForScript(const CScript& script, OutputType);
+    
+    // for staking
+    bool SelectCoinsForStaking(int64_t nTargetValue, std::set<std::pair<const CWalletTx*,unsigned int> >& setCoinsRet, int64_t& nValueRet) const;
+    void AvailableCoinsForStaking(std::vector<COutput>& vCoins) const;
+    
 };
 
 /** A key allocated from the key pool. */

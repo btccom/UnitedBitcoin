@@ -96,6 +96,35 @@ unsigned int CTransaction::GetTotalSize() const
     return ::GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION);
 }
 
+bool CTransaction::HasOpSpend() const
+{
+    for(const CTxOut& i : vout){
+        if(i.scriptPubKey.HasOpSpend()){
+            return true;
+        }
+    }
+    return false;
+}
+bool CTransaction::HasContractOp() const
+{
+    for(const CTxOut& v : vout){
+        if(v.scriptPubKey.HasContractOp()){
+            return true;
+        }
+    }
+    return false;
+}
+
+bool CTransaction::HasOpDepositToContract() const
+{
+	for (const CTxOut& v : vout) {
+		if (v.scriptPubKey.HasOpDepositToContract()) {
+			return true;
+		}
+	}
+	return false;
+}
+
 std::string CTransaction::ToString() const
 {
     std::string str;

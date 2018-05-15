@@ -8,6 +8,7 @@
 
 #include <script/interpreter.h>
 #include <uint256.h>
+#include <chain.h>
 
 #include <boost/variant.hpp>
 
@@ -15,6 +16,7 @@
 
 static const bool DEFAULT_ACCEPT_DATACARRIER = true;
 
+extern CChain chainActive;
 class CKeyID;
 class CScript;
 
@@ -65,6 +67,15 @@ enum txnouttype
     TX_WITNESS_V0_SCRIPTHASH,
     TX_WITNESS_V0_KEYHASH,
     TX_WITNESS_UNKNOWN, //!< Only for Witness versions not already defined above
+
+    // contract tx
+	TX_CREATE_NATIVE,
+    TX_CREATE,
+    TX_UPGRADE,
+    TX_CALL,
+    TX_DEPOSIT_TO_CONTRACT,
+    TX_SPEND,
+    TX_ROOT_STATE_HASH
 };
 
 class CNoDestination {

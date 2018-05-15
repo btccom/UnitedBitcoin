@@ -139,6 +139,20 @@ const char* GetOpName(opcodetype opcode)
     case OP_NOP9                   : return "OP_NOP9";
     case OP_NOP10                  : return "OP_NOP10";
 
+    // contract execute ext
+    case OP_CREATE: return "OP_CREATE";
+    case OP_UPGRADE: return "OP_UPGRADE";
+    case OP_DESTROY: return "OP_DESTROY";
+    case OP_CALL: return "OP_CALL";
+    case OP_SPEND: return "OP_SPEND";
+    case OP_DEPOSIT_TO_CONTRACT: return "OP_DEPOSIT_TO_CONTRACT";
+
+    case OP_GAS_PRICE: return "OP_GAS_PRICE";
+    case OP_GAS_LIMIT: return "OP_GAS_LIMIT";
+    case OP_DATA: return "OP_DATA";
+    case OP_VERSION: return "OP_VERSION";
+    case OP_ROOT_STATE_HASH: return "OP_ROOT_STATE_HASH";
+
     case OP_INVALIDOPCODE          : return "OP_INVALIDOPCODE";
 
     // Note:
@@ -297,7 +311,7 @@ bool CScript::HasValidOps() const
     while (it < end()) {
         opcodetype opcode;
         std::vector<unsigned char> item;
-        if (!GetOp(it, opcode, item) || opcode > MAX_OPCODE || item.size() > MAX_SCRIPT_ELEMENT_SIZE) {
+        if (!GetOp(it, opcode, item) || item.size() > MAX_SCRIPT_ELEMENT_SIZE) {
             return false;
         }
     }

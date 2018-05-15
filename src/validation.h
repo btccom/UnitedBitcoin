@@ -18,6 +18,16 @@
 #include <script/script_error.h>
 #include <sync.h>
 #include <versionbits.h>
+#include <contract_engine/contract_engine_builder.hpp>
+#include <contract_storage/contract_storage.hpp>
+#include <contract_storage/exceptions.hpp>
+#include <contract_engine/contract_helper.hpp>
+#include <jsondiff/jsondiff.h>
+#include <fc/io/enum_type.hpp>
+#include <fc/io/varint.hpp>
+#include <fc/io/raw.hpp>
+#include <fc/exception/exception.hpp>
+#include <fc/reflect/reflect.hpp>
 
 #include <algorithm>
 #include <exception>
@@ -27,6 +37,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <memory>
+#include <iostream>
 
 #include <atomic>
 
@@ -44,6 +56,17 @@ struct ChainTxData;
 
 struct PrecomputedTransactionData;
 struct LockPoints;
+
+#define CONTRACT_STORAGE_DB_PATH "contract_storage.db"
+#define CONTRACT_STORAGE_SQL_DB_PATH "contract_storage_sql.db"
+
+#define CONTRACT_MAJOR_VERSION 1
+#define CONTRACT_MINOR_VERSION 0
+#define CONTRACT_VERSION_STRING CONTRACT_MAJOR_VERSION "." CONTRACT_MINOR_VERSION
+
+static const uint32_t DEPOSIT_TO_CONTRACT_MEMO_MAX_LENGTH = 128;
+
+static const uint32_t CONTRACT_STORAGE_MAGIC_NUMBER = 34125;
 
 /** Default for -whitelistrelay. */
 static const bool DEFAULT_WHITELISTRELAY = true;
@@ -491,7 +514,7 @@ extern VersionBitsCache versionbitscache;
 /**
  * Determine what nVersion a new block should use.
  */
-int32_t ComputeBlockVersion(const CBlockIndex* pindexPrev, const Consensus::Params& params);
+int32_t ComputeBlockVersion(const CBlockIndex* pindexPrev, const Consensus::Params& params,uint32_t mingType=MINING_TYPE_POW);
 
 /** Reject codes greater or equal to this can be returned by AcceptToMemPool
  * for transactions, to signal internal conditions. They cannot and should not
@@ -509,5 +532,186 @@ bool DumpMempool();
 
 /** Load the mempool from disk. */
 bool LoadMempool();
+
+/** check contract txs in txemempool. if evaluation failed, remove it from txemempool */
+int ReCheckContractTxsInMempool();
+
+// start contract code
+using valtype = std::vector<unsigned char>;
+
+namespace uvm {
+    namespace blockchain {
+        enum ContractApiType
+        {
+            chain = 1,
+            offline = 2,
+            event = 3
+        };
+
+        struct Code
+        {
+            std::set<std::string> abi;
+            std::set<std::string> offline_abi;
+            std::set<std::string> events;
+            std::map<std::string, fc::enum_type<fc::unsigned_int, uvm::blockchain::StorageValueTypes>> storage_properties;
+            std::vector<unsigned char> code;
+            std::string code_hash;
+            Code() {}
+            void SetApis(char* module_apis[], int count, int api_type);
+            bool valid() const;
+            std::string GetHash() const;
+
+            std::vector<char> pack() const;
+
+            static Code unpack(const std::vector<unsigned char>& data);
+            static Code unpack(const std::vector<char>& data);
+        };
+    }
+}
+
+FC_REFLECT(uvm::blockchain::Code, (abi)(offline_abi)(events)(storage_properties)(code)(code_hash));
+
+namespace blockchain {
+	namespace contract {
+		class abstract_native_contract;
+	}
+}
+
+struct ContractInfo {
+    std::string address;
+    std::vector<std::string> apis;
+    std::vector<std::string> offline_apis;
+    uvm::blockchain::Code code;
+	blockchain::contract::abstract_native_contract* native_contract_info;
+};
+
+struct ContractBaseInfoForUpdate {
+    std::string address;
+    std::string name;
+    std::string description;
+};
+
+struct ContractTransactionParams {
+    uint64_t gasLimit = 0;
+    uint64_t gasPrice = 0;
+    uvm::blockchain::Code code;
+    bool is_native = false;
+    std::string template_name;
+    std::string caller;
+    std::string caller_address;
+    std::string contract_address;
+    std::string api_name;
+    std::string api_arg;
+    std::string contract_name;
+    std::string contract_desc;
+    uint64_t deposit_amount = 0;
+    std::string deposit_memo;
+    uint32_t version = 0;
+    uint64_t withdraw_amount = 0;
+    std::string withdraw_from_contract_address;
+
+    bool check_upgrade_contract_caller(opcodetype opcode, std::shared_ptr<::contract::storage::ContractStorageService> service) const;
+};
+
+struct ContractTransaction {
+    opcodetype opcode; // bitcoin script opcode(contract op)
+    uint256 tx_id;
+    ContractTransactionParams params;
+
+	bool is_params_valid(std::shared_ptr<::contract::storage::ContractStorageService> service, CAmount nTxFeeRemaining, CAmount sumGasCoin, CAmount gasCountOfAllTxsInBlock, CAmount blockGasLimit, std::string& error_str) const;
+};
+
+struct ContractWithdrawInfo {
+    std::string from_contract_address;
+    uint64_t amount = 0;
+};
+struct ExtractContractTX {
+    std::vector<ContractTransaction> txs;
+    std::vector<ContractTransactionParams> txs_params;
+    std::vector<ContractWithdrawInfo> contract_withdraw_infos;
+};
+
+struct ContractResultTransferInfo {
+    std::string address;
+    bool add = true; // true: + amount, false: - amount
+    bool is_contract = false;
+    uint64_t amount = 0;
+};
+
+typedef jsondiff::DiffResultP StorageChanges;
+
+// FIXME: not use it now
+// contract execute result for uvm
+struct ResultExecute {
+    uint64_t usedGas = 0;
+    int32_t exit_code = 0;
+    std::string error_message;
+    std::vector<ContractResultTransferInfo> balance_changes;
+    std::vector<std::pair<std::string, StorageChanges>> contract_storage_changes; // contract_id => changes
+    std::vector<ContractBaseInfoForUpdate> contract_upgrade_infos;
+};
+
+// contract result for bitcoin
+struct ContractExecResult {
+    uint64_t usedGas = 0;
+    int32_t exit_code = 0;
+    std::string error_message;
+	std::string api_result;
+
+    std::vector<std::pair<std::string, StorageChanges>> contract_storage_changes; // contract_id => changes
+    std::vector<ContractResultTransferInfo> balance_changes;
+    std::vector<ContractBaseInfoForUpdate> contract_upgrade_infos;
+	std::vector<::contract::storage::ContractEventInfo> events;
+
+    bool match_contract_withdraw_infos(const std::vector<ContractWithdrawInfo> withdraw_infos) const;
+
+	void clear();
+};
+
+class ContractTxConverter {
+public:
+    ContractTxConverter(CTransaction tx, CCoinsViewCache *v, const std::vector<CTransactionRef>* blockTxs=nullptr, bool _ignore_sender_check=false)
+            : txBitcoin(tx), view(v), blockTransactions(blockTxs), ignore_sender_check(_ignore_sender_check)
+    {}
+    // extract contract tx from bitcoin tx info
+    bool extractionContractTransactions(ExtractContractTX& contractTx);
+private:
+    bool receiveStack(const CScript& scriptPubKey);
+    bool parseContractTXParams(ContractTransactionParams& params, size_t contract_op_vout_index);
+    ContractTransaction createContractTX(const ContractTransactionParams& etp, const uint32_t nOut);
+private:
+    const CTransaction txBitcoin;
+    const CCoinsViewCache *view;
+    std::vector<valtype> stack;
+    opcodetype opcode;
+    const std::vector<CTransactionRef> *blockTransactions;
+	bool ignore_sender_check;
+};
+
+class ContractExec {
+public:
+    ContractExec(::contract::storage::ContractStorageService* _storage_service, const CBlock& _block, std::vector<ContractTransaction> _txs, const uint64_t _blockGasLimit, CAmount _nTxFee)
+            : storage_service(_storage_service), block(_block), txs(_txs), blockGasLimit(_blockGasLimit), nTxFee(_nTxFee)
+    {}
+    bool performByteCode();
+    bool processingResults(ContractExecResult &result);
+    std::vector<ResultExecute>& getResult() {return result;}
+    bool commit_changes(std::shared_ptr<::contract::storage::ContractStorageService> service);
+private:
+	::contract::storage::ContractStorageService* storage_service;
+public:
+    std::vector<ContractTransaction> txs;
+    std::vector<ResultExecute> result;
+    const CBlock &block;
+    const uint64_t blockGasLimit;
+    const CAmount nTxFee;
+    ContractExecResult pending_contract_exec_result; // pending contract exec changes not committed
+};
+
+std::shared_ptr<::contract::storage::ContractStorageService> get_contract_storage_service();
+
+std::shared_ptr<std::string> get_root_state_hash_from_block(const CBlock* block);
+
+// end contract code
 
 #endif // BITCOIN_VALIDATION_H

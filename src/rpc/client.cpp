@@ -148,6 +148,17 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "echojson", 9, "arg9" },
     { "rescanblockchain", 0, "start_height"},
     { "rescanblockchain", 1, "stop_height"},
+    { "getcontractinfo", 1, "contract_address_or_name" },
+    { "gettransactionevents", 1, "txid" },
+    { "getsimplecontractinfo", 1, "contract_address_or_name" },
+    { "getcreatecontractaddress", 1, "tx" },
+	{ "invokecontractoffline", 4, "caller_address" },
+    { "registercontracttesting", 2, "caller_address" },
+    { "registernativecontracttesting", 2, "caller_address" },
+    { "upgradecontracttesting", 4, "caller_address" },
+    { "deposittocontracttesting", 4, "caller_address" },
+    { "currentrootstatehash", 0, "" },
+    { "blockrootstatehash", 1, "block_height" }
 };
 
 class CRPCConvertTable

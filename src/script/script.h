@@ -20,7 +20,7 @@
 #include <vector>
 
 // Maximum number of bytes pushable to the stack
-static const unsigned int MAX_SCRIPT_ELEMENT_SIZE = 520;
+static const unsigned int MAX_SCRIPT_ELEMENT_SIZE = 1280000; // ~= 1280KB
 
 // Maximum number of non-push operations per script
 static const int MAX_OPS_PER_SCRIPT = 201;
@@ -29,7 +29,7 @@ static const int MAX_OPS_PER_SCRIPT = 201;
 static const int MAX_PUBKEYS_PER_MULTISIG = 20;
 
 // Maximum script length in bytes
-static const int MAX_SCRIPT_SIZE = 10000;
+static const int MAX_SCRIPT_SIZE = 129000; // ~= 129KB
 
 // Maximum number of values on script interpreter stack
 static const int MAX_STACK_SIZE = 1000;
@@ -181,8 +181,22 @@ enum opcodetype
     OP_NOP9 = 0xb8,
     OP_NOP10 = 0xb9,
 
+    // Execute EXT byte code.
+    OP_CREATE_NATIVE = 0xc0,
+    OP_CREATE = 0xc1,
+    OP_UPGRADE = 0Xc2,
+    OP_DESTROY = 0Xc3,
+    OP_CALL = 0xc4,
+    OP_SPEND = 0xc5,
+    OP_DEPOSIT_TO_CONTRACT = 0xc6,
 
     // template matching params
+    OP_GAS_PRICE = 0xf5,
+    OP_GAS_LIMIT = 0xf6,
+    OP_DATA = 0xf7,
+    OP_VERSION = 0xf8,
+    OP_ROOT_STATE_HASH = 0xf9,
+
     OP_SMALLINTEGER = 0xfa,
     OP_PUBKEYS = 0xfb,
     OP_PUBKEYHASH = 0xfd,
@@ -322,6 +336,25 @@ public:
     {
         return serialize(m_value);
     }
+
+    static uint64_t vch_to_uint64(const std::vector<unsigned char>& vch)
+    {
+        if (vch.size() > 8) {
+            throw scriptnum_error("script number overflow");
+        }
+        if (vch.empty())
+            return 0;
+        uint64_t result = 0;
+        for (size_t i = 0; i != vch.size(); ++i)
+            result |= static_cast<uint64_t>(vch[i]) << 8*i;
+        // If the input vector's most significant byte is 0x80, remove it from
+        // the result's msb and return a negative.
+        if (vch.back() & 0x80)
+            throw scriptnum_error("Negative gas value.");
+        // return -((uint64_t)(result & ~(0x80ULL << (8 * (vch.size() - 1)))));
+        return result;
+    }
+
 
     static std::vector<unsigned char> serialize(const int64_t& value)
     {
@@ -662,6 +695,22 @@ public:
         return (size() > 0 && *begin() == OP_RETURN) || (size() > MAX_SCRIPT_SIZE);
     }
 
+    // contract op check
+    bool HasContractOp() const
+    {
+        return Find(OP_CREATE_NATIVE) == 1 || Find(OP_CREATE) == 1 || Find(OP_UPGRADE) == 1 || Find(OP_DESTROY) == 1
+               || Find(OP_CALL) == 1 || Find(OP_DEPOSIT_TO_CONTRACT) == 1;
+    }
+	bool HasOpDepositToContract() const
+	{
+		return Find(OP_DEPOSIT_TO_CONTRACT) == 1;
+	}
+    bool HasOpSpend() const
+    {
+		return Find(OP_SPEND) == 1;
+    }
+    // end contract op check
+
     void clear()
     {
         // The default prevector::clear() does not release memory
@@ -693,6 +742,21 @@ public:
     virtual void KeepScript() {}
     CReserveScript() {}
     virtual ~CReserveScript() {}
+};
+
+class ValtypeUtils {
+public:
+    static std::string vch_to_string(const std::vector<unsigned char> &val) {
+        std::vector<char> str_chars(val.size());
+        memcpy(str_chars.data(), val.data(), val.size());
+        std::string str(str_chars.begin(), str_chars.end());
+        return str;
+    }
+	static std::vector<unsigned char> string_to_vch(const std::string& str) {
+        std::vector<unsigned char> data(str.size());
+		memcpy(data.data(), str.c_str(), str.size());
+		return data;
+	}
 };
 
 #endif // BITCOIN_SCRIPT_SCRIPT_H

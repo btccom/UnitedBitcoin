@@ -7,8 +7,11 @@
 
 #include <pubkey.h>
 #include <script/script.h>
+#include <policy/policy.h>
+#include <validation.h>
 #include <util.h>
 #include <utilstrencodings.h>
+#include <chainparams.h>
 
 
 typedef std::vector<unsigned char> valtype;
@@ -28,6 +31,13 @@ const char* GetTxnOutputType(txnouttype t)
     case TX_SCRIPTHASH: return "scripthash";
     case TX_MULTISIG: return "multisig";
     case TX_NULL_DATA: return "nulldata";
+	case TX_CREATE_NATIVE: return "createnativecontract";
+    case TX_CREATE: return "createcontract";
+    case TX_UPGRADE: return "upgradecontract";
+    case TX_CALL: return "callcontract";
+    case TX_DEPOSIT_TO_CONTRACT: return "deposit_to_contract";
+    case TX_SPEND: return "spend_contract_balance";
+    case TX_ROOT_STATE_HASH: return "root_state_hash";
     case TX_WITNESS_V0_KEYHASH: return "witness_v0_keyhash";
     case TX_WITNESS_V0_SCRIPTHASH: return "witness_v0_scripthash";
     case TX_WITNESS_UNKNOWN: return "witness_unknown";
@@ -49,6 +59,21 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
 
         // Sender provides N pubkeys, receivers provides M signatures
         mTemplates.insert(std::make_pair(TX_MULTISIG, CScript() << OP_SMALLINTEGER << OP_PUBKEYS << OP_SMALLINTEGER << OP_CHECKMULTISIG));
+
+        // Contract creation tx
+        mTemplates.insert(std::make_pair(TX_CREATE, CScript() << OP_VERSION << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_CREATE));
+		// Native contract creation tx
+		mTemplates.insert(std::make_pair(TX_CREATE_NATIVE, CScript() << OP_VERSION << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_CREATE_NATIVE));
+        // Call contract tx
+        mTemplates.insert(std::make_pair(TX_CALL, CScript() << OP_VERSION << OP_DATA << OP_DATA << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_CALL));
+        // Upgrade contract tx
+        mTemplates.insert(std::make_pair(TX_UPGRADE, CScript() << OP_VERSION << OP_DATA << OP_DATA << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_UPGRADE));
+        // Deposit to contract tx
+        mTemplates.insert(std::make_pair(TX_DEPOSIT_TO_CONTRACT, CScript() << OP_VERSION << OP_DATA << OP_DATA << OP_DATA << OP_DATA << OP_GAS_LIMIT << OP_GAS_PRICE << OP_DEPOSIT_TO_CONTRACT));
+        // Spend contract balance
+        mTemplates.insert(std::make_pair(TX_SPEND, CScript() << OP_DATA << OP_DATA << OP_SPEND));
+        // root state hash tx(in coinbase vout)
+        mTemplates.insert(std::make_pair(TX_ROOT_STATE_HASH, CScript() << OP_DATA << OP_ROOT_STATE_HASH));
     }
 
     vSolutionsRet.clear();
@@ -104,6 +129,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
 
         opcodetype opcode1, opcode2;
         std::vector<unsigned char> vch1, vch2;
+        uint32_t version = 0; // invalid contract version
 
         // Compare
         CScript::const_iterator pc1 = script1.begin();
@@ -167,11 +193,67 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
                 else
                     break;
             }
+            // contract code
+            else if(chainActive.Height() + 1 >= Params().GetConsensus().UBCONTRACT_Height)
+            {
+                if (opcode2 == OP_VERSION)
+                {
+                    if(vch1.empty() || vch1.size() > 4)
+                        break;
+                    version = CScriptNum::vch_to_uint64(vch1);
+                    if(version != CONTRACT_MAJOR_VERSION){
+                        // only allow standard uvm and no-exec transactions to live in mempool
+                        break;
+                    }
+    				vSolutionsRet.push_back(CScriptNum(version).getvch());
+                }
+                else if(opcode2 == OP_GAS_LIMIT) {
+                    try {
+                        uint64_t val = CScriptNum::vch_to_uint64(vch1);
+                        if(val > DEFAULT_BLOCK_GAS_LIMIT)
+                            break;
+    					vSolutionsRet.push_back(CScriptNum(val).getvch());
+                    }
+                    catch (const scriptnum_error &err) {
+    //                    return false;
+                        break;
+                    }
+                    if(version != CONTRACT_MAJOR_VERSION)
+                        break;
+                }
+                else if(opcode2 == OP_GAS_PRICE) {
+                    try {
+                        uint64_t val = CScriptNum::vch_to_uint64(vch1);
+    					vSolutionsRet.push_back(CScriptNum(val).getvch());
+                    }
+                    catch (const scriptnum_error &err) {
+    //                    return false;
+                        break;
+                    }
+                    if(version != CONTRACT_MAJOR_VERSION)
+                        break;
+                }
+                else if(opcode2 == OP_DATA)
+                {
+                    if(0 <= opcode1 && opcode1 <= OP_PUSHDATA4)
+                    {
+                        if(script2.size()==2 && script2[1] == OP_ROOT_STATE_HASH && script1.size()==2 && script1[1] == OP_ROOT_STATE_HASH && vch1.empty())
+                        {
+                            vSolutionsRet.push_back(vch1);
+                            continue;
+                        }
+                        if(vch1.empty())
+                            break;
+    					vSolutionsRet.push_back(vch1);
+                    }
+                }
+            }
             else if (opcode1 != opcode2 || vch1 != vch2)
             {
                 // Others must match exactly
                 break;
             }
+            // end contract code
         }
     }
 

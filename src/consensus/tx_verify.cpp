@@ -8,11 +8,16 @@
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
 #include <consensus/validation.h>
+#include <validation.h>
+#include <chainparams.h>
 
 // TODO remove the following dependencies
 #include <chain.h>
 #include <coins.h>
 #include <utilmoneystr.h>
+
+extern CChain chainActive;
+
 
 bool IsFinalTx(const CTransaction &tx, int nBlockHeight, int64_t nBlockTime)
 {
@@ -141,6 +146,8 @@ int64_t GetTransactionSigOpCost(const CTransaction& tx, const CCoinsViewCache& i
 
     if (tx.IsCoinBase())
         return nSigOps;
+	if(tx.IsCoinStake())
+		return nSigOps;
 
     if (flags & SCRIPT_VERIFY_P2SH) {
         nSigOps += GetP2SHSigOpCount(tx, inputs) * WITNESS_SCALE_FACTOR;
@@ -171,6 +178,11 @@ bool CheckTransaction(const CTransaction& tx, CValidationState &state, bool fChe
     CAmount nValueOut = 0;
     for (const auto& txout : tx.vout)
     {
+		if (txout.IsEmpty() && !tx.IsCoinBase() && !tx.IsCoinStake())
+		{
+		    if(chainActive.Height() + 1 >= Params().GetConsensus().UBCONTRACT_Height)
+			    return state.DoS(100, false, REJECT_INVALID, "txout empty for user transaction" );
+	    }
         if (txout.nValue < 0)
             return state.DoS(100, false, REJECT_INVALID, "bad-txns-vout-negative");
         if (txout.nValue > MAX_MONEY)
@@ -195,6 +207,10 @@ bool CheckTransaction(const CTransaction& tx, CValidationState &state, bool fChe
         if (tx.vin[0].scriptSig.size() < 2 || tx.vin[0].scriptSig.size() > 100)
             return state.DoS(100, false, REJECT_INVALID, "bad-cb-length");
     }
+	else if (tx.IsCoinStake())
+	{
+		;
+	}
     else
     {
         for (const auto& txin : tx.vin)
@@ -214,6 +230,8 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, CValidationState& state, c
     }
 
     CAmount nValueIn = 0;
+    CAmount allTxDepositToContract = 0;
+    CAmount allTxWithdrawFromContract = 0;
     for (unsigned int i = 0; i < tx.vin.size(); ++i) {
         const COutPoint &prevout = tx.vin[i].prevout;
         const Coin& coin = inputs.AccessCoin(prevout);
@@ -233,19 +251,31 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, CValidationState& state, c
             return state.DoS(100, false, REJECT_INVALID, "bad-txns-inputvalues-outofrange");
         }
     }
+	if (tx.HasOpDepositToContract() || tx.HasOpSpend()) {
+		ContractTxConverter converter(tx, nullptr, nullptr);
+		ExtractContractTX resultConvertContractTx;
+		if (!converter.extractionContractTransactions(resultConvertContractTx)) {
+			return state.Invalid(false, REJECT_INVALID, "bad-tx-bad-contract-format", "extract contract params failed");
+		}
+		for (ContractTransaction &ctx : resultConvertContractTx.txs) {
+			allTxDepositToContract += ctx.params.deposit_amount;
+		}
+        for (const auto& withdrawInfo : resultConvertContractTx.contract_withdraw_infos) {
+            allTxWithdrawFromContract += withdrawInfo.amount;
+        }
+	}
 
     const CAmount value_out = tx.GetValueOut();
-    if (nValueIn < value_out) {
+    if (nValueIn + allTxWithdrawFromContract < value_out + allTxDepositToContract) {
         return state.DoS(100, false, REJECT_INVALID, "bad-txns-in-belowout", false,
             strprintf("value in (%s) < value out (%s)", FormatMoney(nValueIn), FormatMoney(value_out)));
     }
 
     // Tally transaction fees
-    const CAmount txfee_aux = nValueIn - value_out;
+    const CAmount txfee_aux = nValueIn + allTxWithdrawFromContract - value_out - allTxDepositToContract;
     if (!MoneyRange(txfee_aux)) {
         return state.DoS(100, false, REJECT_INVALID, "bad-txns-fee-outofrange");
     }
-
     txfee = txfee_aux;
     return true;
 }

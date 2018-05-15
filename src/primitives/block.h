@@ -17,6 +17,11 @@
  * in the block is a special one that creates a new coin owned by the creator
  * of the block.
  */
+
+// mining type
+#define MINING_TYPE_POW 0x02000000
+#define MINING_TYPE_POS 0x01000000
+    
 class CBlockHeader
 {
 public:
@@ -54,6 +59,15 @@ public:
         nBits = 0;
         nNonce = 0;
     }
+    
+	bool IsProofOfStake() const
+	{
+		return nVersion & MINING_TYPE_POS;
+	}
+	bool IsProofOfWork() const
+	{
+		return nVersion & MINING_TYPE_POW;
+	}
 
     bool IsNull() const
     {

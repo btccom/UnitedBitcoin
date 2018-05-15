@@ -159,6 +159,16 @@ public:
     {
         return (nValue == -1);
     }
+	void SetEmpty()
+    {
+        nValue = 0;
+        scriptPubKey.clear();
+    }
+
+    bool IsEmpty() const
+    {
+        return (nValue == 0 && scriptPubKey.empty());
+    }
 
     friend bool operator==(const CTxOut& a, const CTxOut& b)
     {
@@ -278,18 +288,15 @@ public:
     // actually immutable; deserialization and assignment are implemented,
     // and bypass the constness. This is safe, as they update the entire
     // structure, including the hash.
-    const std::vector<CTxIn> vin;
-    const std::vector<CTxOut> vout;
-    const int32_t nVersion;
-    const uint32_t nLockTime;
-
-private:
+    std::vector<CTxIn> vin;
+    std::vector<CTxOut> vout;
+    int32_t nVersion;
+    uint32_t nLockTime;
     /** Memory only. */
-    const uint256 hash;
-
-    uint256 ComputeHash() const;
+    uint256 hash;
 
 public:
+    uint256 ComputeHash() const;
     /** Construct a CTransaction that qualifies as IsNull() */
     CTransaction();
 
@@ -334,6 +341,16 @@ public:
     {
         return (vin.size() == 1 && vin[0].prevout.IsNull());
     }
+    
+	bool IsCoinStake() const
+	{
+	    // ppcoin: the coin stake transaction is marked with the first output empty
+	    return (vin.size() == 1 && vout.size() == 2 && vout[0].IsEmpty());
+	}
+
+    bool HasOpSpend() const;
+    bool HasContractOp() const;
+	bool HasOpDepositToContract() const;
 
     friend bool operator==(const CTransaction& a, const CTransaction& b)
     {

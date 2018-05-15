@@ -75,6 +75,8 @@ struct Params {
 	std::string UBCfoundationPubkey;
 	std::string UBCfoundationAddress;
 	std::string UBCForkGeneratorPubkey;
+
+    int UBCONTRACT_Height;
 	
     /**
      * Minimum blocks including miner confirmation of the total of 2016 blocks in a retargeting period,
@@ -90,6 +92,10 @@ struct Params {
     bool fPowNoRetargeting;
     int64_t nPowTargetSpacing;
     int64_t nPowTargetTimespan;
+    
+	/** Proof of stake parameters */
+	uint256 posLimit;
+	
     int64_t DifficultyAdjustmentInterval() const { return nPowTargetTimespan / nPowTargetSpacing; }
     void UpdateDifficultyAdjustmentIntervalForkV1() {nPowTargetTimespan = 10*1*60;nPowTargetSpacing= 1*60;nRuleChangeActivationThreshold=190;nMinerConfirmationWindow=200;}
 

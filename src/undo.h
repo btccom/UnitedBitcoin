@@ -96,6 +96,13 @@ public:
     }
 };
 
+class CTxContractUndo
+{
+public:
+    // undo information for all contract txins
+    // TODO
+};
+
 /** Undo information for a CBlock */
 class CBlockUndo
 {

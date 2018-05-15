@@ -293,6 +293,14 @@ public:
     {
         return *phashBlock;
     }
+	bool IsProofOfStake() const
+    {
+    	return nVersion & MINING_TYPE_POS;
+	}
+	bool IsProofOfWork() const
+    {
+    	return nVersion & MINING_TYPE_POW;
+	}
 
     int64_t GetBlockTime() const
     {
