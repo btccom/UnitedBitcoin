@@ -222,12 +222,13 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 
     if(allow_contract) {
         const auto &root_state_hash_after_add_txs = service->current_root_state_hash();
-        coinbaseTx.vout.resize(2);
-        coinbaseTx.vout[1].scriptPubKey =
-                CScript() << ValtypeUtils::string_to_vch(root_state_hash_after_add_txs) << OP_ROOT_STATE_HASH;
-        coinbaseTx.vout[1].nValue = 0;
-		originalRewardTx = coinbaseTx;
-        pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
+        CTxOut root_state_hash_out;
+	root_state_hash_out.scriptPubKey =
+	CScript() << ValtypeUtils::string_to_vch(root_state_hash_after_add_txs) << OP_ROOT_STATE_HASH;
+	root_state_hash_out.nValue = 0;
+	coinbaseTx.vout.push_back(root_state_hash_out);
+	originalRewardTx = coinbaseTx;
+        pblock->vtx[0] = MakeTransactionRef(coinbaseTx);
     }
 
 	// rollback root state hash
@@ -499,6 +500,8 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
         service->close();
     }
 
+    originalRewardTx = *pblock->vtx[0];
+    RebuildRefundTransaction();
     ////////////////////////////////////////////////////////
 
 	// insert CoinStake

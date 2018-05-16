@@ -120,6 +120,17 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
         return true;
     }
 
+    if(scriptPubKey.size()>=2 && scriptPubKey[scriptPubKey.size()-1]==OP_ROOT_STATE_HASH) {
+        std::vector<unsigned char> result;
+        opcodetype opcode;
+        auto pc = scriptPubKey.begin();
+        if(scriptPubKey.GetOp(pc, opcode, result)) {
+            typeRet = TX_ROOT_STATE_HASH;
+            vSolutionsRet.push_back(result);
+            return true;
+        }
+    }
+
     // Scan templates
     const CScript& script1 = scriptPubKey;
     for (const std::pair<txnouttype, CScript>& tplate : mTemplates)
@@ -236,7 +247,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
                 {
                     if(0 <= opcode1 && opcode1 <= OP_PUSHDATA4)
                     {
-                        if(script2.size()==2 && script2[1] == OP_ROOT_STATE_HASH && script1.size()==2 && script1[1] == OP_ROOT_STATE_HASH && vch1.empty())
+                        if(script2.size()==2 && script2[1] == OP_ROOT_STATE_HASH && script1.size()==2 && script1[script1.size()-1] == OP_ROOT_STATE_HASH && vch1.empty())
                         {
                             vSolutionsRet.push_back(vch1);
                             continue;
