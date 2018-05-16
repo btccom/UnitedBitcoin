@@ -120,16 +120,19 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
         return true;
     }
 
-    if(scriptPubKey.size()>=2 && scriptPubKey[scriptPubKey.size()-1]==OP_ROOT_STATE_HASH) {
-        std::vector<unsigned char> result;
-        opcodetype opcode;
-        auto pc = scriptPubKey.begin();
-        if(scriptPubKey.GetOp(pc, opcode, result)) {
-            typeRet = TX_ROOT_STATE_HASH;
-            vSolutionsRet.push_back(result);
-            return true;
-        }
-    }
+	if(chainActive.Height() + 1 >= Params().GetConsensus().UBCONTRACT_Height)// contract code
+	{
+	    if(scriptPubKey.size()>=2 && scriptPubKey[scriptPubKey.size()-1]==OP_ROOT_STATE_HASH) {
+	        std::vector<unsigned char> result;
+	        opcodetype opcode;
+	        auto pc = scriptPubKey.begin();
+	        if(scriptPubKey.GetOp(pc, opcode, result)) {
+	            typeRet = TX_ROOT_STATE_HASH;
+	            vSolutionsRet.push_back(result);
+	            return true;
+	        }
+	    }
+	}
 
     // Scan templates
     const CScript& script1 = scriptPubKey;
