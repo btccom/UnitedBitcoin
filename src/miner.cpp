@@ -398,11 +398,11 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
                 break;
             }
             LogPrintf("CreateNewBlockPos(): parsed kernel type=%d\n", whichType);
-            if (whichType != TX_SCRIPTHASH) {
+            if (whichType != TX_SCRIPTHASH && whichType != TX_PUBKEYHASH) {
                 LogPrintf("CreateNewBlockPos(): no support for kernel type=%d\n", whichType);
                 break;  
             }
-            if (whichType == TX_SCRIPTHASH) {
+            if (whichType == TX_SCRIPTHASH || whichType == TX_PUBKEYHASH) {
 				// use the same script pubkey
                 scriptPubKeyOut = scriptPubKeyKernel;
             }
@@ -984,11 +984,11 @@ bool CheckProofOfStake(CBlock* pblock, const COutPoint& prevout,  CAmount amount
 	bnHashPos /= coinAge;
 
 	uint256 hashProofOfStakeWeight = ArithToUint256(bnHashPos);
-	LogPrintf("CheckProofOfStake amount: %lld\n", amount);
-	LogPrintf("CheckProofOfStake coinAge: %d\n", coinAge);
-	LogPrintf("CheckProofOfStake bnTarget: %s\n", targetProofOfStake.ToString().c_str());
-	LogPrintf("CheckProofOfStake hashProofOfStake: %s\n", hashProofOfStake.ToString().c_str());
-	LogPrintf("CheckProofOfStake hashProofOfStakeWeight: %s\n", hashProofOfStakeWeight.ToString().c_str());
+	//LogPrintf("CheckProofOfStake amount: %lld\n", amount);
+	//LogPrintf("CheckProofOfStake coinAge: %d\n", coinAge);
+	//LogPrintf("CheckProofOfStake bnTarget: %s\n", targetProofOfStake.ToString().c_str());
+	//LogPrintf("CheckProofOfStake hashProofOfStake: %s\n", hashProofOfStake.ToString().c_str());
+	//LogPrintf("CheckProofOfStake hashProofOfStakeWeight: %s\n", hashProofOfStakeWeight.ToString().c_str());
 
     if (bnHashPos > bnTarget)
         return false;
@@ -1038,10 +1038,10 @@ bool CheckStake(CBlock* pblock)
 	if (!ExtractDestinations(coinStakeTo, whichTypeTo, txDestToVec, nRequiredTo))
 		return error("CheckStake() : ExtractDestinations coinStakeTo ");
 
-	if (whichTypeFrom != TX_SCRIPTHASH)
+	if (whichTypeFrom != TX_SCRIPTHASH && whichTypeFrom != TX_PUBKEYHASH)
 		return error("CheckStake() : whichTypeFrom ");
 
-	if (whichTypeTo != TX_SCRIPTHASH)
+	if (whichTypeTo != TX_SCRIPTHASH && whichTypeTo != TX_PUBKEYHASH)
 		return error("CheckStake() : whichTypeTo ");
 
 	if (coinStakeFrom != coinStakeTo)

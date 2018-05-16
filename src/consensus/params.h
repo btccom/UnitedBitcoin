@@ -98,6 +98,7 @@ struct Params {
 	
     int64_t DifficultyAdjustmentInterval() const { return nPowTargetTimespan / nPowTargetSpacing; }
     void UpdateDifficultyAdjustmentIntervalForkV1() {nPowTargetTimespan = 10*1*60;nPowTargetSpacing= 1*60;nRuleChangeActivationThreshold=190;nMinerConfirmationWindow=200;}
+    void UpdateDifficultyAdjustmentIntervalForkV2() {nPowTargetTimespan = 10*2*60;nPowTargetSpacing= 2*60;nRuleChangeActivationThreshold=190;nMinerConfirmationWindow=200;}
 
     void UpdateDifficultyAdjustmentInterval() {nPowTargetTimespan = 200*10*60;nRuleChangeActivationThreshold=190;nMinerConfirmationWindow=200;}
     void UpdateOldDifficultyAdjustmentInterval() {nPowTargetTimespan = 14*24*60*60;nRuleChangeActivationThreshold=1916;nMinerConfirmationWindow=2016;}

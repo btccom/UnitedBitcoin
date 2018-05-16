@@ -1811,7 +1811,7 @@ bool AppInitMain()
 static void ThreadStakeMiner(CWallet *pwallet)
 {
     // Make this thread recognisable as the mining thread
-    RenameThread("lte-pos-miner");
+    RenameThread("ubcd-pos-miner");
     bool fTryToSync = true;
 
     LogPrintf("ThreadStakeMiner start.\n");
@@ -1822,7 +1822,7 @@ static void ThreadStakeMiner(CWallet *pwallet)
 			MilliSleep(1000);
 		else
 		{
-    		while ((pindexBestHeader->nHeight)+1 < Params().GetConsensus().UBCONTRACT_Height) {
+    		while (pindexBestHeader->nHeight < Params().GetConsensus().UBCONTRACT_Height) {
     		    if(!ThreadPOSstate)
     		        break;
                 MilliSleep(1000);
@@ -1847,7 +1847,7 @@ static void ThreadStakeMiner(CWallet *pwallet)
             }
             */
 
-		/*	while (g_connman->GetNodeCount(CConnman::CONNECTIONS_ALL) == 0 || IsInitialBlockDownload()) {
+			while (g_connman->GetNodeCount(CConnman::CONNECTIONS_ALL) == 0 || IsInitialBlockDownload()) {
 				MilliSleep(1000);
 			}
 
@@ -1855,7 +1855,7 @@ static void ThreadStakeMiner(CWallet *pwallet)
 				MilliSleep(1000);
             	continue;
 			}
-             */
+    
             //
             // Create new block
             //

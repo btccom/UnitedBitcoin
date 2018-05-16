@@ -61,13 +61,12 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
         return bnNew.GetCompact();
     }
 	
-	if(pblock->IsProofOfStake() && (pindexLast->nHeight+1 >=params.UBCONTRACT_Height))
-	{
-	  return PosGetNextTargetRequired(pindexLast,pblock,params);
-	}
-	
     Consensus::Params * temp_params = (Consensus::Params *)&params;
-    if ((pindexLast->nHeight+1) >= Params().GetConsensus().ForkV1Height)
+    if ((pindexLast->nHeight+1) >= Params().GetConsensus().UBCONTRACT_Height)
+    {
+    	temp_params->UpdateDifficultyAdjustmentIntervalForkV2();
+    }
+    else if ((pindexLast->nHeight+1) >= Params().GetConsensus().ForkV1Height)
     {
     	temp_params->UpdateDifficultyAdjustmentIntervalForkV1();
     }
@@ -80,7 +79,7 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
 	temp_params->UpdateOldDifficultyAdjustmentInterval();
     }
     // Only change once per difficulty adjustment interval
-    if ((pindexLast->nHeight+1) % params.DifficultyAdjustmentInterval() != 0)
+    if ((((pindexLast->nHeight+1) % params.DifficultyAdjustmentInterval() != 0)) &&((pindexLast->nHeight+1) < params.UBCONTRACT_Height) )
     {
         if (params.fPowAllowMinDifficultyBlocks)
         {
@@ -107,6 +106,16 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
         }
         return pindexLast->nBits;
     }
+	
+	if(pblock->IsProofOfStake() && (pindexLast->nHeight+1 >=params.UBCONTRACT_Height))
+	{
+	  return PosGetNextTargetRequired(pindexLast,pblock,params);
+	}
+
+	if(pblock->IsProofOfWork() && (pindexLast->nHeight+1 >=params.UBCONTRACT_Height))
+	{
+	  return PowGetNextTargetRequired(pindexLast,pblock,params);
+	}
 
     // Go back by what we want to be 14 days worth of blocks
     int nHeightFirst = pindexLast->nHeight - (params.DifficultyAdjustmentInterval()-1);
@@ -153,7 +162,7 @@ unsigned int PosGetNextTargetRequired(const CBlockIndex* pindexLast,  const CBlo
     const CBlockIndex* tIndexLast = pindexLast;
     while (tIndexLast && tIndexLast->pprev)
     {
-        if(tNbits.size() == 10 || tIndexLast->nHeight <=params.UBCONTRACT_Height)
+        if(tNbits.size() == (params.nPowTargetTimespan / params.nPowTargetSpacing) || tIndexLast->nHeight <=params.UBCONTRACT_Height)
             break;
 		if(tIndexLast->IsProofOfStake())
 		{
@@ -163,7 +172,7 @@ unsigned int PosGetNextTargetRequired(const CBlockIndex* pindexLast,  const CBlo
         tIndexLast = tIndexLast->pprev;
     }
 
-    if(tNbits.size() < 10)
+    if(tNbits.size() < (params.nPowTargetTimespan / params.nPowTargetSpacing))
         return bnTargetLimitnBits;
     
     std::set<unsigned int> tmpBits;
@@ -176,7 +185,7 @@ unsigned int PosGetNextTargetRequired(const CBlockIndex* pindexLast,  const CBlo
     if(tmpBits.size() == 1)
     {
         // Limit adjustment step
-        int64_t nActualTimespan = pindexLast->GetBlockTime() - nFirstBlockTime;
+        int64_t nActualTimespan = nLastPosTime - nFirstBlockTime;
         if (nActualTimespan < params.nPowTargetTimespan/4)
             nActualTimespan = params.nPowTargetTimespan/4;
         if (nActualTimespan > params.nPowTargetTimespan*4)
@@ -199,6 +208,90 @@ unsigned int PosGetNextTargetRequired(const CBlockIndex* pindexLast,  const CBlo
         return nLastPosBits;
     }
 }
+
+unsigned int PowGetNextTargetRequired(const CBlockIndex* pindexLast,  const CBlockHeader *pblock, const Consensus::Params& params)
+{
+	bool fProofOfWork = pblock->IsProofOfWork();
+	uint32_t nLastPowBits = 0;
+	int64_t nLastPowTime = 0;
+	assert(fProofOfWork == true);
+    unsigned int bnTargetLimitnBits = UintToArith256(params.powLimit).GetCompact() ;
+
+    if (pindexLast == NULL )
+        //return bnTargetLimit.GetCompact(); // genesis block
+        return bnTargetLimitnBits;
+
+    const CBlockIndex* pindexPrev = GetLastBlockIndex(pindexLast, false,params);//获取上一个POS块的index
+	if(pindexPrev == NULL)
+		return bnTargetLimitnBits;
+	else
+	{
+	    nLastPowBits = pindexPrev->nBits;
+	    nLastPowTime = pindexPrev->GetBlockTime();
+	}
+	    
+    if (pindexPrev->pprev == NULL)
+        //return bnTargetLimit.GetCompact(); // first block
+        return bnTargetLimitnBits;
+    const CBlockIndex* pindexPrevPrev = GetLastBlockIndex(pindexPrev->pprev, false,params);
+	if(pindexPrevPrev == NULL)
+		return bnTargetLimitnBits;
+    if (pindexPrevPrev->pprev == NULL)
+        //return bnTargetLimit.GetCompact(); // second block
+        return bnTargetLimitnBits;
+
+    std::vector<unsigned int> tNbits;
+    int64_t nFirstBlockTime=0;
+    const CBlockIndex* tIndexLast = pindexLast;
+    while (tIndexLast && tIndexLast->pprev)
+    {
+        if(tNbits.size() == (params.nPowTargetTimespan / params.nPowTargetSpacing))
+            break;
+		if(tIndexLast->IsProofOfWork())
+		{
+		    nFirstBlockTime = tIndexLast->GetBlockTime();
+		    tNbits.push_back(tIndexLast->nBits);
+        }
+        tIndexLast = tIndexLast->pprev;
+    }
+
+    if(tNbits.size() < (params.nPowTargetTimespan / params.nPowTargetSpacing))
+        return bnTargetLimitnBits;
+    
+    std::set<unsigned int> tmpBits;
+
+    for(int i = 0;i < tNbits.size();i++)
+    {
+        tmpBits.insert(tNbits[i]);
+    }
+
+    if(tmpBits.size() == 1)
+    {
+        // Limit adjustment step
+        int64_t nActualTimespan = nLastPowTime - nFirstBlockTime;
+        if (nActualTimespan < params.nPowTargetTimespan/4)
+            nActualTimespan = params.nPowTargetTimespan/4;
+        if (nActualTimespan > params.nPowTargetTimespan*4)
+            nActualTimespan = params.nPowTargetTimespan*4;
+    
+        // Retarget
+        const arith_uint256 bnPowLimit = UintToArith256(params.powLimit);
+        arith_uint256 bnNew;
+        bnNew.SetCompact(nLastPowBits);
+        bnNew *= nActualTimespan;
+        bnNew /= params.nPowTargetTimespan;
+    
+        if (bnNew > bnPowLimit)
+            bnNew = bnPowLimit;
+    
+        return bnNew.GetCompact();
+    }
+    else
+    {
+        return nLastPowBits;
+    }
+}
+
 
 
 unsigned int CalculateNextWorkRequired(const CBlockIndex* pindexLast, int64_t nFirstBlockTime, const Consensus::Params& params)

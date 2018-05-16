@@ -193,8 +193,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
                 else
                     break;
             }
-            // contract code
-            else if(chainActive.Height() + 1 >= Params().GetConsensus().UBCONTRACT_Height)
+            else if(chainActive.Height() + 1 >= Params().GetConsensus().UBCONTRACT_Height)// contract code
             {
                 if (opcode2 == OP_VERSION)
                 {
