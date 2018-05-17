@@ -399,11 +399,21 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
                 break;
             }
             LogPrintf("CreateNewBlockPos(): parsed kernel type=%d\n", whichType);
-            if (whichType != TX_SCRIPTHASH && whichType != TX_PUBKEYHASH) {
+            if (whichType != TX_SCRIPTHASH  && 
+				whichType != TX_MULTISIG  &&
+				whichType != TX_PUBKEYHASH && 
+				whichType != TX_PUBKEY && 
+				whichType != TX_WITNESS_V0_SCRIPTHASH &&
+				whichType != TX_WITNESS_V0_KEYHASH) {
                 LogPrintf("CreateNewBlockPos(): no support for kernel type=%d\n", whichType);
                 break;  
             }
-            if (whichType == TX_SCRIPTHASH || whichType == TX_PUBKEYHASH) {
+            if (whichType == TX_SCRIPTHASH || 
+				whichType == TX_MULTISIG || 
+				whichType == TX_PUBKEYHASH || 
+				whichType == TX_PUBKEY || 
+				whichType == TX_WITNESS_V0_SCRIPTHASH || 
+				whichType == TX_WITNESS_V0_KEYHASH) {
 				// use the same script pubkey
                 scriptPubKeyOut = scriptPubKeyKernel;
             }
@@ -1041,10 +1051,14 @@ bool CheckStake(CBlock* pblock)
 	if (!ExtractDestinations(coinStakeTo, whichTypeTo, txDestToVec, nRequiredTo))
 		return error("CheckStake() : ExtractDestinations coinStakeTo ");
 
-	if (whichTypeFrom != TX_SCRIPTHASH && whichTypeFrom != TX_PUBKEYHASH)
+	if (whichTypeFrom != TX_SCRIPTHASH && whichTypeFrom != TX_MULTISIG &&
+		whichTypeFrom != TX_PUBKEYHASH && whichTypeFrom != TX_PUBKEY &&
+		whichTypeFrom != TX_WITNESS_V0_SCRIPTHASH && whichTypeFrom != TX_WITNESS_V0_KEYHASH)
 		return error("CheckStake() : whichTypeFrom ");
 
-	if (whichTypeTo != TX_SCRIPTHASH && whichTypeTo != TX_PUBKEYHASH)
+	if (whichTypeTo != TX_SCRIPTHASH && whichTypeTo != TX_MULTISIG &&
+		whichTypeTo != TX_PUBKEYHASH && whichTypeTo != TX_PUBKEY &&
+		whichTypeTo != TX_WITNESS_V0_SCRIPTHASH && whichTypeTo != TX_WITNESS_V0_KEYHASH &&)
 		return error("CheckStake() : whichTypeTo ");
 
 	if (coinStakeFrom != coinStakeTo)
