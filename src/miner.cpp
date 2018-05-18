@@ -237,6 +237,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
         rollbacked_contract_storage = true;
 		service->close();
 	}
+
 	RebuildRefundTransaction();
     ////////////////////////////////////////////////////////
 
@@ -270,7 +271,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 }
 
 
-std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pwallet, bool fMineWitnessTx)
+std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pwallet, int32_t nTimeLimit, bool fMineWitnessTx)
 {
     //int64_t nTimeStart = GetTimeMicros();
 
@@ -281,6 +282,8 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
     if(!pblocktemplate.get())
         return nullptr;
     pblock = &pblocktemplate->block; // pointer for convenience
+
+	this->nTimeLimit = nTimeLimit;
 
     // Add dummy coinbase tx as first transaction
     pblock->vtx.emplace_back();
@@ -1058,7 +1061,7 @@ bool CheckStake(CBlock* pblock)
 
 	if (whichTypeTo != TX_SCRIPTHASH && whichTypeTo != TX_MULTISIG &&
 		whichTypeTo != TX_PUBKEYHASH && whichTypeTo != TX_PUBKEY &&
-		whichTypeTo != TX_WITNESS_V0_SCRIPTHASH && whichTypeTo != TX_WITNESS_V0_KEYHASH &&)
+		whichTypeTo != TX_WITNESS_V0_SCRIPTHASH && whichTypeTo != TX_WITNESS_V0_KEYHASH)
 		return error("CheckStake() : whichTypeTo ");
 
 	if (coinStakeFrom != coinStakeTo)

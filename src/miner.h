@@ -29,6 +29,8 @@ static const bool DEFAULT_PRINTPRIORITY = false;
 static const int32_t BYTECODE_TIME_BUFFER = 6;
 //How much time to spend trying to process transactions when using the generate RPC call
 static const int32_t POW_MINER_MAX_TIME = 60;
+static const int32_t POS_MINER_MAX_TIME = 60;
+
 
 struct CBlockTemplate
 {
@@ -236,7 +238,7 @@ public:
 
     /** Construct a new block template with coinbase to scriptPubKeyIn */
     std::unique_ptr<CBlockTemplate> CreateNewBlock(const CScript& scriptPubKeyIn, bool fMineWitnessTx=true, int64_t* pTotalFees = 0, int32_t nTime=0, int32_t nTimeLimit=0); // TODO: change the callee
-	std::unique_ptr<CBlockTemplate> CreateNewBlockPos(CWalletRef& pwallet, bool fMineWitnessTx=true);
+	std::unique_ptr<CBlockTemplate> CreateNewBlockPos(CWalletRef& pwallet, int32_t nTimeLimit, bool fMineWitnessTx=true);
 
 
 private:
