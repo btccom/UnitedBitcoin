@@ -261,6 +261,8 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 
 void BlockAssembler::RebuildRefundTransaction() {
 	CMutableTransaction contrTx(*(pblock->vtx[0]));
+	if(contrTx.vin.size()>0)
+        contrTx.vin[0].prevout.SetNull();
 	contrTx.vout[0].nValue = nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus());
 	pblock->vtx[0] = MakeTransactionRef(std::move(contrTx));
 }
