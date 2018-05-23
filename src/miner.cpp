@@ -375,6 +375,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
 	int64_t nCredit = 0;
 	bool fKernelFound = false;
 	CScript scriptPubKeyKernel;
+	COutPoint prevoutFound;
 
 	for (const auto& pcoin: setCoins) {
 		COutPoint prevoutStake = COutPoint(pcoin.first->GetHash(), pcoin.second);
@@ -392,6 +393,10 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
 		if (CheckKernel(pblock, prevoutStake, coinStake.out.nValue,nHeight)) {
             // Found a kernel
             LogPrintf("CreateCoinStake : kernel found\n");
+
+			// Set prevoutFound
+			prevoutFound = prevoutStake;
+		
             std::vector<std::vector<unsigned char> > vSolutions;
             txnouttype whichType;
             CScript scriptPubKeyOut;
@@ -491,7 +496,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
     };
     int nPackagesSelected = 0;
     int nDescendantsUpdated = 0;
-    addPackageTxs(nPackagesSelected, nDescendantsUpdated, minGasPrice, allow_contract);
+    addPackageTxs(nPackagesSelected, nDescendantsUpdated, minGasPrice, allow_contract, prevoutFound);
 
     if(allow_contract)
         service->open();
@@ -783,7 +788,7 @@ void BlockAssembler::SortForBlock(const CTxMemPool::setEntries& package, CTxMemP
 // Each time through the loop, we compare the best transaction in
 // mapModifiedTxs with the next transaction in the mempool to decide what
 // transaction package to work on next.
-void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpdated, uint64_t minGasPrice, bool allow_contract)
+void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpdated, uint64_t minGasPrice, bool allow_contract, const COutPoint& outpointPos)
 {
     // mapModifiedTx will store sorted packages after they are modified
     // because some of their txs are already in the block
@@ -912,6 +917,21 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
                 continue;
             }
             const CTransaction& tx = sortedEntries[i]->GetTx();
+
+			// check UTXO spent by pos mining
+			bool spentByPos = false;
+			if (outpointPos.n != uint32_t(-1)) {
+				for (const auto& vin : tx.vin) {
+					if (vin.prevout == outpointPos) {
+						spentByPos = true;
+						break;
+					}
+				}
+				
+				if (spentByPos)
+					continue;
+			}
+			
             if (wasAdded) {
 				if (!allow_contract && (tx.HasContractOp() || tx.HasOpSpend())) {
 					mapModifiedTx.erase(sortedEntries[i]);
