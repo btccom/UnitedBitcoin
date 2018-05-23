@@ -451,6 +451,13 @@ public:
         fChangeCached = false;
     }
 
+	bool ValidWallet()
+    {
+    	if(!pwallet)
+			return false;
+		return true;
+	}
+
     void BindWallet(CWallet *pwalletIn)
     {
         pwallet = pwalletIn;

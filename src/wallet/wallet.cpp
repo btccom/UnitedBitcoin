@@ -2119,6 +2119,11 @@ std::vector<uint256> CWallet::ResendWalletTransactionsBefore(int64_t nTime, CCon
         // Don't rebroadcast if newer than nTime:
         if (wtx.nTimeReceived > nTime)
             continue;
+		if (wtx.nTimeReceived == 0)
+			continue;
+		if (!wtx.ValidWallet())
+			continue;
+		
         mapSorted.insert(std::make_pair(wtx.nTimeReceived, &wtx));
     }
     for (std::pair<const unsigned int, CWalletTx*>& item : mapSorted)
