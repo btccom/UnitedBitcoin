@@ -541,10 +541,13 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
 
 
 void BlockAssembler::RebuildRefundTransaction() {
-	CMutableTransaction contrTx(originalRewardTx);
+	CMutableTransaction contrTx(*(pblock->vtx[0]));
+	if(contrTx.vin.size()>0)
+        contrTx.vin[0].prevout.SetNull();
 	contrTx.vout[0].nValue = nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus());
 	pblock->vtx[0] = MakeTransactionRef(std::move(contrTx));
 }
+
 
 void BlockAssembler::onlyUnconfirmed(CTxMemPool::setEntries& testSet)
 {
