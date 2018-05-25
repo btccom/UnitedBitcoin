@@ -1851,7 +1851,7 @@ static void ThreadStakeMiner(CWallet *pwallet)
 				MilliSleep(1000);
 			}
 
-			if((g_connman->GetNodeCount(CConnman::CONNECTIONS_ALL) < 3) || (chainActive.Tip()->GetBlockTime() < (GetTime() - 2 * 60))) {
+			if((g_connman->GetNodeCount(CConnman::CONNECTIONS_ALL) < 3) || (chainActive.Tip()->GetBlockTime() < (GetTime() - 10 * 60))) {
 				MilliSleep(1000);
             	continue;
 			}
