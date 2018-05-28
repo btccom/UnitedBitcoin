@@ -219,7 +219,7 @@ struct ContractCreateDigestInfo
 {
     std::string caller_address;
     std::string tx_hash;
-    size_t contract_op_vout_index;
+    uint32_t contract_op_vout_index;
 };
 
 FC_REFLECT(::ContractCreateDigestInfo, (caller_address)(tx_hash)(contract_op_vout_index));
