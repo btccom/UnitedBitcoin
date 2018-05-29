@@ -15,7 +15,7 @@
 #include <utilstrencodings.h>
 #include <chainparams.h>
 #include <chain.h>
-
+#include <util.h>
 
 typedef std::vector<unsigned char> valtype;
 extern CChain chainActive;
@@ -932,8 +932,9 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     }
 
                     bool fSuccess = checker.CheckSig(vchSig, vchPubKey, scriptCode, sigversion);
-                    if (!fSuccess && (flags & SCRIPT_VERIFY_NULLFAIL) && vchSig.size())
+                    if (!fSuccess && (flags & SCRIPT_VERIFY_NULLFAIL) && vchSig.size()) {
                         return set_error(serror, SCRIPT_ERR_SIG_NULLFAIL);
+                    }
 
                     popstack(stack);
                     popstack(stack);

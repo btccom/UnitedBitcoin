@@ -63,33 +63,23 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
 	
     Consensus::Params * temp_params = (Consensus::Params *)&params;
 
-    if ((pindexLast->nHeight+1) >= Params().GetConsensus().UBCONTRACT_Height)
-    {
-    	temp_params->UpdateDifficultyAdjustmentIntervalForkV2();
-    }
-    else if ((pindexLast->nHeight+1) >= Params().GetConsensus().ForkV1Height)
-    {
-    	temp_params->UpdateDifficultyAdjustmentIntervalForkV1();
-    }
-   else if((pindexLast->nHeight+1) >= Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount)
-    {
-		temp_params->UpdateDifficultyAdjustmentInterval();
-    }
-    else
-    {
-	temp_params->UpdateOldDifficultyAdjustmentInterval();
-    }
-    
-    if(!params.is_regtest_net) 
-    {
-        if ((pindexLast->nHeight + 1) >=Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount) 
+    if(!params.is_regtest_net) {
+        if ((pindexLast->nHeight+1) >= Params().GetConsensus().UBCONTRACT_Height)
         {
-            temp_params->UpdateDifficultyAdjustmentInterval();
-        } 
-        else 
-        {
-            temp_params->UpdateOldDifficultyAdjustmentInterval();
-        }
+        	temp_params->UpdateDifficultyAdjustmentIntervalForkV2();
+    	}
+    	else if ((pindexLast->nHeight+1) >= Params().GetConsensus().ForkV1Height)
+    	{
+    		temp_params->UpdateDifficultyAdjustmentIntervalForkV1();
+    	}
+   	else if((pindexLast->nHeight+1) >= Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount)
+    	{
+			temp_params->UpdateDifficultyAdjustmentInterval();
+    	}
+    	else
+    	{
+		temp_params->UpdateOldDifficultyAdjustmentInterval();
+    	}
     }
     // Only change once per difficulty adjustment interval
     if ((((pindexLast->nHeight+1) % params.DifficultyAdjustmentInterval() != 0)) &&((pindexLast->nHeight+1) < params.UBCONTRACT_Height) )

@@ -13,6 +13,7 @@ import random
 import json
 from decimal import Decimal
 from test_framework import ub_utils
+import pdb
 
 config = {
     'PRECISION': 100000000,
@@ -53,7 +54,10 @@ def get_utxo(node, caller_addr):
 
 
 def generate_block(node, miner, count=1):
-    return node.generatetoaddress(count, miner, 1000000)
+    res = node.generatetoaddress(count, miner, 5000000)
+    if len(res)<count:
+        print("mine res error: ", res)
+    return res
 
 
 def create_new_contract(node, caller_addr, contract_bytecode_path):
@@ -85,6 +89,10 @@ def create_new_contract(node, caller_addr, contract_bytecode_path):
     )
     assert (signed_create_contract_raw_tx_res.get('complete', None) is True)
     signed_create_contract_raw_tx = signed_create_contract_raw_tx_res.get('hex')
+    # pdb.set_trace()
+    decoded_tx = node.decoderawtransaction(signed_create_contract_raw_tx)
+    print("decoded_tx: ", decoded_tx)
+    exit(0)
     node.sendrawtransaction(signed_create_contract_raw_tx)
     contract_addr = node.getcreatecontractaddress(
         signed_create_contract_raw_tx
@@ -363,7 +371,8 @@ class SmartContractTest(BitcoinTestFramework):
             generate_block(node1, self.address2)
         invoke_contract_api(node1, caller_addr, contract_addr, "vote_admin", "true")
         invoke_contract_api(node1, self.address2, contract_addr, "vote_admin", "true")
-        generate_block(node1, self.address2)
+        mine_res = generate_block(node1, self.address2)
+        print("mine res: ", mine_res)
         admins = json.loads(node1.invokecontractoffline(caller_addr, contract_addr, 'admins', " ")['result'])
         print("admins after remove is ", admins)
         self.assertEqual(admins, [caller_addr])
@@ -796,6 +805,7 @@ class SmartContractTest(BitcoinTestFramework):
         )['result']
         print("storage.money after many deposits and withdraws: ", invoke_res)
         mine_res = generate_block(node1, self.address2, 100)
+        assert len(mine_res) == 100
         account_balance_after_withdraw = get_address_balance(node1, caller_addr)
         print("account change of withdraw-from-contract: %f to %f" % (
             account_balance_before_withdraw, account_balance_after_withdraw))
@@ -1167,9 +1177,9 @@ class SmartContractTest(BitcoinTestFramework):
         connect_nodes_bi(self.nodes, 0, 1)
 
         node1 = self.nodes[0]
-        self.address1 = node1.getnewaddress(self.account1)
-        self.address2 = node1.getnewaddress(self.account2)
-        self.address3 = node1.getnewaddress(self.account3)
+        self.address1 = node1.getnewaddress(self.account1, "legacy")
+        self.address2 = node1.getnewaddress(self.account2, "legacy")
+        self.address3 = node1.getnewaddress(self.account3, "legacy")
 
         print("address1: %s\naddress2: %s\naddress3: %s" % (self.address1, self.address2, self.address3))
 
