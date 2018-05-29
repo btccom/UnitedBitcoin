@@ -92,7 +92,6 @@ def create_new_contract(node, caller_addr, contract_bytecode_path):
     # pdb.set_trace()
     decoded_tx = node.decoderawtransaction(signed_create_contract_raw_tx)
     print("decoded_tx: ", decoded_tx)
-    exit(0)
     node.sendrawtransaction(signed_create_contract_raw_tx)
     contract_addr = node.getcreatecontractaddress(
         signed_create_contract_raw_tx
@@ -687,7 +686,7 @@ class SmartContractTest(BitcoinTestFramework):
         caller_addr = self.address1
         contract_addr = self.created_contract_addr
         contract = node1.getcontractinfo(contract_addr)
-        print("contract info: ", contract)
+        # print("contract info: ", contract)
         deposit_amount1 = 0.1
         deposit_to_contract(node1, caller_addr, contract_addr, deposit_amount1, "memo123")
         # put another tx again
@@ -719,7 +718,7 @@ class SmartContractTest(BitcoinTestFramework):
         node1 = self.nodes[0]
         contract_addr = self.created_contract_addr
         contract = node1.getcontractinfo(contract_addr)
-        print("contract info: ", contract)
+        # print("contract info: ", contract)
         account_balance_before_withdraw = get_address_balance(node1, self.address1)
         account_balance_before_withdraw_of_address3 = get_address_balance(node1, self.address3)
         withdraw_amount = "0.3"
@@ -785,6 +784,11 @@ class SmartContractTest(BitcoinTestFramework):
         # make sure coins mature
         mine_res = generate_block(node1, self.address2, 100)
 
+        invoke_res = node1.invokecontractoffline(
+            caller_addr, contract_addr, "query_money", "",
+        )['result']
+        print("storage.money before many deposits and withdraws: ", invoke_res)
+
         account_balance_before_withdraw = get_address_balance(node1, caller_addr)
         fee = 0.01
         # invoke_contract_api(caller_addr, contract_addr, "hello", "abc", None, None)
@@ -792,14 +796,14 @@ class SmartContractTest(BitcoinTestFramework):
             self.deposit_to_contract(False)
         for i in range(n2):
             self.withdraw_from_contract(False, self.address1)
-        mine_res = generate_block(node1, caller_addr)
+        mine_res = generate_block(node1, self.address2)
         mine_block_id = mine_res[0]
         block = node1.getblock(mine_block_id)
         mine_reward = ub_utils.calc_block_reward('regtest', block['height']) * 1.0 / config['PRECISION']
         print("mine res: ", mine_res)
         print('mine reward: %s' % str(mine_reward))
         contract_info = node1.getcontractinfo(contract_addr)
-        print("contract_info after withdraw is: ", contract_info)
+        # print("contract_info after withdraw is: ", contract_info)
         invoke_res = node1.invokecontractoffline(
             caller_addr, contract_addr, "query_money", "",
         )['result']
@@ -810,7 +814,7 @@ class SmartContractTest(BitcoinTestFramework):
         print("account change of withdraw-from-contract: %f to %f" % (
             account_balance_before_withdraw, account_balance_after_withdraw))
         self.assertEqual(
-            "%.6f" % (account_balance_before_withdraw + Decimal(mine_reward - 0.3 * n1 + 0.3 * n2),),
+            "%.6f" % (account_balance_before_withdraw + Decimal(- fee * (2*n1+n2) - 0.3 * n1 + 0.3 * n2),),
             "%.6f" % account_balance_after_withdraw)
 
     def test_gas_not_enough(self):
