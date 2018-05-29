@@ -113,15 +113,16 @@ class SegWitTest(BitcoinTestFramework):
         self.log.info("Verify sigops are counted in GBT with pre-BIP141 rules before the fork")
         txid = self.nodes[0].sendtoaddress(self.nodes[0].getnewaddress(), 1)
         tmpl = self.nodes[0].getblocktemplate({})
-        assert(tmpl['sizelimit'] == 1000000)
+
+        assert(tmpl['sizelimit'] == 32000000)
         assert('weightlimit' not in tmpl)
-        assert(tmpl['sigoplimit'] == 20000)
+        assert(tmpl['sigoplimit'] == 640000)
         assert(tmpl['transactions'][0]['hash'] == txid)
         assert(tmpl['transactions'][0]['sigops'] == 2)
         tmpl = self.nodes[0].getblocktemplate({'rules':['segwit']})
-        assert(tmpl['sizelimit'] == 1000000)
+        assert(tmpl['sizelimit'] == 32000000)
         assert('weightlimit' not in tmpl)
-        assert(tmpl['sigoplimit'] == 20000)
+        assert(tmpl['sigoplimit'] == 640000)
         assert(tmpl['transactions'][0]['hash'] == txid)
         assert(tmpl['transactions'][0]['sigops'] == 2)
         self.nodes[0].generate(1) #block 162
@@ -202,6 +203,7 @@ class SegWitTest(BitcoinTestFramework):
         self.success_mine(self.nodes[2], p2sh_ids[NODE_2][WIT_V1][1], False, witness_script(True, self.pubkey[2])) #block 431
 
         self.log.info("Verify previous witness txs skipped for mining can now be mined")
+        print(self.nodes[2].getblockchaininfo())
         assert_equal(len(self.nodes[2].getrawmempool()), 4)
         block = self.nodes[2].generate(1) #block 432 (first block with new rules; 432 = 144 * 3)
         sync_blocks(self.nodes)
@@ -236,8 +238,8 @@ class SegWitTest(BitcoinTestFramework):
         txid = self.nodes[0].sendtoaddress(self.nodes[0].getnewaddress(), 1)
         tmpl = self.nodes[0].getblocktemplate({'rules':['segwit']})
         assert(tmpl['sizelimit'] >= 3999577)  # actual maximum size is lower due to minimum mandatory non-witness data
-        assert(tmpl['weightlimit'] == 4000000)
-        assert(tmpl['sigoplimit'] == 80000)
+        assert(tmpl['weightlimit'] == 8*4000000)
+        assert(tmpl['sigoplimit'] == 8*80000)
         assert(tmpl['transactions'][0]['txid'] == txid)
         assert(tmpl['transactions'][0]['sigops'] == 8)
 

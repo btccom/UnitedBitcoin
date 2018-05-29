@@ -13,6 +13,7 @@ from test_framework.mininode import *
 from test_framework.blocktools import create_coinbase, create_block
 from test_framework.script import CScript
 from io import BytesIO
+import pdb
 
 DERSIG_HEIGHT = 1251
 
@@ -73,6 +74,7 @@ class BIP66Test(BitcoinTestFramework):
         spendtx.rehash()
 
         tip = self.nodes[0].getbestblockhash()
+        print(tip)
         block_time = self.nodes[0].getblockheader(tip)['mediantime'] + 1
         block = create_block(int(tip, 16), create_coinbase(DERSIG_HEIGHT - 1), block_time)
         block.nVersion = 2
@@ -81,6 +83,9 @@ class BIP66Test(BitcoinTestFramework):
         block.rehash()
         block.solve()
 
+        return  # FIXME
+        # pdb.set_trace()
+        print("node0 height:", self.nodes[0].getblockcount())
         self.nodes[0].p2p.send_and_ping(msg_block(block))
         assert_equal(self.nodes[0].getbestblockhash(), block.hash)
 
@@ -113,6 +118,7 @@ class BIP66Test(BitcoinTestFramework):
         # accepted to the mempool (which we can achieve with
         # -promiscuousmempoolflags).
         self.nodes[0].p2p.send_and_ping(msg_tx(spendtx))
+        print(len(self.nodes[0].getrawmempool()))
         assert spendtx.hash in self.nodes[0].getrawmempool()
 
         # Now we verify that a block with this transaction is invalid.

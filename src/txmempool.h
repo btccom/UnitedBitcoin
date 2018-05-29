@@ -312,6 +312,7 @@ public:
     }
 };
 
+
 class CompareTxMemPoolEntryByAncestorFeeOrGasPrice
 {
 public:

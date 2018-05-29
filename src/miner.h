@@ -240,7 +240,6 @@ public:
     std::unique_ptr<CBlockTemplate> CreateNewBlock(const CScript& scriptPubKeyIn, bool fMineWitnessTx=true, int64_t* pTotalFees = 0, int32_t nTime=0, int32_t nTimeLimit=0); // TODO: change the callee
 	std::unique_ptr<CBlockTemplate> CreateNewBlockPos(CWalletRef& pwallet, int32_t nTimeLimit, bool fMineWitnessTx=true);
 
-
 private:
     // utility functions
     /** Clear the block's state and prepare for assembling a new block */
@@ -257,6 +256,7 @@ private:
     void addPackageTxs(int &nPackagesSelected, int &nDescendantsUpdated, uint64_t minGasPrice, bool allow_contract, const COutPoint& outpointPos=COutPoint());
 
 	/** Rebuild the coinbase/coinstake transaction to account for new gas refunds **/
+
 	void RebuildRefundTransaction();
 
     // helper functions for addPackageTxs()

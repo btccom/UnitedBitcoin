@@ -5,7 +5,7 @@
 """Utilities for manipulating blocks and transactions."""
 
 from .mininode import *
-from .script import CScript, OP_TRUE, OP_CHECKSIG, OP_RETURN
+from .script import CScript, OP_TRUE, OP_CHECKSIG, OP_RETURN, OP_ROOT_STATE_HASH
 
 # Create a block (with regtest difficulty)
 def create_block(hashprev, coinbase, nTime=None):
@@ -68,7 +68,7 @@ def serialize_script_num(value):
 # Create a coinbase transaction, assuming no miner fees.
 # If pubkey is passed in, the coinbase output will be a P2PK output;
 # otherwise an anyone-can-spend output.
-def create_coinbase(height, pubkey = None):
+def create_coinbase(height, pubkey = None, contract_fork_height=1500):
     coinbase = CTransaction()
     coinbase.vin.append(CTxIn(COutPoint(0, 0xffffffff), 
                 ser_string(serialize_script_num(height)), 0xffffffff))
@@ -81,6 +81,13 @@ def create_coinbase(height, pubkey = None):
     else:
         coinbaseoutput.scriptPubKey = CScript([OP_TRUE])
     coinbase.vout = [ coinbaseoutput ]
+    if height >= contract_fork_height:
+        root_state_hash_script =CScript([bytes().fromhex(''), OP_ROOT_STATE_HASH])
+        print("root_state_hash_script: ", root_state_hash_script)
+        root_state_hash_output = CTxOut()
+        root_state_hash_output.nValue = 0
+        root_state_hash_output.scriptPubKey = root_state_hash_script
+        coinbase.vout.append(root_state_hash_output)
     coinbase.calc_sha256()
     return coinbase
 

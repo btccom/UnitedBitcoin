@@ -273,6 +273,7 @@ libbitcoin_server_a_SOURCES = \
     uvm/lutf8lib.cpp \
     uvm/lvm.cpp \
     uvm/lzio.cpp \
+    Keccak.cpp \
     btc_uvm_api.cpp \
     contract_engine/contract_engine.cpp \
     contract_engine/contract_engine_builder.cpp \

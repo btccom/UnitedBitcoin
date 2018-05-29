@@ -1,0 +1,12 @@
+image: ubtc/ubtcdev:latest
+
+before_script:
+    - apt-get update -y
+
+test:
+  script:
+    - ./autogen.sh
+    - mkdir -p build
+    - ./configure
+    - make
+    - test/functional/test_runner.py --combinedlogslen=4000 --coverage

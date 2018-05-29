@@ -5,6 +5,10 @@ src/bitcoin
 src/bitcoind
 src/bitcoin-cli
 src/bitcoin-tx
+src/ubc
+src/ubcd
+src/ubc-cli
+src/ubc-tx
 src/test/test_bitcoin
 src/test/test_bitcoin_fuzzy
 src/qt/test/test_bitcoin-qt
@@ -110,3 +114,8 @@ test/cache/*
 
 libbitcoinconsensus.pc
 contrib/devtools/split-debug.sh
+
+#clion
+/.idea
+/*.iml
+

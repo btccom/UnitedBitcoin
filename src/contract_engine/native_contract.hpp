@@ -73,23 +73,6 @@ namespace blockchain {
 				blockchain::contract::PendingState* pending_state, const std::string& key, const std::string& contract_address, const native_contract_sender& sender);
         };
 
-		class demo_native_contract final : public abstract_native_contract
-		{
-		public:
-			static std::string native_contract_key() { return "demo"; }
-
-			demo_native_contract(blockchain::contract::PendingState* pending_state, const std::string& _contract_id, const native_contract_sender& _sender)
-				: abstract_native_contract(pending_state, _contract_id, _sender) {}
-			virtual ~demo_native_contract() {}
-			virtual std::string contract_key() const;
-			virtual std::string contract_address() const;
-			virtual std::set<std::string> apis() const;
-			virtual std::set<std::string> offline_apis() const;
-			virtual std::set<std::string> events() const;
-
-			virtual ContractExecResult invoke(const std::string& api_name, const std::string& api_arg);
-		};
-
 		class dgp_native_contract final : public abstract_native_contract {
 		public:
 			static std::string native_contract_key() { return "dgp"; }

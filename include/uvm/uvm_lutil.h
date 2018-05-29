@@ -1,4 +1,4 @@
-/**
+﻿/**
 * some utils functions
 * @author
 */

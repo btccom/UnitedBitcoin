@@ -84,6 +84,7 @@ void CChainParams::UpdateVersionBitsParameters(Consensus::DeploymentPos d, int64
  */
 
 uint64_t UB_FORK_BLOCK_NUM = 498777;
+uint64_t UB_FORK1_BLOCK_NUM = 506400;
 
 class CMainParams : public CChainParams {
 public:
@@ -107,6 +108,7 @@ public:
         consensus.UBCONTRACT_Height = 524000;
 	// Fork to adjust block interval (ForkV1)
 	consensus.ForkV1Height = 506400;
+	UB_FORK1_BLOCK_NUM = consensus.ForkV1Height;
 
         // UnionBitcoin foundation multisig address
         consensus.UBCfoundationAddress = "31rZdrTpN57Wbfhg7xTPxeFGjEQaMBjxoo";
@@ -237,7 +239,10 @@ public:
 		UB_FORK_BLOCK_NUM = consensus.UBCHeight;
         consensus.UBCInitBlockCount = 0; // 500
         consensus.UBCONTRACT_Height = 400;
-
+	// Fork to adjust block interval (ForkV1)
+	consensus.ForkV1Height = 200;
+	UB_FORK1_BLOCK_NUM = consensus.ForkV1Height;
+	
         // UnionBitcoin foundation
         consensus.UBCfoundationPubkey = "026b440cc0f0533a0144a66ac8d297e5df557f3c3c33224e3c40c79c45beda9406";
         // UnionBitcoin god mode block generator
@@ -332,6 +337,8 @@ class CRegTestParams : public CChainParams {
 public:
     CRegTestParams() {
         strNetworkID = "regtest";
+        consensus.is_regtest_net = true;
+
         consensus.nSubsidyHalvingInterval = 150;
         consensus.BIP16Height = 0; // always enforce P2SH BIP16 on regtest
         consensus.BIP34Height = 100000000; // BIP34 has not activated on regtest (far in the future so block v1 are not rejected in tests)
@@ -347,7 +354,10 @@ public:
 		UB_FORK_BLOCK_NUM = consensus.UBCHeight;
         consensus.UBCInitBlockCount = 0; // 500
         consensus.UBCONTRACT_Height = 1500;
-
+	// Fork to adjust block interval (ForkV1)
+	consensus.ForkV1Height = 1400;
+	UB_FORK1_BLOCK_NUM = consensus.ForkV1Height;
+	
         // UnionBitcoin foundation
         consensus.UBCfoundationPubkey = "026b440cc0f0533a0144a66ac8d297e5df557f3c3c33224e3c40c79c45beda9406";
         // UnionBitcoin god mode block generator
@@ -448,4 +458,3 @@ void UpdateVersionBitsParameters(Consensus::DeploymentPos d, int64_t nStartTime,
 {
     globalChainParams->UpdateVersionBitsParameters(d, nStartTime, nTimeout);
 }
-

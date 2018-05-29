@@ -47,6 +47,8 @@ struct BIP9Deployment {
  * Parameters that influence chain consensus.
  */
 struct Params {
+    bool is_regtest_net = false;
+
     uint256 hashGenesisBlock;
     int nSubsidyHalvingInterval;
     /** Block height at which BIP16 becomes active */

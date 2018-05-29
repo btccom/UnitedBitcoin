@@ -37,6 +37,10 @@ def assert_equal(thing1, thing2, *args):
     if thing1 != thing2 or any(thing1 != arg for arg in args):
         raise AssertionError("not(%s)" % " == ".join(str(arg) for arg in (thing1, thing2) + args))
 
+def asset_about_equal_with_fee(thing1, thing2):
+    if abs(thing1 - thing2) > 0.01:
+        raise AssertionError("not(%s)" % " == ".join(str(arg) for arg in (thing1, thing2)))
+
 def assert_greater_than(thing1, thing2):
     if thing1 <= thing2:
         raise AssertionError("%s <= %s" % (str(thing1), str(thing2)))
@@ -324,6 +328,7 @@ def log_filename(dirname, n_node, logname):
 
 def get_bip9_status(node, key):
     info = node.getblockchaininfo()
+    print(info)
     return info['bip9_softforks'][key]
 
 def set_node_times(nodes, t):
@@ -549,7 +554,7 @@ def create_lots_of_big_transactions(node, txouts, utxos, num, fee):
         newtx = rawtx[0:92]
         newtx = newtx + txouts
         newtx = newtx + rawtx[94:]
-        signresult = node.signrawtransaction(newtx, None, None, "NONE")
+        signresult = node.signrawtransaction(newtx, None, None, "NONE|FORKID")
         txid = node.sendrawtransaction(signresult["hex"], True)
         txids.append(txid)
     return txids

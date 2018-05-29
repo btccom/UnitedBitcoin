@@ -8,7 +8,8 @@
 
 #include <stdlib.h>
 #include <stdint.h>
-static const uint64_t UB_FORK1_BLOCK_NUM = 506400;
+
+extern uint64_t UB_FORK1_BLOCK_NUM;
 extern uint64_t UB_FORK_BLOCK_NUM;
 
 inline unsigned int MaxBlockSize(uint64_t nblock) {

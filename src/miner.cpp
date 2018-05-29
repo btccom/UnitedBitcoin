@@ -36,6 +36,7 @@
 #include "txdb.h"
 #include "wallet/wallet.h"
 
+
 //////////////////////////////////////////////////////////////////////////////
 //
 // BitcoinMiner
@@ -57,6 +58,7 @@ extern int nStakeMinConfirmations;
 
 static bool CheckKernel(CBlock* pblock, const COutPoint& prevout, CAmount amount,int nHeight);
 //static bool CheckKernel(CBlock* pblock, const COutPoint& prevout, CAmount amount, int32_t utxoDepth);
+
 
 int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev)
 {
@@ -183,7 +185,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     coinbaseTx.vout[0].nValue = nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus());
     coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
     originalRewardTx = coinbaseTx;
-    pblock->vtx[0] = MakeTransactionRef(coinbaseTx);
+    pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
 
     //////////////////////////////////////////////////////// contract
 	auto allow_contract = nHeight >= Params().GetConsensus().UBCONTRACT_Height;
@@ -222,13 +224,14 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 
     if(allow_contract) {
         const auto &root_state_hash_after_add_txs = service->current_root_state_hash();
-        CTxOut root_state_hash_out;
-	root_state_hash_out.scriptPubKey =
-	CScript() << ValtypeUtils::string_to_vch(root_state_hash_after_add_txs) << OP_ROOT_STATE_HASH;
-	root_state_hash_out.nValue = 0;
-	coinbaseTx.vout.push_back(root_state_hash_out);
-	originalRewardTx = coinbaseTx;
-        pblock->vtx[0] = MakeTransactionRef(coinbaseTx);
+		CTxOut root_state_hash_out;
+		root_state_hash_out.scriptPubKey =
+			CScript() << ValtypeUtils::string_to_vch(root_state_hash_after_add_txs) << OP_ROOT_STATE_HASH;
+		root_state_hash_out.nValue = 0;
+		CMutableTransaction txCoinBaseToChange(*(pblock->vtx[0]));
+		txCoinBaseToChange.vout.push_back(root_state_hash_out);
+		originalRewardTx = txCoinBaseToChange;
+        pblock->vtx[0] = MakeTransactionRef(std::move(txCoinBaseToChange));
     }
 
 	// rollback root state hash
@@ -239,13 +242,17 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 	}
 
 	RebuildRefundTransaction();
-    ////////////////////////////////////////////////////////
 
     pblocktemplate->vchCoinbaseCommitment = GenerateCoinbaseCommitment(*pblock, pindexPrev, chainparams.GetConsensus());
     pblocktemplate->vTxFees[0] = -nFees;
 
     LogPrintf("CreateNewBlock(): block weight: %u txs: %u fees: %ld sigops %d\n", GetBlockWeight(*pblock), nBlockTx, nFees, nBlockSigOpsCost);
     LogPrintf("%s\n", pblock->ToString());
+
+    // The total fee is the Fees minus the Refund
+    if (pTotalFees) {
+        *pTotalFees = nFees;
+    }
 
     // The total fee is the Fees minus the Refund
     if (pTotalFees) {
@@ -269,7 +276,6 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 
     return std::move(pblocktemplate);
 }
-
 
 std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pwallet, int32_t nTimeLimit, bool fMineWitnessTx)
 {
@@ -518,7 +524,6 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
         service->close();
     }
 
-    originalRewardTx = *pblock->vtx[0];
     RebuildRefundTransaction();
     ////////////////////////////////////////////////////////
 
@@ -539,7 +544,6 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
     return std::move(pblocktemplate);
 }
 
-
 void BlockAssembler::RebuildRefundTransaction() {
 	CMutableTransaction contrTx(*(pblock->vtx[0]));
 	if(contrTx.vin.size()>0)
@@ -547,7 +551,6 @@ void BlockAssembler::RebuildRefundTransaction() {
 	contrTx.vout[0].nValue = nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus());
 	pblock->vtx[0] = MakeTransactionRef(std::move(contrTx));
 }
-
 
 void BlockAssembler::onlyUnconfirmed(CTxMemPool::setEntries& testSet)
 {
@@ -791,6 +794,7 @@ void BlockAssembler::SortForBlock(const CTxMemPool::setEntries& package, CTxMemP
 // Each time through the loop, we compare the best transaction in
 // mapModifiedTxs with the next transaction in the mempool to decide what
 // transaction package to work on next.
+
 void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpdated, uint64_t minGasPrice, bool allow_contract, const COutPoint& outpointPos)
 {
     // mapModifiedTx will store sorted packages after they are modified
@@ -934,7 +938,6 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
 				if (spentByPos)
 					continue;
 			}
-			
             if (wasAdded) {
 				if (!allow_contract && (tx.HasContractOp() || tx.HasOpSpend())) {
 					mapModifiedTx.erase(sortedEntries[i]);

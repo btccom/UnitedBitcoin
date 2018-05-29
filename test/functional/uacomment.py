@@ -7,6 +7,24 @@
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal
 
+def format_version(n_version):
+    if n_version % 100 == 0:
+        return "%d.%d.%d" % (n_version/1000000, (n_version / 10000) % 100, (n_version / 100) % 100)
+    else:
+        return "%d.%d.%d.%d" % (n_version / 1000000, (n_version / 10000) % 100, (n_version / 100) % 100, n_version % 100)
+
+def format_sub_version(name, n_client_version, comments):
+    ss = '/%s:%s' % (name, format_version(n_client_version))
+    if len(comments) > 0:
+        ss += '('
+        for i in range(len(comments)):
+            if i > 0:
+                ss += "; "
+            ss += comments[i]
+        ss += ')'
+    ss += '/'
+    return ss
+
 class UacommentTest(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
@@ -23,7 +41,9 @@ class UacommentTest(BitcoinTestFramework):
 
         self.log.info("test -uacomment max length")
         self.stop_node(0)
-        expected = "Total length of network version string (286) exceeds maximum length (256). Reduce the number or size of uacomments."
+        str_sub_version_len = len(format_sub_version("Satoshi", 1010000, ['testnode0', 'a'*256]))
+        self.log.info("str_sub_version_len: %d" % str_sub_version_len)
+        expected = "Total length of network version string (%d) exceeds maximum length (256). Reduce the number or size of uacomments." % str_sub_version_len
         self.assert_start_raises_init_error(0, ["-uacomment=" + 'a' * 256], expected)
 
         self.log.info("test -uacomment unsafe characters")

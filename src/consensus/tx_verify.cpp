@@ -11,6 +11,7 @@
 #include <validation.h>
 #include <chainparams.h>
 
+
 // TODO remove the following dependencies
 #include <chain.h>
 #include <coins.h>

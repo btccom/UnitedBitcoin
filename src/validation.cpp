@@ -5368,6 +5368,7 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
         if (nCheckLevel >= 3 && pindex == pindexState && (coins.DynamicMemoryUsage() + pcoinsTip->DynamicMemoryUsage()) <= nCoinCacheUsage) {
             assert(coins.GetBestBlock() == pindex->GetBlockHash());
             DisconnectResult res = g_chainstate.DisconnectBlock(block, pindex, coins, true);
+
             if (res == DISCONNECT_FAILED) {
                 return error("VerifyDB(): *** irrecoverable inconsistency in block data at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
             }
@@ -5398,6 +5399,7 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
             service->open();
             const auto& old_root_state_hash = service->current_root_state_hash();
             service->close();
+
             if (!g_chainstate.ConnectBlock(block, state, pindex, coins, chainparams)) {
                 service->open();
                 service->rollback_contract_state(old_root_state_hash);

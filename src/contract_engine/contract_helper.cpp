@@ -7,8 +7,10 @@
 #include <fc/crypto/base58.hpp>
 #include <fc/crypto/sha256.hpp>
 #include <fc/crypto/ripemd160.hpp>
+#include <fc/crypto/hex.hpp>
 #include <boost/uuid/sha1.hpp>
 #include <exception>
+#include <util.h>
 
 int gpcread(void* ptr, size_t element_size, size_t count, GpcBuffer* gpc_buffer)
 {
@@ -219,7 +221,7 @@ struct ContractCreateDigestInfo
 {
     std::string caller_address;
     std::string tx_hash;
-    size_t contract_op_vout_index;
+    uint32_t contract_op_vout_index;
 };
 
 FC_REFLECT(::ContractCreateDigestInfo, (caller_address)(tx_hash)(contract_op_vout_index));
@@ -242,21 +244,15 @@ std::string ContractHelper::generate_contract_address(const std::string& caller_
     info.contract_op_vout_index = contract_op_vout_index;
     fc::raw::pack(enc, info);
 	const auto& info2_result = enc.result(); //  info160 = sha256(info)
-	const auto& info2 = encoder_result_to_vector(info2_result);
-    fc::ripemd160::encoder info2_encoder;
-    fc::raw::pack(info2_encoder, info2);
-    const auto& a_result = info2_encoder.result(); // a = ripemd160(sha256(info))
-	const std::vector<char> a = encoder_result_to_vector(a_result);
-	fc::sha256::encoder enc_of_a;
-	fc::raw::pack(enc_of_a, a);
-	const auto& b = enc_of_a.result(); // b = sha256(a)
+    const auto& a_result = fc::ripemd160::hash(info2_result); // a = ripemd160(sha256(info))
+	const auto& b = fc::sha256::hash(a_result); // b = sha256(a)
 	std::vector<char> first_4_bytes_of_b;
 	first_4_bytes_of_b.resize(4);
 	memcpy(first_4_bytes_of_b.data(), b.data(), 4);
 	std::vector<char> c;
-	c.resize(a.size() + first_4_bytes_of_b.size());
-	memcpy(c.data(), a.data(), a.size());
-	memcpy(c.data() + a.size(), first_4_bytes_of_b.data(), first_4_bytes_of_b.size());
+	c.resize(sizeof(a_result) + first_4_bytes_of_b.size());
+	memcpy(c.data(), &a_result, sizeof(a_result));
+	memcpy(c.data() + sizeof(a_result), first_4_bytes_of_b.data(), first_4_bytes_of_b.size());
 	std::string addr = std::string("CON") + fc::to_base58(c.data(), c.size());
     return addr;
 }
@@ -289,9 +285,9 @@ bool ContractHelper::is_valid_contract_address_format(const std::string& address
 	std::vector<char> first_4_bytes_of_b;
 	first_4_bytes_of_b.resize(4);
 	memcpy(first_4_bytes_of_b.data(), c.data() + a.size(), c.size() - a.size());
-	fc::sha256::encoder enc_of_a;
-	fc::raw::pack(enc_of_a, a);
-	auto b = enc_of_a.result();
+	fc::uint160 a_array;
+	memcpy(&a_array, a.data(), 20);
+	auto b = fc::sha256::hash(a_array);
 	if (b.data_size() < 4)
 		return false;
 	std::vector<char> first_4_bytes_of_b_calculated;

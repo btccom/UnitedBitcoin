@@ -1,4 +1,4 @@
-/*
+﻿/*
 ** $Id: lua.h,v 1.329 2015/11/13 17:18:42 roberto Exp $
 ** Lua - A Scripting Language
 ** Lua.org, PUC-Rio, Brazil (http://www.lua.org)
