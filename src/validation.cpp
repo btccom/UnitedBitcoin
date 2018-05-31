@@ -2574,10 +2574,10 @@ static std::string GetSenderAddress(const CTransaction& tx, const CCoinsViewCach
 
 	CTxDestination addressBit;
 	if (ExtractDestination(script, addressBit)) {
-		if (addressBit.type() == typeid(CKeyID)) {
+		if (addressBit.type() == typeid(CKeyID) || addressBit.type() == typeid(CScriptID) || addressBit.type() == typeid(WitnessV0KeyHash) || addressBit.type() == typeid(WitnessV0ScriptHash) || addressBit.type() == typeid(WitnessUnknown)) {
 			return EncodeDestination(addressBit);
 			// CKeyID senderAddress(boost::get<CKeyID>(addressBit));
-			// return valtype(senderAddress.begin(), senderAddress.end());
+			//return valtype(senderAddress.begin(), senderAddress.end());
 		}
 	}
 	//prevout is not a standard transaction format, so just return 0

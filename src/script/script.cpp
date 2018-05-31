@@ -141,6 +141,7 @@ const char* GetOpName(opcodetype opcode)
 
     // contract execute ext
     case OP_CREATE: return "OP_CREATE";
+    case OP_CREATE_NATIVE: return "OP_CREATE_NATIVE";
     case OP_UPGRADE: return "OP_UPGRADE";
     case OP_DESTROY: return "OP_DESTROY";
     case OP_CALL: return "OP_CALL";

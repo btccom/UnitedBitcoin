@@ -59,7 +59,6 @@ def generate_block(node, miner, count=1):
         print("mine res error: ", res)
     return res
 
-
 def create_new_contract(node, caller_addr, contract_bytecode_path):
     utxo = get_utxo(node, caller_addr)
     bytecode_hex = read_contract_bytecode_hex(contract_bytecode_path)
@@ -77,21 +76,24 @@ def create_new_contract(node, caller_addr, contract_bytecode_path):
             caller_addr: '%.6f' % float(Decimal(utxo['amount']) - Decimal(0.01)),
             'contract': create_contract_script,
         })
+    print("utxo: ", utxo)
     signed_create_contract_raw_tx_res = node.signrawtransaction(
         create_contract_raw_tx,
         [
             {
                 'txid': utxo['txid'],
                 'vout': utxo['vout'],
+                'amount': utxo['amount'],
                 'scriptPubKey': utxo['scriptPubKey'],
+                'redeemScript': utxo.get('redeemScript', None),
             },
         ]
     )
     assert (signed_create_contract_raw_tx_res.get('complete', None) is True)
     signed_create_contract_raw_tx = signed_create_contract_raw_tx_res.get('hex')
-    # pdb.set_trace()
     decoded_tx = node.decoderawtransaction(signed_create_contract_raw_tx)
     print("decoded_tx: ", decoded_tx)
+    print("signed_create_contract_raw_tx: ", signed_create_contract_raw_tx)
     node.sendrawtransaction(signed_create_contract_raw_tx)
     contract_addr = node.getcreatecontractaddress(
         signed_create_contract_raw_tx
@@ -123,12 +125,15 @@ def create_new_native_contract(node, caller_addr, template_name):
             {
                 'txid': utxo['txid'],
                 'vout': utxo['vout'],
+                'amount': utxo['amount'],
                 'scriptPubKey': utxo['scriptPubKey'],
+                'redeemScript': utxo.get('redeemScript', None),
             },
         ],
     )
     assert (signed_create_contract_raw_tx_res.get('complete', None) is True)
     signed_create_contract_raw_tx = signed_create_contract_raw_tx_res.get('hex')
+    print("nativecontract signed_create_contract_raw_tx: ", signed_create_contract_raw_tx)
     node.sendrawtransaction(signed_create_contract_raw_tx)
     contract_addr = node.getcreatecontractaddress(
         signed_create_contract_raw_tx
@@ -163,7 +168,9 @@ def upgrade_contract(node, caller_addr, contract_addr, contract_name, contract_d
             {
                 'txid': utxo['txid'],
                 'vout': utxo['vout'],
+                'amount': utxo['amount'],
                 'scriptPubKey': utxo['scriptPubKey'],
+                'redeemScript': utxo.get('redeemScript', None),
             },
         ],
     )
@@ -198,7 +205,9 @@ def deposit_to_contract(node, caller_addr, contract_addr, deposit_amount, deposi
             {
                 'txid': utxo['txid'],
                 'vout': utxo['vout'],
+                'amount': utxo['amount'],
                 'scriptPubKey': utxo['scriptPubKey'],
+                'redeemScript': utxo.get('redeemScript', None),
             },
         ],
     )
@@ -252,7 +261,9 @@ def invoke_contract_api(node, caller_addr, contract_addr, api_name, api_arg, wit
             {
                 'txid': utxo['txid'],
                 'vout': utxo['vout'],
+                'amount': utxo['amount'],
                 'scriptPubKey': utxo['scriptPubKey'],
+                'redeemScript': utxo.get('redeemScript', None),
             },
         ],
     )
@@ -344,7 +355,8 @@ class SmartContractTest(BitcoinTestFramework):
         self.assertTrue(res['gasCount'] > 0)
         print("res: ", res)
         contract_addr = create_new_native_contract(node1, caller_addr, 'dgp')
-        generate_block(node1, caller_addr)
+        mine_res = generate_block(node1, caller_addr)
+        print("mine_res: ", mine_res)
         print("new dgp contract address: %s" % contract_addr)
         admins = json.loads(node1.invokecontractoffline(caller_addr, contract_addr, 'admins', " ")['result'])
         print("admins after init is ", admins)
@@ -639,7 +651,7 @@ class SmartContractTest(BitcoinTestFramework):
         generate_block(node1, self.address3, 1)
         withdraw_tx = node1.decoderawtransaction(node1.getrawtransaction(withdraw_txid))
         print("withdraw tx: ", withdraw_tx)
-        withdraw_tx_out = list(filter(lambda o : o['scriptPubKey']['type'] == 'pubkeyhash' and len(o['scriptPubKey'].get('addresses', []))>0 and o['scriptPubKey']['addresses'][0] == caller_addr, withdraw_tx['vout']))[0]['n']
+        withdraw_tx_out = list(filter(lambda o : (o['scriptPubKey']['type'] == 'pubkeyhash' or o['scriptPubKey']['type']=='scripthash') and len(o['scriptPubKey'].get('addresses', []))>0 and o['scriptPubKey']['addresses'][0] == caller_addr, withdraw_tx['vout']))[0]['n']
         withdraw_tx_outpoint = withdraw_tx['vout'][withdraw_tx_out]
         print("withdraw out: ", withdraw_tx_outpoint)
         generate_block(node1, self.address3, 100)  # make sure no new matured block-rewards
@@ -661,12 +673,18 @@ class SmartContractTest(BitcoinTestFramework):
         print("vin", vin)
         print("vout", vout)
         spend_tx_hex = node1.createrawtransaction(vin, vout)
-        address1_pubkey = node1.validateaddress(self.address1)['scriptPubKey']
+        address1_info = node1.validateaddress(self.address1)
+        address1_pubkey = address1_info['scriptPubKey']
         print(spend_tx_hex)
-        print(address1_pubkey)
+        print('address1_info: ', address1_info)
         signed_spend_tx_hex = node1.signrawtransaction(spend_tx_hex, [
             {
-                'txid': withdraw_txid, 'vout': withdraw_tx_out, 'scriptPubKey': address1_pubkey,
+                'txid': withdraw_txid,
+                'vout': withdraw_tx_out, 
+                'scriptPubKey': address1_pubkey,
+                'amount': withdraw_tx_outpoint['value'],
+                'scriptPubKey': address1_pubkey,
+                    'redeemScript': address1_info.get('redeemScript', None),
             }
         ])['hex']
         spend_txid = node1.sendrawtransaction(signed_spend_tx_hex)
@@ -722,8 +740,11 @@ class SmartContractTest(BitcoinTestFramework):
         account_balance_before_withdraw = get_address_balance(node1, self.address1)
         account_balance_before_withdraw_of_address3 = get_address_balance(node1, self.address3)
         withdraw_amount = "0.3"
+        arg = str(int(Decimal(withdraw_amount) * config['PRECISION']))
+        res = node1.invokecontractoffline(self.address1, contract_addr, "withdraw", arg)
+        print("invoke testing res: ", res)
         res = invoke_contract_api(node1, self.address1, contract_addr, "withdraw",
-                                  str(int(Decimal(withdraw_amount) * config['PRECISION'])), {
+                                  arg, {
                                       withdraw_to_addr: Decimal(withdraw_amount)
                                   }, {
                                       contract_addr: Decimal(withdraw_amount)
@@ -861,7 +882,9 @@ class SmartContractTest(BitcoinTestFramework):
                 {
                     'txid': utxo['txid'],
                     'vout': utxo['vout'],
+                    'amount': utxo['amount'],
                     'scriptPubKey': utxo['scriptPubKey'],
+                    'redeemScript': utxo.get('redeemScript', None),
                 },
             ],
         )
@@ -912,7 +935,9 @@ class SmartContractTest(BitcoinTestFramework):
                 {
                     'txid': utxo['txid'],
                     'vout': utxo['vout'],
+                    'amount': utxo['amount'],
                     'scriptPubKey': utxo['scriptPubKey'],
+                    'redeemScript': utxo.get('redeemScript', None),
                 },
             ],
         )
@@ -1181,9 +1206,10 @@ class SmartContractTest(BitcoinTestFramework):
         connect_nodes_bi(self.nodes, 0, 1)
 
         node1 = self.nodes[0]
-        self.address1 = node1.getnewaddress(self.account1, "legacy")
-        self.address2 = node1.getnewaddress(self.account2, "legacy")
-        self.address3 = node1.getnewaddress(self.account3, "legacy")
+        address_mode = '' # 'legacy'
+        self.address1 = node1.getnewaddress(self.account1, address_mode)
+        self.address2 = node1.getnewaddress(self.account2, address_mode)
+        self.address3 = node1.getnewaddress(self.account3, address_mode)
 
         print("address1: %s\naddress2: %s\naddress3: %s" % (self.address1, self.address2, self.address3))
 
@@ -1196,6 +1222,11 @@ class SmartContractTest(BitcoinTestFramework):
         except Exception as e:
             pass
         generate_block(node1, self.address3, 1)
+        
+        tx_id = node1.sendtoaddress(self.address2, 1)
+        raw_tx = node1.getrawtransaction(tx_id)
+        tx = node1.decoderawtransaction(raw_tx)
+        print("simple tx: ", tx)
 
     def run_test(self):
         self.created_contract_addr = self.test_create_contract()
