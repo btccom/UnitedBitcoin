@@ -43,13 +43,17 @@ class NULLDUMMYTest(BitcoinTestFramework):
         self.setup_clean_chain = True
         # This script tests NULLDUMMY activation, which is part of the 'segwit' deployment, so we go through
         # normal segwit activation here (and don't use the default always-on behaviour).
-        self.extra_args = [['-whitelist=127.0.0.1', '-walletprematurewitness', '-vbparams=segwit:0:999999999999']]
+        #self.extra_args = [['-whitelist=127.0.0.1', '-walletprematurewitness', '-vbparams=segwit:0:999999999999']]
+        self.extra_args = [['-whitelist=127.0.0.1', '-walletprematurewitness', '-vbparams=segwit:0:999999999999', '-addresstype=legacy', "-deprecatedrpc=addwitnessaddress"]]
 
     def run_test(self):
         self.address = self.nodes[0].getnewaddress()
-        self.ms_address = self.nodes[0].addmultisigaddress(1,[self.address])
+        #self.ms_address = self.nodes[0].addmultisigaddress(1,[self.address])
+        self.ms_address = self.nodes[0].addmultisigaddress(1,[self.address])['address']
         self.wit_address = self.nodes[0].addwitnessaddress(self.address)
-        self.wit_ms_address = self.nodes[0].addwitnessaddress(self.ms_address)
+        #self.wit_ms_address = self.nodes[0].addwitnessaddress(self.ms_address)
+        self.wit_ms_address = self.nodes[0].addmultisigaddress(1, [self.address], '', 'p2sh-segwit')['address']
+
 
         NetworkThread().start() # Start up network handling in another thread
 

@@ -198,8 +198,8 @@ unsigned int PosGetNextTargetRequired(const CBlockIndex* pindexLast,  const CBlo
         const arith_uint256 bnPosLimit = UintToArith256(params.posLimit);
         arith_uint256 bnNew;
         bnNew.SetCompact(nLastPosBits);
-        bnNew *= nActualTimespan;
         bnNew /= params.nPowTargetTimespan;
+        bnNew *= nActualTimespan;
     
         if (bnNew > bnPosLimit)
             bnNew = bnPosLimit;
