@@ -105,7 +105,7 @@ public:
 		UB_FORK_BLOCK_NUM = consensus.UBCHeight;
 
         consensus.UBCInitBlockCount = 500;
-        consensus.UBCONTRACT_Height = 524000;
+        consensus.UBCONTRACT_Height = 999999;
 	// Fork to adjust block interval (ForkV1)
 	consensus.ForkV1Height = 506400;
 	UB_FORK1_BLOCK_NUM = consensus.ForkV1Height;
@@ -251,7 +251,7 @@ public:
         consensus.powLimit = uint256S("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
 
 		//pos limit
-		consensus.posLimit = uint256S("00000000000000ffffffffffffffffffffffffffffffffffffffffffffffffff");
+		consensus.posLimit = uint256S("0fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
 		
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 1;
@@ -365,7 +365,7 @@ public:
 
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
 		//pos limit
-		consensus.posLimit = uint256S("00000000000000ffffffffffffffffffffffffffffffffffffffffffffffffff");
+		consensus.posLimit = uint256S("0fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
 
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 10 * 60;
