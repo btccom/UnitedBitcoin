@@ -21,6 +21,8 @@ class WalletTest(BitcoinTestFramework):
         connect_nodes_bi(self.nodes,1,2)
         connect_nodes_bi(self.nodes,0,2)
         self.sync_all([self.nodes[0:3]])
+    def get_vsize(self, txn):
+        return self.nodes[0].decoderawtransaction(txn)['vsize']
 
     def check_fee_amount(self, curr_balance, balance_with_fee, fee_per_byte, tx_size):
         """Return curr_balance after asserting the fee was in range"""
@@ -29,6 +31,7 @@ class WalletTest(BitcoinTestFramework):
         return curr_balance
 
     def run_test(self):
+        count_bytes = self.get_vsize
         # Check that there's no UTXO on none of the nodes
         assert_equal(len(self.nodes[0].listunspent()), 0)
         assert_equal(len(self.nodes[1].listunspent()), 0)

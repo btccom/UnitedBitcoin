@@ -650,7 +650,8 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
             }
         }
     }
-    pblock->nVersion = 0x22000000;
+    pblock->nVersion = pblock->nVersion | MINING_TYPE_POW;
+
     result.push_back(Pair("version", pblock->nVersion));
     result.push_back(Pair("rules", aRules));
     result.push_back(Pair("vbavailable", vbavailable));
