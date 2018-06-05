@@ -44,7 +44,7 @@
 
 CAmount nMinimumInputValue = 1 * COIN;
 CAmount nReserveBalance = 0;
-int nStakeMinConfirmations = 500;
+extern int nStakeMinConfirmations;
 
 std::vector<CWalletRef> vpwallets;
 /** Transaction fee set by the user */

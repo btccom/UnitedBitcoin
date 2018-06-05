@@ -16,6 +16,8 @@
 #include <chain.h>
 
 CChain chainActive;
+int nStakeMinConfirmations = 500;
+
 bool ThreadPOSstate=true;
 
 // Far into the future.
@@ -225,6 +227,7 @@ public:
     CTestNetParams() {
         strNetworkID = "test";
         consensus.nSubsidyHalvingInterval = 210000;
+        nStakeMinConfirmations = 50;
 //        consensus.BIP16Height = 514; // 00000000040b4e986385315e14bee30ad876d8b47f748025b26683116d21aa65
 //        consensus.BIP34Height = 21111;
 //        consensus.BIP34Hash = uint256S("0x0000000023b3a96d3484e5abb3755c413e7d41500f8e2a5c3f0dd01299cd8ef8");
@@ -238,9 +241,9 @@ public:
         consensus.UBCHeight = 0 ;
 		UB_FORK_BLOCK_NUM = consensus.UBCHeight;
         consensus.UBCInitBlockCount = 0; // 500
-        consensus.UBCONTRACT_Height = 200;
+        consensus.UBCONTRACT_Height = 100;
 	    // Fork to adjust block interval (ForkV1)
-    	consensus.ForkV1Height = 100;
+    	consensus.ForkV1Height = 50;
     	UB_FORK1_BLOCK_NUM = consensus.ForkV1Height;
 	
         // UnionBitcoin foundation
