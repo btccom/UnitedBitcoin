@@ -238,9 +238,9 @@ public:
         consensus.UBCHeight = 0 ;
 		UB_FORK_BLOCK_NUM = consensus.UBCHeight;
         consensus.UBCInitBlockCount = 0; // 500
-        consensus.UBCONTRACT_Height = 400;
+        consensus.UBCONTRACT_Height = 200;
 	    // Fork to adjust block interval (ForkV1)
-    	consensus.ForkV1Height = 200;
+    	consensus.ForkV1Height = 100;
     	UB_FORK1_BLOCK_NUM = consensus.ForkV1Height;
 	
         // UnionBitcoin foundation
