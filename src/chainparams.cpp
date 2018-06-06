@@ -16,7 +16,7 @@
 #include <chain.h>
 
 CChain chainActive;
-int nStakeMinConfirmations = 500;
+int nStakeMinConfirmations = 4800;
 int COINBASE_MATURITY_FORKV1 = 7200;
 
 bool ThreadPOSstate=true;
