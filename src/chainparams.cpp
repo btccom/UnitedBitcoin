@@ -17,6 +17,7 @@
 
 CChain chainActive;
 int nStakeMinConfirmations = 500;
+int COINBASE_MATURITY_FORKV1 = 7200;
 
 bool ThreadPOSstate=true;
 
@@ -227,7 +228,8 @@ public:
     CTestNetParams() {
         strNetworkID = "test";
         consensus.nSubsidyHalvingInterval = 210000;
-        nStakeMinConfirmations = 50;
+        nStakeMinConfirmations = 10;
+        COINBASE_MATURITY_FORKV1 = 20;
 //        consensus.BIP16Height = 514; // 00000000040b4e986385315e14bee30ad876d8b47f748025b26683116d21aa65
 //        consensus.BIP34Height = 21111;
 //        consensus.BIP34Hash = uint256S("0x0000000023b3a96d3484e5abb3755c413e7d41500f8e2a5c3f0dd01299cd8ef8");
