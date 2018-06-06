@@ -158,7 +158,8 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "upgradecontracttesting", 4, "caller_address" },
     { "deposittocontracttesting", 4, "caller_address" },
     { "currentrootstatehash", 0, "" },
-    { "blockrootstatehash", 1, "block_height" }
+    { "blockrootstatehash", 1, "block_height" },
+    { "getcontractstorage", 2, "contract_address"}
 };
 
 class CRPCConvertTable

@@ -53,6 +53,21 @@ def get_utxo(node, caller_addr):
     return utxo
 
 
+def testing_then_invoke_contract_api(node, caller_addr, contract_addr, api_name, api_arg):
+    testing_res = node.invokecontractoffline(caller_addr, contract_addr, api_name, api_arg)
+    print(testing_res)
+    withdraw_from_infos = {}
+    for change in testing_res['balanceChanges']:
+        if change["is_contract"] and not change["is_add"]:
+            withdraw_from_infos[change["address"]] = change["amount"] * 1.0 / config["PRECISION"]
+    withdraw_infos = {}
+    for change in testing_res["balanceChanges"]:
+        if not change["is_contract"] and change["is_add"]:
+            withdraw_infos[change["address"]] = change["amount"] * 1.0 / config["PRECISION"]
+    return invoke_contract_api(node, caller_addr, contract_addr, api_name, api_arg,
+                               withdraw_infos, withdraw_from_infos)
+
+
 def generate_block(node, miner, count=1):
     res = node.generatetoaddress(count, miner, 5000000)
     if len(res)<count:
@@ -720,6 +735,9 @@ class SmartContractTest(BitcoinTestFramework):
                 self.address1, contract_addr, "query_money", "",
             )
             print("storage.money after deposit: ", invoke_res)
+            money_storage = node1.getcontractstorage(contract_addr, 'money')['value']
+            print("money_storage: ", money_storage)
+            self.assertEqual(str(money_storage), str(invoke_res['result']))
             self.assertTrue(len(contract_info['balances']) > 0)
             self.assertEqual(int(invoke_res['result']), contract_info['balances'][0]['amount'])
 
