@@ -2091,6 +2091,33 @@ UniValue blockrootstatehash(const JSONRPCRequest& request)
 	return result;
 }
 
+UniValue getcontractstorage(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 2)
+        throw runtime_error(
+                "getcontractstorage \"contract_address\" \"storage_name\" ( string, string )\n"
+                "\nArgument:\n"
+                "1. \"contract_address\"          (string, required) The contract address to get contract storage\n"
+                "2. \"storage_name\"              (string, required) The storage name to query\n"
+        );
+
+    LOCK(cs_main);
+    const auto& contract_address = request.params[0].get_str();
+    const auto& storage_name = request.params[1].get_str();
+    if(!ContractHelper::is_valid_contract_address_format(contract_address)) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid contract address");
+    }
+    if (storage_name.empty())
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid storage name");
+
+    auto service = get_contract_storage_service();
+    const auto& storage_value = service->get_contract_storage(contract_address, storage_name);
+    const auto& storage_value_json = jsondiff::json_dumps(storage_value);
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("value", storage_value_json));
+    return result;
+}
+
 UniValue getcreatecontractaddress(const JSONRPCRequest& request)
 {
     if (request.fHelp || request.params.size() < 1)
@@ -2813,6 +2840,8 @@ static const CRPCCommand commands[] =
 
     { "blockchain",         "currentrootstatehash", &currentrootstatehash, {} },
 	{ "blockchain",         "blockrootstatehash", &blockrootstatehash,{"block_height"} },
+
+    { "blockchain",         "getcontractstorage", &getcontractstorage, {} },
 
     /* Not shown in help */
     { "hidden",             "invalidateblock",        &invalidateblock,        {"blockhash"} },
