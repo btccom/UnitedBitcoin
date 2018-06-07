@@ -2257,11 +2257,11 @@ UniValue invokecontractoffline(const JSONRPCRequest& request)
 	ContractExec exec(service.get(), block, contractTransactions, gas_limit, 0);
 	if (!exec.performByteCode()) {
 		//error, don't add contract
-		return false;
+        throw JSONRPCError(RPC_INTERNAL_ERROR, exec.pending_contract_exec_result.error_message);
 	}
 	ContractExecResult execResult;
 	if (!exec.processingResults(execResult)) {
-		return false;
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "process exec result error");
 	}
 
 	UniValue result(UniValue::VOBJ);

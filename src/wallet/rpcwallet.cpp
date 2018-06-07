@@ -41,6 +41,7 @@
 #include <univalue.h>
 
 #include <fc/crypto/hex.hpp>
+#include <boost/scope_exit.hpp>
 
 
 static const std::string WALLET_ENDPOINT_BASE = "/wallet/";
@@ -1371,9 +1372,76 @@ UniValue callcontract(const JSONRPCRequest& request)
     }
 
 	// TODO: withdraw infos' vout
+	std::vector<ContractResultTransferInfo> balance_changes_in_contract_exec;
+	std::map<std::string, CAmount> withdraw_from_infos;
+	std::map<std::string, CAmount> withdraw_infos;
+	{
+		auto service = get_contract_storage_service();
+		service->open();
+
+		const auto& old_root_state_hash = service->current_root_state_hash();
+
+		auto contract_info = service->get_contract_info(contract_address);
+		if (!contract_info)
+			throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "contract address does not exist");
+
+		BOOST_SCOPE_EXIT_ALL(&service, old_root_state_hash) {
+			service->open();
+			service->rollback_contract_state(old_root_state_hash);
+			service->close();
+		};
+
+		CBlock block;
+		CMutableTransaction tx;
+		uint64_t gas_limit = 0;
+		uint64_t gas_price = 40;
+
+		valtype version;
+		version.push_back(0x01);
+		tx.vout.push_back(CTxOut(0, CScript() << version << ToByteVector(api_arg) << ToByteVector(api_name) << ToByteVector(contract_address) << ToByteVector(ownerAddress) << gas_limit << gas_price << OP_CALL));
+		block.vtx.push_back(MakeTransactionRef(CTransaction(tx)));
+
+		std::vector<ContractTransaction> contractTransactions;
+		ContractTransaction contract_tx;
+		contract_tx.opcode = OP_CALL;
+		contract_tx.params.caller_address = ownerAddress;
+		contract_tx.params.caller = "";
+		contract_tx.params.api_name = api_name;
+		contract_tx.params.api_arg = api_arg;
+		contract_tx.params.contract_address = contract_address;
+		contract_tx.params.gasPrice = gas_price;
+		contract_tx.params.gasLimit = gas_limit;
+		contract_tx.params.version = CONTRACT_MAJOR_VERSION;
+		contractTransactions.push_back(contract_tx);
+
+		ContractExec exec(service.get(), block, contractTransactions, gas_limit, 0);
+		if (!exec.performByteCode()) {
+			//error, don't add contract
+			throw JSONRPCError(RPC_INTERNAL_ERROR, exec.pending_contract_exec_result.error_message);
+		}
+		ContractExecResult execResult;
+		if (!exec.processingResults(execResult)) {
+			throw JSONRPCError(RPC_INTERNAL_ERROR, "process exec result error");
+		}
+		// balance changes
+		balance_changes_in_contract_exec = execResult.balance_changes;
+		for (const auto& p : balance_changes_in_contract_exec)
+		{
+			if (p.is_contract && !p.add) {
+				withdraw_from_infos[p.address] = p.amount;
+			}
+			if (!p.is_contract && p.add) {
+				withdraw_infos[p.address] = p.amount;
+			}
+		}
+	}
 
     // create vout
     CAmount reward = totalUsingUtxoAmount - totalFee;
+	
+	if (withdraw_infos.find(ownerAddress) != withdraw_infos.end()) { // withdraw to caller
+		reward += withdraw_infos[ownerAddress];
+	}
     if (reward > 0)
     {
         // push reward txout
@@ -1381,21 +1449,28 @@ UniValue callcontract(const JSONRPCRequest& request)
         CTxOut out(reward, scriptPubKey);
         rawTx.vout.push_back(out);
     }
+	for (const auto& p : withdraw_infos) {
+		CScript scriptPubKey = GetScriptForDestination(DecodeDestination(p.first));
+		CTxOut out(p.second, scriptPubKey);
+		rawTx.vout.push_back(out);
+	}
+	// spent contract vout
+	for (const auto& p : withdraw_from_infos) {
+		CScript spendContractScript;
+		spendContractScript << CScriptNum(p.second);
+		spendContractScript << ToByteVector(p.first);
+		spendContractScript << OP_SPEND;
+		CTxOut spend_contract_txout(0, spendContractScript);
+		rawTx.vout.push_back(spend_contract_txout);
+	}
+
     // call contract txout
     CScript contractScript;
     contractScript << CScriptNum(CONTRACT_MAJOR_VERSION);
-	std::vector<unsigned char> api_arg_bytes(api_arg.size());
-	memcpy(api_arg_bytes.data(), api_arg.c_str(), api_arg.size());
-	contractScript << api_arg_bytes;
-	std::vector<unsigned char> api_name_bytes(api_name.size());
-	memcpy(api_name_bytes.data(), api_name.c_str(), api_name.size());
-	contractScript << api_name_bytes;
-	std::vector<unsigned char> contract_address_bytes(contract_address.size());
-	memcpy(contract_address_bytes.data(), contract_address.c_str(), contract_address.size());
-	contractScript << contract_address_bytes;
-    std::vector<unsigned char> caller_address_bytes(ownerAddress.size());
-    memcpy(caller_address_bytes.data(), ownerAddress.c_str(), ownerAddress.size());
-    contractScript << caller_address_bytes;
+	contractScript << ToByteVector(api_arg);
+	contractScript << ToByteVector(api_name);
+	contractScript << ToByteVector(contract_address);
+    contractScript << ToByteVector(ownerAddress);
     contractScript << gasLimit;
     contractScript << gasPrice;
     contractScript << OP_CALL;
