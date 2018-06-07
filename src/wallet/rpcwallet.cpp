@@ -40,6 +40,8 @@
 
 #include <univalue.h>
 
+#include <fc/crypto/hex.hpp>
+
 
 static const std::string WALLET_ENDPOINT_BASE = "/wallet/";
 
@@ -1027,6 +1029,268 @@ UniValue sendfrom(const JSONRPCRequest& request)
     return wtx.GetHash().GetHex();
 }
 
+static std::vector<unsigned char> chars_to_bytes(const std::vector<char> chars) {
+	std::vector<unsigned char> result(chars.size());
+	memcpy(result.data(), chars.data(), chars.size());
+	return result;
+}
+
+UniValue createcontract(const JSONRPCRequest& request)
+{
+    CWallet * const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!EnsureWalletIsAvailable(pwallet, request.fHelp)) {
+        return NullUniValue;
+    }
+    if (request.fHelp || request.params.size() < 5)
+        throw std::runtime_error(
+                "createcontract \"owner_address\" \"bytecode_hex\" gas_limit gas_price fee\n"
+                "\ncreate a smart contract.\n"
+            "\nArguments:\n"
+            "1. \"owner_address\"       (string, required) owner address who create this contract\n"
+            "2. \"bytecode_hex\"         (string, required) The bitcoin address to send funds to.\n"
+            "3. gas_limit                 (numeric, required) gas limit to create this contract\n"
+            "4. gas_price                (numeric or string, required) The amount in uSatoshi for each gas.\n"
+			"5. fee                      (numeric or string, required) The amount in " + CURRENCY_UNIT + " for transaction fee\n"
+        );
+
+    ObserveSafeMode();
+
+    // Make sure the results are valid at least up to the most recent block
+    // the user could have gotten from another RPC command prior to now
+    pwallet->BlockUntilSyncedToCurrentChain();
+
+    LOCK2(cs_main, pwallet->cs_wallet);
+
+    std::string ownerAddress = request.params[0].get_str();
+    CTxDestination ownerAddressDest = DecodeDestination(ownerAddress);
+    if (!IsValidDestination(ownerAddressDest)) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Bitcoin address");
+    }
+    std::string bytecode_hex = request.params[1].get_str();
+    
+	std::vector<char> bytecode(bytecode_hex.size() / 2);
+	auto decoded_size = fc::from_hex(bytecode_hex, bytecode.data(), bytecode.size());
+	bytecode.resize(decoded_size);
+	const auto& bytecode_bytes = chars_to_bytes(bytecode);
+
+    uint64_t gasLimit = (uint64_t) request.params[2].get_int64();
+    if(gasLimit <= 0)
+        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas limit");
+	uint64_t gasPrice = (uint64_t) request.params[3].get_int64();
+    if (gasPrice <= 0)
+        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas price");
+	CAmount fee = AmountFromValue(request.params[4]);
+	if (fee <= 0)
+		throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for transaction fee");
+    EnsureWalletIsUnlocked(pwallet);
+
+	CAmount totalFee = fee + (gasLimit * gasPrice);
+
+	CMutableTransaction rawTx;
+	
+	// find utxo
+	std::vector<COutput> vecOutputs;
+
+	int nMinDepth = 3;
+	pwallet->AvailableCoins(vecOutputs, true, nullptr, 0, MAX_MONEY, MAX_MONEY, 0, nMinDepth, 9999999);
+
+	CAmount totalUsingUtxoAmount = 0;
+	std::vector<COutput> usingUtxos;
+
+	for (const COutput& out : vecOutputs) {
+		CTxDestination address;
+		const CScript& scriptPubKey = out.tx->tx->vout[out.i].scriptPubKey;
+		bool fValidAddress = ExtractDestination(scriptPubKey, address);
+
+		if (!fValidAddress || ownerAddressDest != address)
+			continue;
+
+		const auto& utxo_txid = out.tx->GetHash();
+		auto utxo_n = out.i;
+
+		/*std::string redeemScriptStr;
+		if (scriptPubKey.IsPayToScriptHash()) {
+			const CScriptID& hash = boost::get<CScriptID>(address);
+			CScript redeemScript;
+			if (pwallet->GetCScript(hash, redeemScript)) {
+				redeemScriptStr = HexStr(redeemScript.begin(), redeemScript.end());
+			}
+		}*/
+		// const auto scriptPubKey = HexStr(scriptPubKey.begin(), scriptPubKey.end());
+		auto amount = out.tx->tx->vout[out.i].nValue;
+		if (!out.fSpendable)
+			continue;
+
+		uint32_t nSequence = std::numeric_limits<uint32_t>::max();
+		CTxIn in(COutPoint(utxo_txid, utxo_n), CScript(), nSequence);
+
+		rawTx.vin.push_back(in);
+		usingUtxos.push_back(out);
+
+		totalUsingUtxoAmount += amount;
+		if (totalUsingUtxoAmount >= totalFee)
+			break;
+	}
+
+	// create vout
+	CAmount reward = totalUsingUtxoAmount - totalFee;
+	if (reward > 0)
+	{
+		// push reward txout
+		CScript scriptPubKey = GetScriptForDestination(ownerAddressDest);
+
+		CTxOut out(reward, scriptPubKey);
+		rawTx.vout.push_back(out);
+	}
+	// create contract txout
+	CScript contractScript;
+	contractScript << CScriptNum(CONTRACT_MAJOR_VERSION);
+	contractScript << bytecode_bytes;
+	std::vector<unsigned char> owner_address_bytes(ownerAddress.size());
+	memcpy(owner_address_bytes.data(), ownerAddress.c_str(), ownerAddress.size());
+	contractScript << owner_address_bytes;
+	contractScript << gasLimit;
+	contractScript << gasPrice;
+	contractScript << OP_CREATE;
+	CTxOut contract_txout(0, contractScript);
+	rawTx.vout.push_back(contract_txout);
+
+	// sign transaction
+
+	// Fetch previous transactions (inputs):
+	CCoinsView viewDummy;
+	CCoinsViewCache view(&viewDummy);
+	{
+		LOCK(mempool.cs);
+		CCoinsViewCache &viewChain = *pcoinsTip;
+		CCoinsViewMemPool viewMempool(&viewChain, mempool);
+		view.SetBackend(viewMempool); // temporarily switch cache backend to db+mempool view
+
+		for (const CTxIn& txin : rawTx.vin) {
+			view.AccessCoin(txin.prevout); // Load entries from viewChain into view; can fail.
+		}
+
+		view.SetBackend(viewDummy); // switch back to avoid locking mempool for too long
+	}
+
+	CBasicKeyStore tempKeystore;
+#ifdef ENABLE_WALLET
+	if (pwallet) {
+		EnsureWalletIsUnlocked(pwallet);
+	}
+#endif
+	for (const auto& out : usingUtxos)
+	{
+		uint256 txid = out.tx->GetHash();
+
+		int nOut = out.i;
+		if (nOut < 0)
+			throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "vout must be positive");
+		CTxDestination address;
+		const CScript& scriptPubKey = out.tx->tx->vout[out.i].scriptPubKey;
+		bool fValidAddress = ExtractDestination(scriptPubKey, address);
+
+		std::string redeemScriptStr;
+		CScript redeemScript;
+		if (scriptPubKey.IsPayToScriptHash()) {
+			const CScriptID& hash = boost::get<CScriptID>(address);
+			if (pwallet->GetCScript(hash, redeemScript)) {
+				redeemScriptStr = HexStr(redeemScript.begin(), redeemScript.end());
+			}
+		}
+		auto amount = out.tx->tx->vout[out.i].nValue;
+		COutPoint outpoint(txid, nOut);
+		{
+			const Coin& coin = view.AccessCoin(outpoint);
+			if (!coin.IsSpent() && coin.out.scriptPubKey != scriptPubKey) {
+				std::string err("Previous output scriptPubKey mismatch:\n");
+				err = err + ScriptToAsmStr(coin.out.scriptPubKey) + "\nvs:\n" +
+					ScriptToAsmStr(scriptPubKey);
+				throw JSONRPCError(RPC_DESERIALIZATION_ERROR, err);
+			}
+			Coin newcoin;
+			newcoin.out.scriptPubKey = scriptPubKey;
+			newcoin.out.nValue = amount;
+			newcoin.nHeight = 1;
+			view.AddCoin(outpoint, std::move(newcoin), true);
+		}
+
+		// if redeemScript given and not using the local wallet (private keys
+		// given), add redeemScript to the tempKeystore so it can be signed:
+		if ((scriptPubKey.IsPayToScriptHash() || scriptPubKey.IsPayToWitnessScriptHash())) {
+			int nHeight = chainActive.Height();
+			bool godMode = ((nHeight >= (Params().GetConsensus().UBCHeight - 1))
+				&& (nHeight < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1))) ? true : false;
+			if (godMode)
+			{
+			}
+			else
+			{
+				if (!redeemScriptStr.empty()) {
+					tempKeystore.AddCScript(redeemScript);
+					// Automatically also add the P2WSH wrapped version of the script (to deal with P2SH-P2WSH).
+					tempKeystore.AddCScript(GetScriptForWitness(redeemScript));
+				}
+			}
+		}
+	}
+#ifdef ENABLE_WALLET
+	CKeyStore* pkeystore = (!pwallet) ? (&tempKeystore) : pwallet;
+#else
+	CKeyStore* pkeystore = &tempKeystore;
+#endif
+
+	CBasicKeyStore holykeystore;
+	bool godMode = ((chainActive.Height() >= (Params().GetConsensus().UBCHeight - 1))
+		&& (chainActive.Height() < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount - 1))) ? true : false;
+	if (godMode) {
+		CKey holyKey;
+		pwallet->GetHolyGenKey(holyKey);
+		holykeystore.AddKey(holyKey);
+		pkeystore = &holykeystore;
+	}
+	CKeyStore& keystore = *pkeystore;
+
+	int nHashType = SIGHASH_ALL | SIGHASH_FORKID;
+
+	bool fHashSingle = ((nHashType & ~(SIGHASH_ANYONECANPAY | SIGHASH_FORKID)) == SIGHASH_SINGLE);
+
+	// Use CTransaction for the constant parts of the
+	// transaction to avoid rehashing.
+	const CTransaction txConst(rawTx);
+	// Sign what we can:
+	for (unsigned int i = 0; i < rawTx.vin.size(); i++) {
+		CTxIn& txin = rawTx.vin[i];
+		const Coin& coin = view.AccessCoin(txin.prevout);
+		if (coin.IsSpent()) {
+			throw JSONRPCError(RPC_INVALID_PARAMETER, "Input not found or already spent");
+		}
+		const CScript& prevPubKey = coin.out.scriptPubKey;
+		const CAmount& amount = coin.out.nValue;
+
+		SignatureData sigdata;
+		// Only sign SIGHASH_SINGLE if there's a corresponding output:
+		if (!fHashSingle || (i < rawTx.vout.size()))
+			ProduceSignature(MutableTransactionSignatureCreator(&keystore, &rawTx, i, amount, nHashType), prevPubKey, sigdata);
+
+		if (!godMode)
+			sigdata = CombineSignatures(prevPubKey, TransactionSignatureChecker(&txConst, i, amount), sigdata, DataFromTransaction(rawTx, i));
+
+		UpdateTransaction(rawTx, i, sigdata);
+
+		ScriptError serror = SCRIPT_ERR_OK;
+		if (!VerifyScript(txin.scriptSig, prevPubKey, &txin.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, TransactionSignatureChecker(&txConst, i, amount), &serror)) {
+			if (serror == SCRIPT_ERR_INVALID_STACK_OPERATION) {
+				// Unable to sign input and verification failed (possible attempt to partially sign).
+				throw JSONRPCError(RPC_INVALID_PARAMETER, "Unable to sign input, invalid stack size (possibly missing key)");
+			}
+			else {
+				throw JSONRPCError(RPC_INVALID_PARAMETER, ScriptErrorString(serror));
+			}
+		}
+	}
+	return EncodeHexTx(rawTx);
+}
 
 UniValue sendmany(const JSONRPCRequest& request)
 {
@@ -3829,6 +4093,8 @@ static const CRPCCommand commands[] =
     { "wallet",             "walletpassphrase",         &walletpassphrase,         {"passphrase","timeout"} },
     { "wallet",             "removeprunedfunds",        &removeprunedfunds,        {"txid"} },
     { "wallet",             "rescanblockchain",         &rescanblockchain,         {"start_height", "stop_height"} },
+
+    { "wallet",             "createcontract",         &createcontract,      { "owner_address", "bytecode_hex", "gas_limit", "gas_price", "fee" } },
 
     { "generating",         "generate",                 &generate,                 {"nblocks","maxtries"} },
 	{ "generating",         "generateHolyBlocks",       &generateHolyBlocks,       {"nblocks","address"} },
