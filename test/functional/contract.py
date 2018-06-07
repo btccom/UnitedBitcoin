@@ -1133,6 +1133,26 @@ class SmartContractTest(BitcoinTestFramework):
         )['result'])
         print("price of cny: ", price_of_cny)
 
+    def test_create_contract_rpc(self):
+        print("test_create_contract_rpc")
+        self.split_accounts()
+        node1 = self.nodes[0]
+        caller_addr = self.address1
+        bytecode_hex = read_contract_bytecode_hex(os.path.dirname(__file__) + os.path.sep + "test.gpc")
+        signed_create_contract_tx = node1.createcontract(caller_addr, bytecode_hex, 5000, 10, 0.001)
+        print("signed_create_contract_tx: ", signed_create_contract_tx)
+        decoded_create_contract_tx = node1.decoderawtransaction(signed_create_contract_tx)
+        print("decoded_create_contract_tx: ", decoded_create_contract_tx)
+        contract_addr = node1.getcreatecontractaddress(signed_create_contract_tx)['address']
+        print("contract addr: ", contract_addr)
+        node1.sendrawtransaction(signed_create_contract_tx)
+        generate_block(node1, caller_addr)
+        print("contract: ", node1.getsimplecontractinfo(contract_addr))
+
+        signed_call_contract_tx = node1.callcontract(caller_addr, contract_addr, "hello", "world", 5000, 10, 0.001)
+        node1.sendrawtransaction(signed_call_contract_tx)
+        print("called contract hello api")
+
     def test_constant_value_token_contract(self):
         print("test_constant_value_token_contract")
         self.split_accounts()
@@ -1276,6 +1296,7 @@ class SmartContractTest(BitcoinTestFramework):
         self.test_constant_value_token_contract()
         self.test_invalidate_contract_block()
         self.test_spend_utxo_withdrawed_from_contract()
+        self.test_create_contract_rpc()
 
         generate_block(self.nodes[0], self.address1, 1)
         self.sync_all()
