@@ -1030,12 +1030,6 @@ UniValue sendfrom(const JSONRPCRequest& request)
     return wtx.GetHash().GetHex();
 }
 
-static std::vector<unsigned char> chars_to_bytes(const std::vector<char> chars) {
-	std::vector<unsigned char> result(chars.size());
-	memcpy(result.data(), chars.data(), chars.size());
-	return result;
-}
-
 UniValue createcontract(const JSONRPCRequest& request)
 {
     CWallet * const pwallet = GetWalletForJSONRPCRequest(request);
@@ -1072,7 +1066,7 @@ UniValue createcontract(const JSONRPCRequest& request)
 	std::vector<char> bytecode(bytecode_hex.size() / 2);
 	auto decoded_size = fc::from_hex(bytecode_hex, bytecode.data(), bytecode.size());
 	bytecode.resize(decoded_size);
-	const auto& bytecode_bytes = chars_to_bytes(bytecode);
+	const auto& bytecode_bytes = ToByteVector(bytecode);
 
     uint64_t gasLimit = (uint64_t) request.params[2].get_int64();
     if(gasLimit <= 0)
@@ -1136,9 +1130,7 @@ UniValue createcontract(const JSONRPCRequest& request)
 	CScript contractScript;
 	contractScript << CScriptNum(CONTRACT_MAJOR_VERSION);
 	contractScript << bytecode_bytes;
-	std::vector<unsigned char> owner_address_bytes(ownerAddress.size());
-	memcpy(owner_address_bytes.data(), ownerAddress.c_str(), ownerAddress.size());
-	contractScript << owner_address_bytes;
+	contractScript << ToByteVector(ownerAddress);
 	contractScript << gasLimit;
 	contractScript << gasPrice;
 	contractScript << OP_CREATE;
@@ -1333,8 +1325,6 @@ UniValue callcontract(const JSONRPCRequest& request)
 
     CAmount totalFee = fee + (gasLimit * gasPrice);
 
-	// TODO: run testing to get withdraw infos
-
     CMutableTransaction rawTx;
 
     // find utxos
@@ -1371,10 +1361,11 @@ UniValue callcontract(const JSONRPCRequest& request)
             break;
     }
 
-	// TODO: withdraw infos' vout
+	// withdraw infos' vout
 	std::vector<ContractResultTransferInfo> balance_changes_in_contract_exec;
 	std::map<std::string, CAmount> withdraw_from_infos;
 	std::map<std::string, CAmount> withdraw_infos;
+	// run testing to get withdraw infos
 	{
 		auto service = get_contract_storage_service();
 		service->open();
