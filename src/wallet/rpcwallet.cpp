@@ -1282,7 +1282,7 @@ UniValue callcontract(const JSONRPCRequest& request)
                 "callcontract \"caller_address\" \"contract_address\" \"api_name\" \"api_arg\" gas_limit gas_price fee\n"
                 "\ncall a smart contract's api.\n"
                 "\nArguments:\n"
-                "1. \"owner_address\"       (string, required) owner address who create this contract\n"
+                "1. \"caller_address\"       (string, required) caller address who call this contract\n"
                 "2. \"contract_address\"         (string, required) the contract's address to be called.\n"
                 "3. \"api_name\"               (string, required) the contract's api name to be called\n"
                 "4. \"api_arg\"                (string, required) the contract's api argument to be called\n"
@@ -1299,8 +1299,8 @@ UniValue callcontract(const JSONRPCRequest& request)
 
     LOCK2(cs_main, pwallet->cs_wallet);
 
-    std::string ownerAddress = request.params[0].get_str();
-    CTxDestination ownerAddressDest = DecodeDestination(ownerAddress);
+    std::string callerAddress = request.params[0].get_str();
+    CTxDestination ownerAddressDest = DecodeDestination(callerAddress);
     if (!IsValidDestination(ownerAddressDest)) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid ubtc address");
     }
@@ -1389,13 +1389,13 @@ UniValue callcontract(const JSONRPCRequest& request)
 
 		valtype version;
 		version.push_back(0x01);
-		tx.vout.push_back(CTxOut(0, CScript() << version << ToByteVector(api_arg) << ToByteVector(api_name) << ToByteVector(contract_address) << ToByteVector(ownerAddress) << gas_limit << gas_price << OP_CALL));
+		tx.vout.push_back(CTxOut(0, CScript() << version << ToByteVector(api_arg) << ToByteVector(api_name) << ToByteVector(contract_address) << ToByteVector(callerAddress) << gas_limit << gas_price << OP_CALL));
 		block.vtx.push_back(MakeTransactionRef(CTransaction(tx)));
 
 		std::vector<ContractTransaction> contractTransactions;
 		ContractTransaction contract_tx;
 		contract_tx.opcode = OP_CALL;
-		contract_tx.params.caller_address = ownerAddress;
+		contract_tx.params.caller_address = callerAddress;
 		contract_tx.params.caller = "";
 		contract_tx.params.api_name = api_name;
 		contract_tx.params.api_arg = api_arg;
@@ -1430,8 +1430,8 @@ UniValue callcontract(const JSONRPCRequest& request)
     // create vout
     CAmount reward = totalUsingUtxoAmount - totalFee;
 	
-	if (withdraw_infos.find(ownerAddress) != withdraw_infos.end()) { // withdraw to caller
-		reward += withdraw_infos[ownerAddress];
+	if (withdraw_infos.find(callerAddress) != withdraw_infos.end()) { // withdraw to caller
+		reward += withdraw_infos[callerAddress];
 	}
     if (reward > 0)
     {
@@ -1441,6 +1441,8 @@ UniValue callcontract(const JSONRPCRequest& request)
         rawTx.vout.push_back(out);
     }
 	for (const auto& p : withdraw_infos) {
+		if (p.first == callerAddress) // caller reward has been added
+			continue;
 		CScript scriptPubKey = GetScriptForDestination(DecodeDestination(p.first));
 		CTxOut out(p.second, scriptPubKey);
 		rawTx.vout.push_back(out);
@@ -1461,7 +1463,7 @@ UniValue callcontract(const JSONRPCRequest& request)
 	contractScript << ToByteVector(api_arg);
 	contractScript << ToByteVector(api_name);
 	contractScript << ToByteVector(contract_address);
-    contractScript << ToByteVector(ownerAddress);
+    contractScript << ToByteVector(callerAddress);
     contractScript << gasLimit;
     contractScript << gasPrice;
     contractScript << OP_CALL;

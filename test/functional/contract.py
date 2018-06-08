@@ -1149,9 +1149,18 @@ class SmartContractTest(BitcoinTestFramework):
         generate_block(node1, caller_addr)
         print("contract: ", node1.getsimplecontractinfo(contract_addr))
 
-        signed_call_contract_tx = node1.callcontract(caller_addr, contract_addr, "hello", "world", 5000, 10, 0.001)
+        deposit_to_contract(node1, caller_addr, contract_addr, 1)
+        generate_block(node1, caller_addr)
+        contract = node1.getsimplecontractinfo(contract_addr)
+        print(contract)
+        assert len(contract['balances'])>0 and contract['balances'][0]['amount'] == 1*config['PRECISION']
+
+        signed_call_contract_tx = node1.callcontract(caller_addr, contract_addr, "withdraw", "%d" % int(0.5 * config['PRECISION']), 5000, 10, 0.005)
         node1.sendrawtransaction(signed_call_contract_tx)
-        print("called contract hello api")
+        generate_block(node1, caller_addr)
+        contract = node1.getsimplecontractinfo(contract_addr)
+        assert(contract['balances'][0]['amount'] == int(0.5*config['PRECISION']))
+        print("called contract withdraw api successfully")
 
     def test_constant_value_token_contract(self):
         print("test_constant_value_token_contract")
