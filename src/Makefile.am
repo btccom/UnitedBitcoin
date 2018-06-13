@@ -285,6 +285,30 @@ libbitcoin_server_a_SOURCES = \
     jsondiff/helper.cpp \
     jsondiff/json_value_types.cpp \
     jsondiff/jsondiff.cpp \
+    fjson/variant_object.cpp \
+    fjson/string.cpp \
+    fjson/time.cpp \
+    fjson/real128.cpp \
+    fjson/log/appender.cpp \
+    fjson/log/logger_config.cpp \
+    fjson/log/log_message.cpp \
+    fjson/log/console_appender.cpp \
+    fjson/log/logger.cpp \
+    fjson/uint128.cpp \
+    fjson/variant.cpp \
+    fjson/exception.cpp \
+    fjson/shared_ptr.cpp \
+    fjson/io/varint.cpp \
+    fjson/io/console.cpp \
+    fjson/io/json.cpp \
+    fjson/crypto/base64.cpp \
+    fjson/crypto/hex.cpp \
+    fcrypto/ripemd160.cpp \
+    fcrypto/_digest_common.cpp \
+    fcrypto/sha512.cpp \
+    fcrypto/sha1.cpp \
+    fcrypto/sha224.cpp \
+    fcrypto/sha256.cpp \
     sqlite3.c \
     contract_storage/change.cpp \
     contract_storage/contract_info.cpp \

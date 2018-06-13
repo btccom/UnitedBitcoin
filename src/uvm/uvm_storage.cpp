@@ -187,7 +187,7 @@ jsondiff::JsonValue uvm_storage_value_to_json(UvmStorageValue value)
 	case uvm::blockchain::StorageValueTypes::storage_value_string_array:
 	case uvm::blockchain::StorageValueTypes::storage_value_unknown_array:
 	{
-		fc::variants json_array;
+		jsondiff::JsonArray json_array;
 		for (const auto &p : *value.value.table_value)
 		{
 			json_array.push_back(uvm_storage_value_to_json(p.second));
@@ -200,7 +200,7 @@ jsondiff::JsonValue uvm_storage_value_to_json(UvmStorageValue value)
 	case uvm::blockchain::StorageValueTypes::storage_value_string_table:
 	case uvm::blockchain::StorageValueTypes::storage_value_unknown_table:
 	{
-		fc::mutable_variant_object json_object;
+		jsondiff::JsonObject json_object;
 		for (const auto &p : *value.value.table_value)
 		{
 			json_object[p.first] = uvm_storage_value_to_json(p.second);
@@ -247,7 +247,7 @@ UvmStorageValue json_to_uvm_storage_value(lua_State *L, jsondiff::JsonValue json
 	}
 	else if (json_value.is_array())
 	{
-		fc::variants json_array = json_value.as<fc::variants>();
+		jsondiff::JsonArray json_array = json_value.as<jsondiff::JsonArray>();
 		value.value.table_value = uvm::lua::lib::create_managed_lua_table_map(L);
 		if (json_array.empty())
 		{
@@ -288,7 +288,7 @@ UvmStorageValue json_to_uvm_storage_value(lua_State *L, jsondiff::JsonValue json
 	}
 	else if (json_value.is_object())
 	{
-		fc::mutable_variant_object json_map = json_value.as<fc::mutable_variant_object>();
+		jsondiff::JsonObject json_map = json_value.as<jsondiff::JsonObject>();
 		value.value.table_value = uvm::lua::lib::create_managed_lua_table_map(L);
 		if (json_map.size()<1)
 		{
