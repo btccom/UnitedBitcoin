@@ -1,13 +1,13 @@
 #include <contract_engine/contract_helper.hpp>
 #include <cstdlib>
 #include <vector>
-#include <fc/array.hpp>
-#include <fc/crypto/ripemd160.hpp>
-#include <fc/crypto/elliptic.hpp>
-#include <fc/crypto/base58.hpp>
-#include <fc/crypto/sha256.hpp>
-#include <fc/crypto/ripemd160.hpp>
-#include <fc/crypto/hex.hpp>
+#include <fjson/array.hpp>
+#include <fcrypto/ripemd160.hpp>
+#include <fcrypto/elliptic.hpp>
+#include <fcrypto/base58.hpp>
+#include <fcrypto/sha256.hpp>
+#include <fcrypto/ripemd160.hpp>
+#include <fjson/crypto/hex.hpp>
 #include <boost/uuid/sha1.hpp>
 #include <exception>
 #include <util.h>
@@ -96,7 +96,7 @@ throw uvm::core::UvmException(except_2); \
 api_buf = (char*)malloc(api_len + 1); \
 if (api_buf == NULL) \
 { \
-FC_ASSERT(api_buf == NULL, "malloc fail!"); \
+FJSON_ASSERT(api_buf == NULL, "malloc fail!"); \
 }\
 read_count = common_fread_octets(f, api_buf, api_len); \
 if (read_count != 1)\
@@ -128,7 +128,7 @@ throw uvm::core::UvmException(except_2); \
 storage_buf = (char*)malloc(storage_name_len + 1); \
 if (storage_buf == NULL) \
 { \
-FC_ASSERT(storage_buf == NULL, "malloc fail!"); \
+FJSON_ASSERT(storage_buf == NULL, "malloc fail!"); \
 }\
 read_count = common_fread_octets(f, storage_buf, storage_name_len); \
 if (read_count != 1)\
@@ -224,7 +224,7 @@ struct ContractCreateDigestInfo
     uint32_t contract_op_vout_index;
 };
 
-FC_REFLECT(::ContractCreateDigestInfo, (caller_address)(tx_hash)(contract_op_vout_index));
+FJSON_REFLECT(::ContractCreateDigestInfo, (caller_address)(tx_hash)(contract_op_vout_index));
 
 template <typename T> std::vector<char> encoder_result_to_vector(const T& item)
 {
@@ -237,15 +237,15 @@ template <typename T> std::vector<char> encoder_result_to_vector(const T& item)
 std::string ContractHelper::generate_contract_address(const std::string& caller_address, const CTransaction& txBitcoin, size_t contract_op_vout_index)
 {
 	// contract address = CON + base58(ripemd160(sha256(info)) + prefix_4_bytes(sha256(ripemd160(sha256(info))))
-    fc::sha256::encoder enc;
+    fcrypto::sha256::encoder enc;
     ContractCreateDigestInfo info;
     info.caller_address = caller_address;
     info.tx_hash = txBitcoin.GetHash().GetHex();
     info.contract_op_vout_index = contract_op_vout_index;
-    fc::raw::pack(enc, info);
+    fjson::raw::pack(enc, info);
 	const auto& info2_result = enc.result(); //  info160 = sha256(info)
-    const auto& a_result = fc::ripemd160::hash(info2_result); // a = ripemd160(sha256(info))
-	const auto& b = fc::sha256::hash(a_result); // b = sha256(a)
+    const auto& a_result = fcrypto::ripemd160::hash(info2_result); // a = ripemd160(sha256(info))
+	const auto& b = fcrypto::sha256::hash(a_result); // b = sha256(a)
 	std::vector<char> first_4_bytes_of_b;
 	first_4_bytes_of_b.resize(4);
 	memcpy(first_4_bytes_of_b.data(), b.data(), 4);
@@ -253,7 +253,7 @@ std::string ContractHelper::generate_contract_address(const std::string& caller_
 	c.resize(sizeof(a_result) + first_4_bytes_of_b.size());
 	memcpy(c.data(), &a_result, sizeof(a_result));
 	memcpy(c.data() + sizeof(a_result), first_4_bytes_of_b.data(), first_4_bytes_of_b.size());
-	std::string addr = std::string("CON") + fc::to_base58(c.data(), c.size());
+	std::string addr = std::string("CON") + fcrypto::to_base58(c.data(), c.size());
     return addr;
 }
 
@@ -268,12 +268,12 @@ bool ContractHelper::is_valid_contract_address_format(const std::string& address
 	if (address.length() < prefix.length())
 		return false;
 	try {
-		decoded_size = fc::from_base58(address.substr(prefix.length()), c.data(), c.size());
+		decoded_size = fcrypto::from_base58(address.substr(prefix.length()), c.data(), c.size());
 		if (decoded_size > c.size() || decoded_size <= 4 + prefix.length())
 			return false;
 		c.resize(decoded_size);
 	}
-	catch (const fc::parse_error_exception& e)
+	catch (const fjson::parse_error_exception& e)
 	{
 		return false;
 	}
@@ -285,9 +285,9 @@ bool ContractHelper::is_valid_contract_address_format(const std::string& address
 	std::vector<char> first_4_bytes_of_b;
 	first_4_bytes_of_b.resize(4);
 	memcpy(first_4_bytes_of_b.data(), c.data() + a.size(), c.size() - a.size());
-	fc::uint160 a_array;
+    fcrypto::uint160 a_array;
 	memcpy(&a_array, a.data(), 20);
-	auto b = fc::sha256::hash(a_array);
+	auto b = fcrypto::sha256::hash(a_array);
 	if (b.data_size() < 4)
 		return false;
 	std::vector<char> first_4_bytes_of_b_calculated;

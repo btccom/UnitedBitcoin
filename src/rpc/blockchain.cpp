@@ -41,7 +41,7 @@
 #include <contract_storage/contract_storage.hpp>
 #include <contract_engine/contract_helper.hpp>
 #include <contract_engine/native_contract.hpp>
-#include <fc/crypto/base64.hpp>
+#include <fjson/crypto/base64.hpp>
 #include <boost/scope_exit.hpp>
 
 struct CUpdatedBlock
@@ -1993,7 +1993,7 @@ UniValue getcontractinfo(const JSONRPCRequest& request)
 		}
 		result.push_back(Pair("offline_apis", offline_apis));
 	}
-	auto bytecode_base64 = fc::base64_encode(contract_info->bytecode.data(), contract_info->bytecode.size());
+	auto bytecode_base64 = fjson::base64_encode(contract_info->bytecode.data(), contract_info->bytecode.size());
 	result.push_back(Pair("code", bytecode_base64));
 	{
 		UniValue storages(UniValue::VARR);

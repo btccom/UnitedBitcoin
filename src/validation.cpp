@@ -58,10 +58,10 @@
 #include <boost/algorithm/string/join.hpp>
 #include <boost/thread.hpp>
 #include <boost/scope_exit.hpp>
-#include <fc/array.hpp>
-#include <fc/crypto/ripemd160.hpp>
-#include <fc/crypto/elliptic.hpp>
-#include <fc/crypto/base58.hpp>
+#include <fjson/array.hpp>
+#include <fcrypto/ripemd160.hpp>
+#include <fcrypto/elliptic.hpp>
+#include <fcrypto/base58.hpp>
 #include <boost/uuid/sha1.hpp>
 #include <exception>
 #include <contract_storage/contract_storage.hpp>
@@ -2048,7 +2048,7 @@ else \
 
         std::vector<char> Code::pack() const
         {
-            return fc::raw::pack(*this);
+            return fjson::raw::pack(*this);
         }
 
         // this may cause exception
@@ -2056,13 +2056,13 @@ else \
         {
             std::vector<char> char_datas(data.size());
             memcpy(char_datas.data(), data.data(), data.size());
-            return fc::raw::unpack<Code>(char_datas);
+            return fjson::raw::unpack<Code>(char_datas);
         }
 
         // this may cause exception
         Code Code::unpack(const std::vector<char>& data)
         {
-            return fc::raw::unpack<Code>(data);
+            return fjson::raw::unpack<Code>(data);
         }
 
     }

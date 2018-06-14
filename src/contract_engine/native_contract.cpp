@@ -8,7 +8,7 @@
 
 namespace blockchain {
     namespace contract {
-#define THROW_CONTRACT_ERROR(...) FC_ASSERT(false, __VA_ARGS__)
+#define THROW_CONTRACT_ERROR(...) FJSON_ASSERT(false, __VA_ARGS__)
 
         bool native_contract_finder::has_native_contract_with_key(const std::string& key)
         {
@@ -80,7 +80,7 @@ namespace blockchain {
 
         void abstract_native_contract::emit_event(const std::string& contract_address, const std::string& event_name, const std::string& event_arg)
         {
-            FC_ASSERT(!event_name.empty());
+            FJSON_ASSERT(!event_name.empty());
 			::contract::storage::ContractEventInfo info;
             info.contract_id = contract_address;
             info.event_name = event_name;

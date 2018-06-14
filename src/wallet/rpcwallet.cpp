@@ -40,7 +40,7 @@
 
 #include <univalue.h>
 
-#include <fc/crypto/hex.hpp>
+#include <fjson/crypto/hex.hpp>
 #include <boost/scope_exit.hpp>
 
 
@@ -1064,7 +1064,7 @@ UniValue createcontract(const JSONRPCRequest& request)
     std::string bytecode_hex = request.params[1].get_str();
     
 	std::vector<char> bytecode(bytecode_hex.size() / 2);
-	auto decoded_size = fc::from_hex(bytecode_hex, bytecode.data(), bytecode.size());
+	auto decoded_size = fjson::from_hex(bytecode_hex, bytecode.data(), bytecode.size());
 	bytecode.resize(decoded_size);
 	const auto& bytecode_bytes = ToByteVector(bytecode);
 
