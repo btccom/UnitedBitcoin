@@ -212,58 +212,63 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
 
             else if(allow_contract)
             {
-            // contract code
-            if (opcode2 == OP_VERSION)
-            {
-                if(vch1.empty() || vch1.size() > 4)
-                    break;
-                version = CScriptNum::vch_to_uint64(vch1);
-                if(version != CONTRACT_MAJOR_VERSION){
-                    // only allow standard uvm and no-exec transactions to live in mempool
-                    break;
-                }
-				vSolutionsRet.push_back(CScriptNum(version).getvch());
-            }
-            else if(opcode2 == OP_GAS_LIMIT) {
-                try {
-                    uint64_t val = CScriptNum::vch_to_uint64(vch1);
-                    if(val > DEFAULT_BLOCK_GAS_LIMIT)
-                        break;
-					vSolutionsRet.push_back(CScriptNum(val).getvch());
-                }
-                catch (const scriptnum_error &err) {
-//                    return false;
-                    break;
-                }
-                if(version != CONTRACT_MAJOR_VERSION)
-                    break;
-            }
-            else if(opcode2 == OP_GAS_PRICE) {
-                try {
-                    uint64_t val = CScriptNum::vch_to_uint64(vch1);
-					vSolutionsRet.push_back(CScriptNum(val).getvch());
-                }
-                catch (const scriptnum_error &err) {
-//                    return false;
-                    break;
-                }
-                if(version != CONTRACT_MAJOR_VERSION)
-                    break;
-            }
-            else if(opcode2 == OP_DATA)
-            {
-				if (script2.size() == 2 && script2[1] == OP_ROOT_STATE_HASH && script1.size() >= 2 && script1[script1.size()-1] == OP_ROOT_STATE_HASH)
-				{
-					vSolutionsRet.push_back(vch1);
-					continue;
-				}
-                if(0 <= opcode1 && opcode1 <= OP_PUSHDATA4)
+                // contract code
+                if (opcode2 == OP_VERSION)
                 {
-                    if(vch1.empty())
+                    if(vch1.empty() || vch1.size() > 4)
                         break;
-					vSolutionsRet.push_back(vch1);
+                    version = CScriptNum::vch_to_uint64(vch1);
+                    if(version != CONTRACT_MAJOR_VERSION){
+                        // only allow standard uvm and no-exec transactions to live in mempool
+                        break;
+                    }
+                    vSolutionsRet.push_back(CScriptNum(version).getvch());
                 }
-            }
+                else if(opcode2 == OP_GAS_LIMIT) {
+                    try {
+                        uint64_t val = CScriptNum::vch_to_uint64(vch1);
+                        if(val > DEFAULT_BLOCK_GAS_LIMIT)
+                            break;
+                        vSolutionsRet.push_back(CScriptNum(val).getvch());
+                    }
+                    catch (const scriptnum_error &err) {
+    //                    return false;
+                        break;
+                    }
+                    if(version != CONTRACT_MAJOR_VERSION)
+                        break;
+                }
+                else if(opcode2 == OP_GAS_PRICE) {
+                    try {
+                        uint64_t val = CScriptNum::vch_to_uint64(vch1);
+                        vSolutionsRet.push_back(CScriptNum(val).getvch());
+                    }
+                    catch (const scriptnum_error &err) {
+    //                    return false;
+                        break;
+                    }
+                    if(version != CONTRACT_MAJOR_VERSION)
+                        break;
+                }
+                else if(opcode2 == OP_DATA)
+                {
+                    if (script2.size() == 2 && script2[1] == OP_ROOT_STATE_HASH && script1.size() >= 2 && script1[script1.size()-1] == OP_ROOT_STATE_HASH)
+                    {
+                        vSolutionsRet.push_back(vch1);
+                        continue;
+                    }
+                    if(0 <= opcode1 && opcode1 <= OP_PUSHDATA4)
+                    {
+                        if(vch1.empty())
+                            break;
+                        vSolutionsRet.push_back(vch1);
+                    }
+                }
+                else if (opcode1 != opcode2 || vch1 != vch2)
+                {
+                    // Others must match exactly
+                    break;
+                }
             // end contract code
             }
             else if (opcode1 != opcode2 || vch1 != vch2)
