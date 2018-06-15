@@ -1097,7 +1097,7 @@ UniValue createcontract(const JSONRPCRequest& request)
 		const CScript& scriptPubKey = out.tx->tx->vout[out.i].scriptPubKey;
 		bool fValidAddress = ExtractDestination(scriptPubKey, address);
 
-		if (!fValidAddress || ownerAddressDest != address)
+		if (!fValidAddress || EncodeDestination(ownerAddressDest) != EncodeDestination(address))
 			continue;
 
 		const auto& utxo_txid = out.tx->GetHash();
@@ -1341,7 +1341,7 @@ UniValue callcontract(const JSONRPCRequest& request)
         const CScript& scriptPubKey = out.tx->tx->vout[out.i].scriptPubKey;
         bool fValidAddress = ExtractDestination(scriptPubKey, address);
 
-        if (!fValidAddress || ownerAddressDest != address)
+        if (!fValidAddress || EncodeDestination(ownerAddressDest) != EncodeDestination(address))
             continue;
 
         const auto& utxo_txid = out.tx->GetHash();

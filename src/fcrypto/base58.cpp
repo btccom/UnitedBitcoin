@@ -29,6 +29,7 @@
 #include <vector>
 #include <openssl/bn.h>
 
+namespace fcrypto {
 /** Errors thrown by the bignum class */
 class bignum_error : public std::runtime_error
 {
@@ -602,8 +603,6 @@ inline bool DecodeBase58(const std::string& str, std::vector<unsigned char>& vch
     return DecodeBase58(str.c_str(), vchRet);
 }
 
-
-namespace fcrypto {
 
 	typedef fjson::parse_error_exception parse_error_exception;
 
