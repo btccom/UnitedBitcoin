@@ -1023,7 +1023,7 @@ bool CheckProofOfStake(CBlock* pblock, const COutPoint& prevout,  CAmount amount
 
 	arith_uint256 bnHashPos = UintToArith256(hashProofOfStake);
 	bnHashPos /= amount;
-	bnHashPos /= coinAge;
+	//bnHashPos /= coinAge;
 
 	uint256 hashProofOfStakeWeight = ArithToUint256(bnHashPos);
 	//LogPrintf("CheckProofOfStake amount: %lld\n", amount);
