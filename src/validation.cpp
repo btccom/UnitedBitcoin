@@ -3255,7 +3255,7 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
         const auto &end_root_state_hash = service->current_root_state_hash();
         if (allow_contract) {
             if (end_root_state_hash != block_root_state_hash) {
-                return state.DoS(100, error("block contract txs result state not matched with block root state hash"),
+                return state.DoS(100, error("block contract txs result state not matched with block root state hash, expect %s but got %s", block_root_state_hash.c_str(), end_root_state_hash.c_str()),
                                  REJECT_INVALID, "block-root-state-hash-invalid-after-contract-exec");
             }
         }
