@@ -42,6 +42,7 @@
 
 #include <fjson/crypto/hex.hpp>
 #include <boost/scope_exit.hpp>
+#include <boost/lexical_cast.hpp>
 
 
 static const std::string WALLET_ENDPOINT_BASE = "/wallet/";
@@ -1068,10 +1069,20 @@ UniValue createcontract(const JSONRPCRequest& request)
 	bytecode.resize(decoded_size);
 	const auto& bytecode_bytes = ToByteVector(bytecode);
 
-    uint64_t gasLimit = (uint64_t) request.params[2].get_int64();
+    uint64_t gasLimit;
+    try {
+        gasLimit = boost::lexical_cast<uint64_t>(request.params[2].get_str());
+    } catch(boost::bad_lexical_cast& e) {
+        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas limit");
+    }
     if(gasLimit <= 0)
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas limit");
-	uint64_t gasPrice = (uint64_t) request.params[3].get_int64();
+	uint64_t gasPrice;
+	try {
+        gasPrice = (uint64_t) request.params[3].get_int64();
+    } catch(boost::bad_lexical_cast& e) {
+        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas price");
+    }
     if (gasPrice <= 0)
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas price");
 	CAmount fee = AmountFromValue(request.params[4]);
@@ -1312,10 +1323,20 @@ UniValue callcontract(const JSONRPCRequest& request)
 		throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid contract api name");
 	const auto& api_arg = request.params[3].get_str();
 
-    uint64_t gasLimit = (uint64_t) request.params[4].get_int64();
+    uint64_t gasLimit;
+    try {
+        gasLimit = boost::lexical_cast<uint64_t>(request.params[4].get_str());
+    }catch(boost::bad_lexical_cast& e) {
+        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas limit");
+    }
     if(gasLimit <= 0)
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas limit");
-    uint64_t gasPrice = (uint64_t) request.params[5].get_int64();
+    uint64_t gasPrice;
+    try {
+        gasPrice = boost::lexical_cast<uint64_t>(request.params[5].get_str());
+    } catch(boost::bad_lexical_cast& e) {
+        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas price");
+    }
     if (gasPrice <= 0)
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas price");
     CAmount fee = AmountFromValue(request.params[6]);
@@ -1385,7 +1406,7 @@ UniValue callcontract(const JSONRPCRequest& request)
 		CBlock block;
 		CMutableTransaction tx;
 		uint64_t gas_limit = 0;
-		uint64_t gas_price = 40;
+		uint64_t gas_price = gasPrice;
 
 		valtype version;
 		version.push_back(0x01);
