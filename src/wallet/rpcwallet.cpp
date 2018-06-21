@@ -1079,7 +1079,7 @@ UniValue createcontract(const JSONRPCRequest& request)
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas limit");
 	uint64_t gasPrice;
 	try {
-        gasPrice = (uint64_t) request.params[3].get_int64();
+        gasPrice = boost::lexical_cast<uint64_t>(request.params[3].get_str());
     } catch(boost::bad_lexical_cast& e) {
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas price");
     }
