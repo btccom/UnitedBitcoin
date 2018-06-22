@@ -301,6 +301,7 @@ libbitcoin_server_a_SOURCES = \
     fjson/io/varint.cpp \
     fjson/io/console.cpp \
     fjson/io/json.cpp \
+    fjson/io/datastream.cpp \
     fjson/crypto/base64.cpp \
     fjson/crypto/hex.cpp \
     fcrypto/ripemd160.cpp \
@@ -309,6 +310,7 @@ libbitcoin_server_a_SOURCES = \
     fcrypto/sha1.cpp \
     fcrypto/sha224.cpp \
     fcrypto/sha256.cpp \
+    fcrypto/base58.cpp \
     sqlite3.c \
     contract_storage/change.cpp \
     contract_storage/contract_info.cpp \
@@ -489,7 +491,7 @@ ubcd_LDADD = \
   $(LIBMEMENV) \
   $(LIBSECP256K1)
 
-ubcd_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS) -lfc
+ubcd_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS)
 
 # bitcoin-cli binary #
 ubc_cli_SOURCES = bitcoin-cli.cpp

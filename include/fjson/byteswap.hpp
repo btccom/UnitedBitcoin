@@ -7,5 +7,5 @@
 # include <libkern/OSByteOrder.h>
 # define bswap_64(x) OSSwapInt64(x)
 #else
-# include <byteswap.h>
+# include <compat/byteswap.h>
 #endif

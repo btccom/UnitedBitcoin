@@ -58,10 +58,10 @@
 #include <boost/algorithm/string/join.hpp>
 #include <boost/thread.hpp>
 #include <boost/scope_exit.hpp>
-#include <fc/array.hpp>
-#include <fc/crypto/ripemd160.hpp>
-#include <fc/crypto/elliptic.hpp>
-#include <fc/crypto/base58.hpp>
+#include <fjson/array.hpp>
+#include <fcrypto/ripemd160.hpp>
+#include <fcrypto/elliptic.hpp>
+#include <fcrypto/base58.hpp>
 #include <boost/uuid/sha1.hpp>
 #include <exception>
 #include <contract_storage/contract_storage.hpp>
@@ -2048,7 +2048,7 @@ else \
 
         std::vector<char> Code::pack() const
         {
-            return fc::raw::pack(*this);
+            return fjson::raw::pack(*this);
         }
 
         // this may cause exception
@@ -2056,13 +2056,13 @@ else \
         {
             std::vector<char> char_datas(data.size());
             memcpy(char_datas.data(), data.data(), data.size());
-            return fc::raw::unpack<Code>(char_datas);
+            return fjson::raw::unpack<Code>(char_datas);
         }
 
         // this may cause exception
         Code Code::unpack(const std::vector<char>& data)
         {
-            return fc::raw::unpack<Code>(data);
+            return fjson::raw::unpack<Code>(data);
         }
 
     }
@@ -2750,8 +2750,8 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         params.caller_address = ValtypeUtils::vch_to_string(caller_address);
 
         if(opcode != OP_SPEND) {
-            CBitcoinAddress caller_addr_obj(params.caller_address);
-            if (!caller_addr_obj.IsValid()) {
+            // CBitcoinAddress caller_addr_obj(params.caller_address);
+            if (!IsValidDestinationString(params.caller_address)) {
                 return false;
             }
         }
@@ -2909,7 +2909,7 @@ std::shared_ptr<std::string> get_root_state_hash_from_block(const CBlock* block)
 		if (txout.scriptPubKey.size() == 1 && txout.scriptPubKey[0] == OP_TRUE)
 			continue;
         if (!Solver(txout.scriptPubKey, whichType, vSolutions))
-            return false;
+            return nullptr;
         if (whichType == TX_ROOT_STATE_HASH)
         {
             if (vSolutions.empty())
@@ -3255,7 +3255,7 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
         const auto &end_root_state_hash = service->current_root_state_hash();
         if (allow_contract) {
             if (end_root_state_hash != block_root_state_hash) {
-                return state.DoS(100, error("block contract txs result state not matched with block root state hash"),
+                return state.DoS(100, error("block contract txs result state not matched with block root state hash, expect %s but got %s", block_root_state_hash.c_str(), end_root_state_hash.c_str()),
                                  REJECT_INVALID, "block-root-state-hash-invalid-after-contract-exec");
             }
         }

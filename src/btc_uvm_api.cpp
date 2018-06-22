@@ -26,10 +26,10 @@
 #include <contract_engine/pending_state.hpp>
 #include <contract_engine/contract_helper.hpp>
 #include <uvm/exceptions.h>
-#include <fc/crypto/sha1.hpp>
-#include <fc/crypto/sha256.hpp>
-#include <fc/crypto/ripemd160.hpp>
-#include <fc/crypto/hex.hpp>
+#include <fcrypto/sha1.hpp>
+#include <fcrypto/sha256.hpp>
+#include <fcrypto/ripemd160.hpp>
+#include <fjson/crypto/hex.hpp>
 #include <Keccak.hpp>
 
 extern CChain chainActive;
@@ -125,7 +125,7 @@ namespace uvm {
             int BtcUvmChainApi::get_stored_contract_info(lua_State *L, const char *name, std::shared_ptr<UvmContractInfo> contract_info_ret)
             {
                 auto service = get_contract_storage_service(L);
-                FC_ASSERT(service != nullptr);
+                FJSON_ASSERT(service != nullptr);
                 auto&& addr = service->find_contract_id_by_name(std::string(name));
                 if(addr.empty())
                     return 0;
@@ -188,7 +188,7 @@ namespace uvm {
                     }
                 }
 				auto service = get_contract_storage_service(L);
-				FC_ASSERT(service != nullptr);
+                FJSON_ASSERT(service != nullptr);
 				auto contract = service->get_contract_info(std::string(contract_id));
 				if (contract)
 				{
@@ -290,7 +290,7 @@ namespace uvm {
             {
                 uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
                 auto service = get_contract_storage_service(L);
-                FC_ASSERT(service != nullptr);
+                FJSON_ASSERT(service != nullptr);
                 auto&& addr = service->find_contract_id_by_name(std::string(name));
                 auto evaluator = get_evaluator(L);
                 for(const auto &pair : evaluator->pending_contracts_to_create)
@@ -362,7 +362,7 @@ namespace uvm {
                     }
                 }
 				auto service = get_contract_storage_service(L);
-				FC_ASSERT(service != nullptr);
+                FJSON_ASSERT(service != nullptr);
 				auto contract = service->get_contract_info(std::string(address));
 				if (contract)
 				{
@@ -388,9 +388,9 @@ namespace uvm {
             UvmStorageValue BtcUvmChainApi::get_storage_value_from_uvm(lua_State *L, const char *contract_name, std::string name)
             {
                 auto service = get_contract_storage_service(L);
-                FC_ASSERT(service != nullptr);
+                FJSON_ASSERT(service != nullptr);
 				auto&& contract_address = service->find_contract_id_by_name(std::string(contract_name));
-                FC_ASSERT(!contract_address.empty());
+                FJSON_ASSERT(!contract_address.empty());
 				return get_storage_value_from_uvm_by_address(L, contract_address.c_str(), name);
             }
 
@@ -712,7 +712,7 @@ namespace uvm {
 
             static std::vector<char> hex_to_chars(const std::string& hex_string) {
                 std::vector<char> chars(hex_string.size() / 2);
-                auto bytes_count = fc::from_hex(hex_string, chars.data(), chars.size());
+                auto bytes_count = fjson::from_hex(hex_string, chars.data(), chars.size());
                 if (bytes_count != chars.size()) {
                     throw uvm::core::UvmException("parse hex to bytes error");
                 }
@@ -728,16 +728,16 @@ namespace uvm {
             std::string BtcUvmChainApi::bytes_to_hex(std::vector<unsigned char> bytes) {
                 std::vector<char> chars(bytes.size());
                 memcpy(chars.data(), bytes.data(), bytes.size());
-                return fc::to_hex(chars);
+                return fjson::to_hex(chars);
             }
             std::string BtcUvmChainApi::sha256_hex(const std::string& hex_string) {
                 const auto& chars = hex_to_chars(hex_string);
-                auto hash_result = fc::sha256::hash(chars.data(), chars.size());
+                auto hash_result = fcrypto::sha256::hash(chars.data(), chars.size());
                 return hash_result.str();
             }
             std::string BtcUvmChainApi::sha1_hex(const std::string& hex_string) {
                 const auto& chars = hex_to_chars(hex_string);
-                auto hash_result = fc::sha1::hash(chars.data(), chars.size());
+                auto hash_result = fcrypto::sha1::hash(chars.data(), chars.size());
                 return hash_result.str();
             }
             std::string BtcUvmChainApi::sha3_hex(const std::string& hex_string) {
@@ -748,7 +748,7 @@ namespace uvm {
             }
             std::string BtcUvmChainApi::ripemd160_hex(const std::string& hex_string) {
                 const auto& chars = hex_to_chars(hex_string);
-                auto hash_result = fc::ripemd160::hash(chars.data(), chars.size());
+                auto hash_result = fcrypto::ripemd160::hash(chars.data(), chars.size());
                 return hash_result.str();
             }
 

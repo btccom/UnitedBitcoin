@@ -23,11 +23,11 @@
 #include <contract_storage/exceptions.hpp>
 #include <contract_engine/contract_helper.hpp>
 #include <jsondiff/jsondiff.h>
-#include <fc/io/enum_type.hpp>
-#include <fc/io/varint.hpp>
-#include <fc/io/raw.hpp>
-#include <fc/exception/exception.hpp>
-#include <fc/reflect/reflect.hpp>
+#include <fjson/io/enum_type.hpp>
+#include <fjson/io/varint.hpp>
+#include <fjson/io/raw.hpp>
+#include <fjson/exception/exception.hpp>
+#include <fjson/reflect/reflect.hpp>
 
 #include <algorithm>
 #include <exception>
@@ -553,7 +553,7 @@ namespace uvm {
             std::set<std::string> abi;
             std::set<std::string> offline_abi;
             std::set<std::string> events;
-            std::map<std::string, fc::enum_type<fc::unsigned_int, uvm::blockchain::StorageValueTypes>> storage_properties;
+            std::map<std::string, fjson::enum_type<fjson::unsigned_int, uvm::blockchain::StorageValueTypes>> storage_properties;
             std::vector<unsigned char> code;
             std::string code_hash;
             Code() {}
@@ -569,7 +569,7 @@ namespace uvm {
     }
 }
 
-FC_REFLECT(uvm::blockchain::Code, (abi)(offline_abi)(events)(storage_properties)(code)(code_hash));
+FJSON_REFLECT(uvm::blockchain::Code, (abi)(offline_abi)(events)(storage_properties)(code)(code_hash));
 
 namespace blockchain {
 	namespace contract {
