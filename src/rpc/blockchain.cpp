@@ -2153,6 +2153,8 @@ UniValue getcreatecontractaddress(const JSONRPCRequest& request)
     // Script verification errors
     UniValue vErrors(UniValue::VARR);
     std::string contract_address;
+    std::vector<std::string> contract_addresses;
+    UniValue addresses_results(UniValue::VARR);
 
     // Use CTransaction for the constant parts of the
     // transaction to avoid rehashing.
@@ -2172,14 +2174,19 @@ UniValue getcreatecontractaddress(const JSONRPCRequest& request)
         }
         else
         {
-            const auto& con_tx = resultConvertContractTx.txs[0];
-            if((OP_CREATE == con_tx.opcode) || (OP_CREATE_NATIVE == con_tx.opcode))
-            {
-                contract_address = con_tx.params.contract_address;
+            for(const auto& con_tx : resultConvertContractTx.txs) {
+                if ((OP_CREATE == con_tx.opcode) || (OP_CREATE_NATIVE == con_tx.opcode)) {
+                    contract_addresses.push_back(con_tx.params.contract_address);
+                    UniValue entry(UniValue::VOBJ);
+                    entry.push_back(Pair("address", con_tx.params.contract_address));
+                    addresses_results.push_back(entry);
+                    // contract_address = con_tx.params.contract_address;
+                } else {
+                    throw runtime_error("this is not create contract transaction");
+                }
             }
-            else
-            {
-                throw runtime_error("this is not create contract transaction");
+            if(contract_addresses.size() > 0) {
+                contract_address = contract_addresses[0];
             }
         }
     } else {
@@ -2188,6 +2195,7 @@ UniValue getcreatecontractaddress(const JSONRPCRequest& request)
 
     UniValue result(UniValue::VOBJ);
     result.push_back(Pair("address", contract_address));
+    result.push_back(Pair("addresses", addresses_results));
     return result;
 }
 
