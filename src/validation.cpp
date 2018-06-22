@@ -2750,8 +2750,8 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         params.caller_address = ValtypeUtils::vch_to_string(caller_address);
 
         if(opcode != OP_SPEND) {
-            CBitcoinAddress caller_addr_obj(params.caller_address);
-            if (!caller_addr_obj.IsValid()) {
+            // CBitcoinAddress caller_addr_obj(params.caller_address);
+            if (!IsValidDestinationString(params.caller_address)) {
                 return false;
             }
         }
