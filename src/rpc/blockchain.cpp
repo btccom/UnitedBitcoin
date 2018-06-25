@@ -43,6 +43,7 @@
 #include <contract_engine/native_contract.hpp>
 #include <fjson/crypto/base64.hpp>
 #include <boost/scope_exit.hpp>
+#include <boost/lexical_cast.hpp>
 
 struct CUpdatedBlock
 {
@@ -2072,7 +2073,12 @@ UniValue blockrootstatehash(const JSONRPCRequest& request)
 		);
 
 	LOCK(cs_main);
-	auto height = request.params[0].get_int();
+	int64_t height;
+    try {
+        height = boost::lexical_cast<int64_t>(request.params[0].getValStr());
+    } catch(boost::bad_lexical_cast& e) {
+        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid block height");
+    }
 	if (height <= 0 || height > chainActive.Height())
 		throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid block height");
 	if (height < Params().GetConsensus().UBCONTRACT_Height)
@@ -2118,6 +2124,37 @@ UniValue isrootstatehashnewer(const JSONRPCRequest& request)
     result.push_back(Pair("best_block_root_state_hash", bestblock_root_state_hash));
     result.push_back(Pair("is_current_root_state_hash_after_best_block", is_current_root_state_hash_after_best_block));
     return result;
+}
+
+UniValue rollbackrootstatehash(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 1)
+        throw runtime_error(
+                "rollbackrootstatehash \"to_rootstatehash\" ( int )\n"
+                "This is a dangerous api.\nArgument:\n"
+                "1. \"to_rootstatehash\"          (int, required) destination rootstatehash to rollback to\n"
+        );
+
+    LOCK(cs_main);
+    auto to_rootstatehash = request.params[0].get_str();
+	auto service = get_contract_storage_service();
+	UniValue result(UniValue::VOBJ);
+	try {
+		const auto& current_root_state_hash = service->current_root_state_hash();
+		if (to_rootstatehash == current_root_state_hash)
+			throw JSONRPCError(RPC_INVALID_PARAMETER, "can't rollback to current root state hash");
+		if (to_rootstatehash != EMPTY_COMMIT_ID) {
+			const auto& commit_info = service->get_commit_info(to_rootstatehash);
+			if (!commit_info)
+				throw JSONRPCError(RPC_INVALID_PARAMETER, std::string("can't find commit ") + to_rootstatehash);
+		}
+		service->rollback_contract_state(to_rootstatehash);
+		result.push_back(Pair("current_root_state_hash", service->current_root_state_hash()));
+	}
+	catch (::contract::storage::ContractStorageException& e) {
+		throw JSONRPCError(RPC_INVALID_PARAMETER, std::string("contract storage error ") + e.what());
+	}
+	return result;
 }
 
 UniValue getcontractstorage(const JSONRPCRequest& request)
@@ -2878,6 +2915,7 @@ static const CRPCCommand commands[] =
     { "blockchain",         "currentrootstatehash", &currentrootstatehash, {} },
 	{ "blockchain",         "blockrootstatehash", &blockrootstatehash,{"block_height"} },
     { "blockchain",         "isrootstatehashnewer", &isrootstatehashnewer,{} },
+    { "blockchain",         "rollbackrootstatehash", &rollbackrootstatehash,{"to_rootstatehash"} },
 
     { "blockchain",         "getcontractstorage", &getcontractstorage, {} },
 

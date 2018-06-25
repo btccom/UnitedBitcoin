@@ -160,6 +160,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "currentrootstatehash", 0, "" },
     { "blockrootstatehash", 1, "block_height" },
     { "isrootstatehashnewer", 0, "" },
+    { "rollbackrootstatehash", 1, "to_rootstatehash" },
     { "getcontractstorage", 2, "contract_address" },
     { "createcontract", 5, "owner_address" },
     { "callcontract", 7, "caller_address" }
