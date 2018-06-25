@@ -1071,7 +1071,7 @@ UniValue createcontract(const JSONRPCRequest& request)
 
     uint64_t gasLimit;
     try {
-        gasLimit = boost::lexical_cast<uint64_t>(request.params[2].get_str());
+        gasLimit = boost::lexical_cast<uint64_t>(request.params[2].getValStr());
     } catch(boost::bad_lexical_cast& e) {
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas limit");
     }
@@ -1079,7 +1079,7 @@ UniValue createcontract(const JSONRPCRequest& request)
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas limit");
 	uint64_t gasPrice;
 	try {
-        gasPrice = boost::lexical_cast<uint64_t>(request.params[3].get_str());
+        gasPrice = boost::lexical_cast<uint64_t>(request.params[3].getValStr());
     } catch(boost::bad_lexical_cast& e) {
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas price");
     }
@@ -1325,7 +1325,7 @@ UniValue callcontract(const JSONRPCRequest& request)
 
     uint64_t gasLimit;
     try {
-        gasLimit = boost::lexical_cast<uint64_t>(request.params[4].get_str());
+        gasLimit = boost::lexical_cast<uint64_t>(request.params[4].getValStr());
     }catch(boost::bad_lexical_cast& e) {
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas limit");
     }
@@ -1333,7 +1333,7 @@ UniValue callcontract(const JSONRPCRequest& request)
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas limit");
     uint64_t gasPrice;
     try {
-        gasPrice = boost::lexical_cast<uint64_t>(request.params[5].get_str());
+        gasPrice = boost::lexical_cast<uint64_t>(request.params[5].getValStr());
     } catch(boost::bad_lexical_cast& e) {
         throw JSONRPCError(RPC_TYPE_ERROR, "Invalid amount for gas price");
     }

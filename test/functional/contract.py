@@ -460,6 +460,9 @@ class SmartContractTest(BitcoinTestFramework):
         old_root_state_hash = node1.blockrootstatehash(height)
         print("new_root_state_hash: %s, old_root_state_hash: %s" % (new_root_state_hash, old_root_state_hash))
         self.assertEqual(old_root_state_hash, root_state_hash)
+        is_current_rootstatehash_newer_info = node1.isrootstatehashnewer()
+        print("is_current_rootstatehash_newer_info: ", is_current_rootstatehash_newer_info)
+        self.assertTrue(not is_current_rootstatehash_newer_info['is_current_root_state_hash_after_best_block'])
 
     def test_call_contract_query_storage(self):
         print("test_call_contract_query_storage")
@@ -1139,7 +1142,7 @@ class SmartContractTest(BitcoinTestFramework):
         node1 = self.nodes[0]
         caller_addr = self.address1
         bytecode_hex = read_contract_bytecode_hex(os.path.dirname(__file__) + os.path.sep + "test.gpc")
-        signed_create_contract_tx = node1.createcontract(caller_addr, bytecode_hex, 5000, 10, 0.001)
+        signed_create_contract_tx = node1.createcontract(caller_addr, bytecode_hex, 5000, 10, "0.001")
         print("signed_create_contract_tx: ", signed_create_contract_tx)
         decoded_create_contract_tx = node1.decoderawtransaction(signed_create_contract_tx)
         print("decoded_create_contract_tx: ", decoded_create_contract_tx)
@@ -1155,7 +1158,7 @@ class SmartContractTest(BitcoinTestFramework):
         print(contract)
         assert len(contract['balances'])>0 and contract['balances'][0]['amount'] == 1*config['PRECISION']
 
-        signed_call_contract_tx = node1.callcontract(caller_addr, contract_addr, "withdraw", "%d" % int(0.5 * config['PRECISION']), 5000, 10, 0.005)
+        signed_call_contract_tx = node1.callcontract(caller_addr, contract_addr, "withdraw", "%d" % int(0.5 * config['PRECISION']), 5000, 10, "0.005")
         node1.sendrawtransaction(signed_call_contract_tx)
         generate_block(node1, caller_addr)
         contract = node1.getsimplecontractinfo(contract_addr)
@@ -1255,7 +1258,7 @@ class SmartContractTest(BitcoinTestFramework):
         node1 = self.nodes[0]
         address_mode = '' # 'legacy'
         self.address1 = node1.getnewaddress(self.account1, address_mode)
-        self.address2 = node1.getnewaddress(self.account2, address_mode)
+        self.address2 = node1.getnewaddress(self.account2, "bech32")
         self.address3 = node1.getnewaddress(self.account3, address_mode)
 
         print("address1: %s\naddress2: %s\naddress3: %s" % (self.address1, self.address2, self.address3))

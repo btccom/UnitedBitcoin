@@ -2091,6 +2091,35 @@ UniValue blockrootstatehash(const JSONRPCRequest& request)
 	return result;
 }
 
+UniValue isrootstatehashnewer(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 0)
+        throw runtime_error(
+                "isrootstatehashnewer ( )\n"
+                "\ncheck whether root current root state hash newer then root state hash in chainbestblock\n"
+        );
+
+    LOCK(cs_main);
+    auto bindex = chainActive.Tip();
+    CBlock block;
+    auto res = ReadBlockFromDisk(block, bindex, Params().GetConsensus());
+    if (!res)
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "can't find valid block of this height");
+    auto maybe_root_state_hash_in_block = get_root_state_hash_from_block(&block);
+    auto bestblock_root_state_hash = maybe_root_state_hash_in_block ? *maybe_root_state_hash_in_block : std::string(EMPTY_COMMIT_ID);
+
+    auto service = get_contract_storage_service();
+    const auto& current_root_state_hash = service->current_root_state_hash();
+
+    bool is_current_root_state_hash_after_best_block = service->is_current_root_state_hash_after(bestblock_root_state_hash);
+
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("current_root_state_hash", current_root_state_hash));
+    result.push_back(Pair("best_block_root_state_hash", bestblock_root_state_hash));
+    result.push_back(Pair("is_current_root_state_hash_after_best_block", is_current_root_state_hash_after_best_block));
+    return result;
+}
+
 UniValue getcontractstorage(const JSONRPCRequest& request)
 {
     if (request.fHelp || request.params.size() < 2)
@@ -2848,6 +2877,7 @@ static const CRPCCommand commands[] =
 
     { "blockchain",         "currentrootstatehash", &currentrootstatehash, {} },
 	{ "blockchain",         "blockrootstatehash", &blockrootstatehash,{"block_height"} },
+    { "blockchain",         "isrootstatehashnewer", &isrootstatehashnewer,{} },
 
     { "blockchain",         "getcontractstorage", &getcontractstorage, {} },
 

@@ -157,18 +157,18 @@ namespace contract
 			unsigned int i = 0;
 			while ((i<first.length()) && (i<second.length()))
 			{
-				if (first[i] < second[i])
+				if (first[i] < second[i]) 
 					return true;
-				else if (first[i] > second[i])
+				else if (first[i] > second[i]) 
 					return false;
-				else
+				else 
 					++i;
 			}
 			return (first.length() < second.length());
 		}
 
 
-		// ���������json object��ת����json array������json object/json array��Ԫ����Ҳ�ݹ鴦��
+		// parse arg to json_array when it's json object. otherwhile return itself. And recursively process child elements
 		static jsondiff::JsonValue nested_json_object_to_array(const jsondiff::JsonValue& json_value)
 		{
 			if (json_value.is_object())
