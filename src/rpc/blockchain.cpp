@@ -2149,6 +2149,13 @@ UniValue rollbackrootstatehash(const JSONRPCRequest& request)
 				throw JSONRPCError(RPC_INVALID_PARAMETER, std::string("can't find commit ") + to_rootstatehash);
 		}
 		service->rollback_contract_state(to_rootstatehash);
+		auto latestHeight = chainActive.Height();
+		for (auto it = mapBlockIndex.begin(); it != mapBlockIndex.end(); it++) {
+			auto bindex = it->second;
+			if (bindex && bindex->nHeight > latestHeight && (bindex->nStatus & BLOCK_FAILED_MASK)) {
+				ResetBlockFailureFlags(bindex);
+			}
+		}
 		result.push_back(Pair("current_root_state_hash", service->current_root_state_hash()));
 	}
 	catch (::contract::storage::ContractStorageException& e) {
@@ -2156,6 +2163,35 @@ UniValue rollbackrootstatehash(const JSONRPCRequest& request)
 	}
 	return result;
 }
+
+
+UniValue rollbacktoheight(const JSONRPCRequest& request)
+{
+    if (request.fHelp /*|| request.params.size() < 1*/)
+        throw runtime_error(
+                "rollbacktoheight \"null"
+                "This is a dangerous api.\nArgument:\n"
+                //"1. \"height\"          (int, required) destination blockchain height to rollback to\n"
+        );
+
+    LOCK(cs_main);
+    //auto to_height = request.params[0].get_str();
+	
+	auto latestHeight = chainActive.Height();
+	bool result = false;
+	LogPrintf("latestHeight: %d,mapBlockIndex.size:%d\n", latestHeight,mapBlockIndex.size());
+	for (auto it = mapBlockIndex.begin(); it != mapBlockIndex.end(); it++) {
+		auto bindex = it->second;
+		LogPrintf("before reset,bindex->nHeight: %d,bindex->nStatus:%d\n", bindex->nHeight,bindex->nStatus);
+		if (bindex && bindex->nHeight > latestHeight && (bindex->nStatus & BLOCK_FAILED_MASK)) {
+		    LogPrintf("bindex->nHeight: %d,bindex->nStatus:%d\n", bindex->nHeight,bindex->nStatus);
+			result = ResetBlockFailureFlags(bindex);
+		}
+	}
+
+	return result;
+}
+
 
 UniValue getcontractstorage(const JSONRPCRequest& request)
 {
@@ -2916,6 +2952,7 @@ static const CRPCCommand commands[] =
 	{ "blockchain",         "blockrootstatehash", &blockrootstatehash,{"block_height"} },
     { "blockchain",         "isrootstatehashnewer", &isrootstatehashnewer,{} },
     { "blockchain",         "rollbackrootstatehash", &rollbackrootstatehash,{"to_rootstatehash"} },
+    { "blockchain",         "rollbacktoheight", &rollbacktoheight,{"to_height"} },
 
     { "blockchain",         "getcontractstorage", &getcontractstorage, {} },
 
