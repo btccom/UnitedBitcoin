@@ -603,7 +603,8 @@ bool BlockAssembler::AttemptToAddContractToBlock(CTxMemPool::txiter iter, uint64
     uint64_t nBlockSigOpsCost = this->nBlockSigOpsCost;
     ContractTxConverter convert(iter->GetTx(), nullptr, &pblock->vtx);
     ExtractContractTX resultConverter;
-    if (!convert.extractionContractTransactions(resultConverter)) {
+    std::string error_ret;
+    if (!convert.extractionContractTransactions(resultConverter, error_ret)) {
         //this check already happens when accepting txs into mempool
         //therefore, this can only be triggered by using raw transactions on the staker itself
         return false;

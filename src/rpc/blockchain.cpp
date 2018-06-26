@@ -2231,12 +2231,13 @@ UniValue getcreatecontractaddress(const JSONRPCRequest& request)
         CCoinsViewCache &view = *pcoinsTip;
         ContractTxConverter converter(txConst, &view, &block.vtx, true);
         ExtractContractTX resultConvertContractTx;
-        if (!converter.extractionContractTransactions(resultConvertContractTx)) {
-            throw runtime_error("decode contract tx failed");
+        std::string error_ret;
+        if (!converter.extractionContractTransactions(resultConvertContractTx, error_ret)) {
+            throw runtime_error(std::string("decode contract tx failed.") + error_ret);
         }
         if(resultConvertContractTx.txs.size() < 1)
         {
-            throw runtime_error("decode contract tx failed");
+            throw runtime_error("decode contract tx failed, empty contract txs");
         }
         else
         {

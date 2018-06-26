@@ -255,8 +255,9 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, CValidationState& state, c
 	if (tx.HasOpDepositToContract() || tx.HasOpSpend()) {
 		ContractTxConverter converter(tx, nullptr, nullptr);
 		ExtractContractTX resultConvertContractTx;
-		if (!converter.extractionContractTransactions(resultConvertContractTx)) {
-			return state.Invalid(false, REJECT_INVALID, "bad-tx-bad-contract-format", "extract contract params failed");
+		std::string error_ret;
+		if (!converter.extractionContractTransactions(resultConvertContractTx, error_ret)) {
+			return state.Invalid(false, REJECT_INVALID, "bad-tx-bad-contract-format", error_ret);
 		}
 		for (ContractTransaction &ctx : resultConvertContractTx.txs) {
 			allTxDepositToContract += ctx.params.deposit_amount;
