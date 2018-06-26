@@ -2149,13 +2149,7 @@ UniValue rollbackrootstatehash(const JSONRPCRequest& request)
 				throw JSONRPCError(RPC_INVALID_PARAMETER, std::string("can't find commit ") + to_rootstatehash);
 		}
 		service->rollback_contract_state(to_rootstatehash);
-		auto latestHeight = chainActive.Height();
-		for (auto it = mapBlockIndex.begin(); it != mapBlockIndex.end(); it++) {
-			auto bindex = it->second;
-			if (bindex && bindex->nHeight > latestHeight && (bindex->nStatus & BLOCK_FAILED_MASK)) {
-				ResetBlockFailureFlags(bindex);
-			}
-		}
+		
 		result.push_back(Pair("current_root_state_hash", service->current_root_state_hash()));
 	}
 	catch (::contract::storage::ContractStorageException& e) {
