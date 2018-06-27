@@ -2173,12 +2173,12 @@ UniValue rollbacktoheight(const JSONRPCRequest& request)
 	
 	auto latestHeight = chainActive.Height();
 	bool result = false;
-	LogPrintf("latestHeight: %d,mapBlockIndex.size:%d\n", latestHeight,mapBlockIndex.size());
+	//LogPrintf("latestHeight: %d,mapBlockIndex.size:%d\n", latestHeight,mapBlockIndex.size());
 	for (auto it = mapBlockIndex.begin(); it != mapBlockIndex.end(); it++) {
 		auto bindex = it->second;
-		LogPrintf("before reset,bindex->nHeight: %d,bindex->nStatus:%d\n", bindex->nHeight,bindex->nStatus);
+		//LogPrintf("before reset,bindex->nHeight: %d,bindex->nStatus:%d\n", bindex->nHeight,bindex->nStatus);
 		if (bindex && bindex->nHeight > latestHeight && (bindex->nStatus & BLOCK_FAILED_MASK)) {
-		    LogPrintf("bindex->nHeight: %d,bindex->nStatus:%d\n", bindex->nHeight,bindex->nStatus);
+		    //LogPrintf("bindex->nHeight: %d,bindex->nStatus:%d\n", bindex->nHeight,bindex->nStatus);
 			result = ResetBlockFailureFlags(bindex);
 		}
 	}
