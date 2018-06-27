@@ -385,21 +385,25 @@ namespace uvm {
 				return nullptr;
             }
 
-            UvmStorageValue BtcUvmChainApi::get_storage_value_from_uvm(lua_State *L, const char *contract_name, std::string name)
+            UvmStorageValue BtcUvmChainApi::get_storage_value_from_uvm(lua_State *L, const char *contract_name, const std::string& name, const std::string& flat_map_key, bool is_flat_map)
             {
                 auto service = get_contract_storage_service(L);
                 FJSON_ASSERT(service != nullptr);
 				auto&& contract_address = service->find_contract_id_by_name(std::string(contract_name));
                 FJSON_ASSERT(!contract_address.empty());
-				return get_storage_value_from_uvm_by_address(L, contract_address.c_str(), name);
+				return get_storage_value_from_uvm_by_address(L, contract_address.c_str(), name, flat_map_key, is_flat_map);
             }
 
-            UvmStorageValue BtcUvmChainApi::get_storage_value_from_uvm_by_address(lua_State *L, const char *contract_address, std::string name)
+            UvmStorageValue BtcUvmChainApi::get_storage_value_from_uvm_by_address(lua_State *L, const char *contract_address, const std::string& name, const std::string& flat_map_key, bool is_flat_map)
             {
 				uvm::lua::lib::increment_lvm_instructions_executed_count(L, CHAIN_GLUA_API_EACH_INSTRUCTIONS_COUNT - 1);
 				auto evaluator = get_evaluator(L);
 				auto storage_service = get_contract_storage_service(L);
-				auto json_value = storage_service->get_contract_storage(std::string(contract_address), name);
+                std::string storage_key = name;
+                if(is_flat_map) {
+                    storage_key = name + "." + flat_map_key;
+                }
+				auto json_value = storage_service->get_contract_storage(std::string(contract_address), storage_key);
 				UvmStorageValue value = json_to_uvm_storage_value(L, json_value);
                 return value;
             }
@@ -419,12 +423,14 @@ namespace uvm {
 					jsondiff::JsonObject changes;
 					for (auto it = contract_storage_changes->begin(); it != contract_storage_changes->end(); it++)
 					{
-						const auto& storage_name = it->first;
 						const auto& storage_change = it->second;
+						std::string storage_key = storage_change.key;
+						if (storage_change.is_fast_map)
+							storage_key = storage_change.key + "." + storage_change.fast_map_key;
 						if (storage_change.diff.is_undefined())
-							changes[storage_name] = differ.diff(uvm_storage_value_to_json(storage_change.before), uvm_storage_value_to_json(storage_change.after))->value();
+							changes[storage_key] = differ.diff(uvm_storage_value_to_json(storage_change.before), uvm_storage_value_to_json(storage_change.after))->value();
 						else
-							changes[storage_name] = storage_change.diff.value();
+							changes[storage_key] = storage_change.diff.value();
 					}
 					evaluator->contract_storage_changes.push_back(std::make_pair(contract_id, std::make_shared<jsondiff::DiffResult>(changes)));
 				}
