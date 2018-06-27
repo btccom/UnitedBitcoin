@@ -561,8 +561,9 @@ static bool CheckAddContractTxToMempoolAvailable(const CTransaction& tx, CCoinsV
 		return false;
     ContractTxConverter converter(tx, &view, nullptr);
     ExtractContractTX resultConvertContractTx;
-    if (!converter.extractionContractTransactions(resultConvertContractTx)) {
-        error_out = "Contract transaction of the wrong format";
+    std::string error_ret;
+    if (!converter.extractionContractTransactions(resultConvertContractTx, error_ret)) {
+        error_out = std::string("Contract transaction of the wrong format ") + error_ret + " ";
         short_error_out = "bad-tx-bad-contract-format";
         return false;
     }
@@ -2465,7 +2466,7 @@ bool ContractExec::commit_changes(std::shared_ptr<::contract::storage::ContractS
 	return true;
 }
 
-bool ContractTxConverter::extractionContractTransactions(ExtractContractTX& contractTx) {
+bool ContractTxConverter::extractionContractTransactions(ExtractContractTX& contractTx, std::string& error_ret) {
     std::vector<ContractTransaction> resultTX;
     std::vector<ContractTransactionParams> resultETP;
     size_t contract_op_count = 0;
@@ -2473,12 +2474,14 @@ bool ContractTxConverter::extractionContractTransactions(ExtractContractTX& cont
 
     for(size_t i = 0; i < txBitcoin.vout.size(); i++) {
         if(txBitcoin.vout[i].scriptPubKey.HasContractOp()){
-            if(txBitcoin.vout[i].nValue != 0)
-                return false;
+			if (txBitcoin.vout[i].nValue != 0) {
+				error_ret = "contract vout's value must be 0";
+				return false;
+			}
             contract_op_count++;
             if(receiveStack(txBitcoin.vout[i].scriptPubKey)){
                 ContractTransactionParams params;
-                if(parseContractTXParams(params, i)){
+                if(parseContractTXParams(params, i, error_ret)){
                     resultTX.push_back(createContractTX(params, i));
                     resultETP.push_back(params);
                 }else{
@@ -2495,7 +2498,7 @@ bool ContractTxConverter::extractionContractTransactions(ExtractContractTX& cont
             // get withdraw from contract balance info
             if(receiveStack(txBitcoin.vout[i].scriptPubKey)){
                 ContractTransactionParams params;
-                if(parseContractTXParams(params, i)){
+                if(parseContractTXParams(params, i, error_ret)){
                     ContractWithdrawInfo withdrawInfo;
                     withdrawInfo.from_contract_address = params.withdraw_from_contract_address;
                     withdrawInfo.amount = params.withdraw_amount;
@@ -2521,7 +2524,7 @@ bool ContractTxConverter::extractionContractTransactions(ExtractContractTX& cont
 }
 
 bool ContractTxConverter::receiveStack(const CScript& scriptPubKey) {
-    EvalScript(stack, scriptPubKey, SCRIPT_EXEC_BYTE_CODE, BaseSignatureChecker(), SIGVERSION_BASE, nullptr); // maybe bug here
+    EvalScript(stack, scriptPubKey, SCRIPT_EXEC_BYTE_CODE, BaseSignatureChecker(), SIGVERSION_BASE, nullptr);
     if (stack.empty())
         return false;
     CScript scriptRest(stack.back().begin(), stack.back().end());
@@ -2623,7 +2626,7 @@ bool ContractTransaction::is_params_valid(std::shared_ptr<::contract::storage::C
 	return true;
 }
 
-bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& params, size_t contract_op_vout_index) {
+bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& params, size_t contract_op_vout_index, std::string& error_ret) {
     try{
         uint64_t gasLimit = 0;
         uint64_t gasPrice = 0;
@@ -2721,8 +2724,10 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 stack.pop_back();
                 version = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
-                if(deposit_memo.size()>DEPOSIT_TO_CONTRACT_MEMO_MAX_LENGTH)
-                    return false;
+				if (deposit_memo.size() > DEPOSIT_TO_CONTRACT_MEMO_MAX_LENGTH) {
+					error_ret = "memo length exceed 128 bytes";
+					return false;
+				}
             } break;
             case OP_SPEND: {
                 // OP_SPEND contract_address withdraw_amount
@@ -2730,10 +2735,14 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
 				stack.pop_back();
 				withdraw_amount = CScriptNum::vch_to_uint64(stack.back());
 				stack.pop_back();
-                if(withdraw_amount <= 0)
-                    return false;
-                if(withdraw_from_contract_address.empty())
-                    return false;
+				if (withdraw_amount <= 0) {
+					error_ret = "invalid withdraw amount";
+					return false;
+				}
+				if (withdraw_from_contract_address.empty()) {
+					error_ret = "invalid withdraw from contract address";
+					return false;
+				}
                 ignore_sender_check = true;
 			} break;
             default: {
@@ -2742,23 +2751,30 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         }
         params.version = version;
         params.gasLimit = gasLimit;
-        if(params.gasLimit < 0)
-            return false;
+		if (params.gasLimit < 0) {
+			error_ret = "gas limit invalid";
+			return false;
+		}
         params.gasPrice = gasPrice;
-        if(params.gasPrice <= 0 && opcode != OP_SPEND)
-            return false;
+		if (params.gasPrice <= 0 && opcode != OP_SPEND) {
+			error_ret = "invalid gas price";
+			return false;
+		}
         params.caller_address = ValtypeUtils::vch_to_string(caller_address);
 
         if(opcode != OP_SPEND) {
             // CBitcoinAddress caller_addr_obj(params.caller_address);
             if (!IsValidDestinationString(params.caller_address)) {
+				error_ret = "invalid caller_address format";
                 return false;
             }
         }
 
         if(OP_SPEND == opcode) {
-            if(withdraw_amount <= 0)
-                return false;
+			if (withdraw_amount <= 0) {
+				error_ret = "invalid withdraw amount from contract";
+				return false;
+			}
             params.withdraw_amount = withdraw_amount;
             params.withdraw_from_contract_address = ValtypeUtils::vch_to_string(withdraw_from_contract_address);
         }
@@ -2786,8 +2802,10 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
 			{
 				sender_address = GetSenderAddress(txBitcoin, view, blockTransactions);
 			}
-			if (sender_address != params.caller_address)
+			if (sender_address != params.caller_address) {
+				error_ret = "first vin address not match with contract caller_address";
 				return false;
+			}
 		}
 
         params.caller = "";
@@ -2796,15 +2814,20 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
         params.deposit_amount = deposit_amount;
         params.deposit_memo = ValtypeUtils::vch_to_string(deposit_memo);
         if(OP_DEPOSIT_TO_CONTRACT == opcode) {
-            if(params.deposit_amount <= 0)
-                return false;
-            if(!ContractHelper::is_valid_deposit_memo_format(params.deposit_memo))
-                return false;
+			if (params.deposit_amount <= 0) {
+				error_ret = "invalid deposit amount";
+				return false;
+			}
+			if (!ContractHelper::is_valid_deposit_memo_format(params.deposit_memo)) {
+				error_ret = "invalid deposit memo format";
+				return false;
+			}
         }
         if(bytecode.size() > 0 && is_create) {
             try {
                 params.code = ContractHelper::load_contract_from_gpc_data(bytecode);
             } catch (uvm::core::UvmException &e) {
+				error_ret = e.what();
                 LogPrintf(e.what());
                 return false;
             }
@@ -2812,10 +2835,12 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
             params.is_native = true;
             params.template_name = ValtypeUtils::vch_to_string(template_name);
 			if (!blockchain::contract::native_contract_finder::has_native_contract_with_key(params.template_name)) {
+				error_ret = "invalid contract template";
 				LogPrintf("can't find native contract template %s\n", params.template_name.c_str());
 				return false;
 			}
         } else if(is_create) {
+			error_ret = "empty contract data";
             LogPrintf("empty contract data and template name of create-contract params\n");
             return false;
         }
@@ -2824,8 +2849,10 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
 		{
 			if (!is_create) {
 				params.contract_address = ValtypeUtils::vch_to_string(contract_address);
-				if (!ContractHelper::is_valid_contract_address_format(params.contract_address))
+				if (!ContractHelper::is_valid_contract_address_format(params.contract_address)) {
+					error_ret = "invalid contract address format";
 					return false;
+				}
 			}
 			else {
 				params.contract_address = ContractHelper::generate_contract_address(params.caller_address, txBitcoin, contract_op_vout_index);
@@ -2834,15 +2861,20 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
 
         if(opcode == OP_UPGRADE) {
             params.contract_name = ValtypeUtils::vch_to_string(contract_name);
-            if(!ContractHelper::is_valid_contract_name_format(params.contract_name))
-                return false;
+			if (!ContractHelper::is_valid_contract_name_format(params.contract_name)) {
+				error_ret = "invalid contract name format";
+				return false;
+			}
             params.contract_desc = ValtypeUtils::vch_to_string(contract_desc);
-            if(!ContractHelper::is_valid_contract_desc_format(params.contract_desc))
-                return false;
+			if (!ContractHelper::is_valid_contract_desc_format(params.contract_desc)) {
+				error_ret = "invalid contract description format";
+				return false;
+			}
         }
         return true;
     }
     catch(const scriptnum_error& err){
+		error_ret = err.what();
         LogPrintf("Incorrect parameters to VM.");
         return false;
     }
@@ -3160,8 +3192,9 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
             if (tx.HasContractOp()) {
                 ContractTxConverter converter(tx, &view, &block.vtx);
                 ExtractContractTX resultConvertContractTx;
-                if (!converter.extractionContractTransactions(resultConvertContractTx)) {
-                    return state.DoS(100, error("ConnectBlock(): Contract transaction of the wrong format"),
+                std::string error_ret;
+                if (!converter.extractionContractTransactions(resultConvertContractTx, error_ret)) {
+                    return state.DoS(100, error("ConnectBlock(): Contract transaction of the wrong format %s", error_ret.c_str()),
                                      REJECT_INVALID, "bad-tx-bad-contract-format");
                 }
                 uint64_t gasAllTxs = 0;

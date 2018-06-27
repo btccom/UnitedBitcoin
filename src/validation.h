@@ -683,10 +683,10 @@ public:
             : txBitcoin(tx), view(v), blockTransactions(blockTxs), ignore_sender_check(_ignore_sender_check)
     {}
     // extract contract tx from bitcoin tx info
-    bool extractionContractTransactions(ExtractContractTX& contractTx);
+    bool extractionContractTransactions(ExtractContractTX& contractTx, std::string& error_ret);
 private:
     bool receiveStack(const CScript& scriptPubKey);
-    bool parseContractTXParams(ContractTransactionParams& params, size_t contract_op_vout_index);
+    bool parseContractTXParams(ContractTransactionParams& params, size_t contract_op_vout_index, std::string& error_ret);
     ContractTransaction createContractTX(const ContractTransactionParams& etp, const uint32_t nOut);
 private:
     const CTransaction txBitcoin;
