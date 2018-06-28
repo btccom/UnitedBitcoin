@@ -41,7 +41,7 @@ namespace contract {
 			inline virtual ~ContractStorageException() {}
 
 #ifdef WIN32
-			inline virtual const char* what() const noexcept override
+			inline virtual const char* what() const override
 #else
 			inline virtual const char* what() const noexcept override
 #endif 
