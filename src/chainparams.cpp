@@ -19,7 +19,7 @@ CChain chainActive;
 int nStakeMinConfirmations = 4800;
 int COINBASE_MATURITY_FORKV1 = 7200;
 
-bool ThreadPOSstate=true;
+//bool ThreadPOSstate=true;
 
 // Far into the future.
 static const std::string ANTI_REPLAY_COMMITMENT =

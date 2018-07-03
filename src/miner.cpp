@@ -82,11 +82,16 @@ BlockAssembler::Options::Options() {
 
 BlockAssembler::BlockAssembler(const CChainParams& params, const Options& options) : chainparams(params)
 {
+    int height = 0;
+    {
+        LOCK(cs_main);
+        height = chainActive.Height();
+    }
     blockMinFeeRate = options.blockMinFeeRate;
     // Limit weight to between 4K and MaxBlockSize-4K for sanity:
-    unsigned int nAbsMaxSize = MaxBlockSize(chainActive.Height() + 1);
+    unsigned int nAbsMaxSize = MaxBlockSize(height + 1);
     nBlockMaxWeight = std::max<size_t>(4000, std::min<size_t>(nAbsMaxSize - 4000, options.nBlockMaxWeight));
-	nBlockMaxSize = MaxBlockSize(chainActive.Height()+1);;
+	nBlockMaxSize = MaxBlockSize(height+1);;
 }
 
 static BlockAssembler::Options DefaultOptions(const CChainParams& params)
@@ -295,6 +300,9 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
     pblock->vtx.emplace_back();
     pblocktemplate->vTxFees.push_back(-1); // updated at end
     pblocktemplate->vTxSigOpsCost.push_back(-1); // updated at end
+    pblocktemplate->vTxSigOpsCost.push_back(-1);
+
+    LOCK2(cs_main, mempool.cs);
 
     if (!EnsureWalletIsAvailable(pwallet, true))
         return nullptr;
@@ -309,7 +317,6 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
     //if (!coinbase_script)
     //    return nullptr;	
 
-    LOCK2(cs_main, mempool.cs);
     CBlockIndex* pindexPrev = chainActive.Tip();
     nHeight = pindexPrev->nHeight + 1;
 
@@ -1045,11 +1052,15 @@ bool CheckStake(CBlock* pblock)
     uint256 proofHash;
 	uint256 hashTarget;
     uint256 hashBlock = pblock->GetHash();
-
+    int nHeight = 0;
     if(!pblock->IsProofOfStake())
         return error("CheckStake() : %s is not a proof-of-stake block", hashBlock.GetHex());
 
-	if ((chainActive.Height() + 1) < Params().GetConsensus().UBCONTRACT_Height)
+    {
+        LOCK(cs_main);
+		nHeight = chainActive.Height();
+    }
+	if ((nHeight + 1) < Params().GetConsensus().UBCONTRACT_Height)
 		return error("CheckStake(): pos not allow at the current block height");
 
     // verify hash target and signature of coinstake tx
@@ -1058,14 +1069,17 @@ bool CheckStake(CBlock* pblock)
         return error("CheckStake() : called on non-coinstake %s", pblock->vtx[1]->GetHash().ToString());
 
 	Coin coinStake;
-	if (!pcoinsTip->GetCoin(pblock->vtx[1]->vin[0].prevout, coinStake))
-		return error("CheckStake() : can not get coinstake coin");
+	{
+        LOCK2(cs_main,mempool.cs);
+	    if (!pcoinsTip->GetCoin(pblock->vtx[1]->vin[0].prevout, coinStake))
+		    return error("CheckStake() : can not get coinstake coin");
+    }
 
-	// Check stake min confirmations高度使用chainactive的高度应该就可以
-	if (coinStake.nHeight > (chainActive.Height() + 1) - nStakeMinConfirmations)
+	// Check stake min confirmations
+	if (coinStake.nHeight > (nHeight + 1) - nStakeMinConfirmations)
 		return error("CheckStake() : utxo can not reach stake min confirmations");
 
-	if (!CheckProofOfStake(pblock, pblock->vtx[1]->vin[0].prevout, coinStake.out.nValue, (chainActive.Height() + 1)-coinStake.nHeight))
+	if (!CheckProofOfStake(pblock, pblock->vtx[1]->vin[0].prevout, coinStake.out.nValue, (nHeight + 1)-coinStake.nHeight))
 		return error("CheckStake() CheckProofOfStake");
 
 	// Check pos authority

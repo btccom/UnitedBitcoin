@@ -126,11 +126,12 @@ extern bool ThreadPOSstate;
 
 std::atomic<bool> fRequestShutdown(false);
 std::atomic<bool> fDumpMempoolLater(false);
+std::atomic<bool> fThreadPOSstate(true);
 
 void StartShutdown()
 {
     fRequestShutdown = true;
-	ThreadPOSstate=false;
+	fThreadPOSstate=false;
 }
 bool ShutdownRequested()
 {
@@ -1645,10 +1646,10 @@ bool AppInitMain()
         return false;
     }
 	
-    if (!gArgs.GetBoolArg("-staking", false))
+    /*if (!gArgs.GetBoolArg("-staking", false))
         LogPrintf("Staking disabled\n");
 	else if (!vpwallets.empty())
-		threadGroup.create_thread(boost::bind(&ThreadStakeMiner, vpwallets[0]));
+		threadGroup.create_thread(boost::bind(&ThreadStakeMiner, vpwallets[0]));*/
 	
 #else
     LogPrintf("No wallet support compiled in!\n");
@@ -1802,6 +1803,10 @@ bool AppInitMain()
 
 #ifdef ENABLE_WALLET
     StartWallets(scheduler);
+    if (!gArgs.GetBoolArg("-staking", false))
+        LogPrintf("Staking disabled\n");
+	else if (!vpwallets.empty())
+		threadGroup.create_thread(boost::bind(&ThreadStakeMiner, vpwallets[0]));
 #endif
 
     return true;
@@ -1815,18 +1820,24 @@ static void ThreadStakeMiner(CWallet *pwallet)
     bool fTryToSync = true;
 
     LogPrintf("ThreadStakeMiner start.\n");
-
-    while (ThreadPOSstate)
+    int nHeight = 0;
+    while (fThreadPOSstate)
     {
         if(nullptr == pindexBestHeader)
 			MilliSleep(1000);
 		else
 		{
-    		while (pindexBestHeader->nHeight < Params().GetConsensus().UBCONTRACT_Height) {
-    		    if(!ThreadPOSstate)
+		    {
+		        LOCK(cs_main);
+		        nHeight = pindexBestHeader->nHeight;
+		    }
+    		if (nHeight < Params().GetConsensus().UBCONTRACT_Height-1) 
+    		{
+    		    if(!fThreadPOSstate)
     		        break;
                 MilliSleep(1000);
-            }	
+                continue;
+            }
     
     		while (pwallet->IsLocked()) {
                 MilliSleep(1000);
@@ -1844,8 +1855,8 @@ static void ThreadStakeMiner(CWallet *pwallet)
                     MilliSleep(1000);
                     continue;
                 }
-            }
-            */
+            }*/
+            
 
 			while (g_connman->GetNodeCount(CConnman::CONNECTIONS_ALL) == 0 || IsInitialBlockDownload()) {
 				MilliSleep(1000);
@@ -1876,13 +1887,14 @@ static void ThreadStakeMiner(CWallet *pwallet)
             LogPrintf("ThreadStakeMiner:CheckStake  success.\n");
     		// Found a solution
     	    {
-    	        LOCK(cs_main);
-    	        if (pblock->hashPrevBlock != *(pindexBestHeader->phashBlock))
-    	        	{
-    				MilliSleep(500);
-    				continue;
-    	        	}
-    
+    	        {
+    	            LOCK(cs_main);
+        	        if (pblock->hashPrevBlock != *(pindexBestHeader->phashBlock))
+        	        	{
+        				MilliSleep(500);
+        				continue;
+        	        	}
+                }
     
     	        // Process this block the same as if we had received it from another node
     	        std::shared_ptr<const CBlock> shared_pblock = std::make_shared<const CBlock>(*pblock);
