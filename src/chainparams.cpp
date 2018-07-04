@@ -230,7 +230,7 @@ public:
         consensus.nSubsidyHalvingInterval = 210000;
         nStakeMinConfirmations = 10;
         COINBASE_MATURITY_FORKV1 = 20;
-//        consensus.BIP16Height = 514; // 00000000040b4e986385315e14bee30ad876d8b47f748025b26683116d21aa65
+        consensus.BIP16Height = 0; // 00000000040b4e986385315e14bee30ad876d8b47f748025b26683116d21aa65
 //        consensus.BIP34Height = 21111;
 //        consensus.BIP34Hash = uint256S("0x0000000023b3a96d3484e5abb3755c413e7d41500f8e2a5c3f0dd01299cd8ef8");
 //        consensus.BIP65Height = 581885; // 00000000007f6655f22f98e72ed80d8b06dc761d5da09df0fa1dc4be4f861eb6
