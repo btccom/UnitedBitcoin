@@ -51,6 +51,7 @@
 uint64_t nLastBlockTx = 0;
 uint64_t nLastBlockWeight = 0;
 uint64_t nLastBlockSize = 0;
+int64_t posSleepTime = 0;
 
 extern CAmount nMinimumInputValue;
 extern CAmount nReserveBalance;
@@ -389,6 +390,9 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
 	bool fKernelFound = false;
 	CScript scriptPubKeyKernel;
 	COutPoint prevoutFound;
+    int64_t startTime=0;
+    int64_t endTime=0;
+    startTime = GetTimeMillis();
 
 	for (const auto& pcoin: setCoins) {
 		COutPoint prevoutStake = COutPoint(pcoin.first->GetHash(), pcoin.second);
@@ -454,6 +458,8 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
             break;
         }
 	}
+    endTime  = GetTimeMillis();
+    posSleepTime = startTime - endTime;
 
 	if (!fKernelFound)
 		return nullptr;
