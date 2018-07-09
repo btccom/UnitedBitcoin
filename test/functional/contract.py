@@ -231,18 +231,19 @@ def deposit_to_contract(node, caller_addr, contract_addr, deposit_amount, deposi
     return node.sendrawtransaction(signed_call_contract_raw_tx)
 
 
-def invoke_contract_api(node, caller_addr, contract_addr, api_name, api_arg, withdraw_infos=None, withdraw_froms=None):
+def invoke_contract_api(node, caller_addr, contract_addr, api_name, api_arg, withdraw_infos=None, withdraw_froms=None, gas=5000, gas_price=10):
     utxo = get_utxo(node, caller_addr)
     call_contract_script = CScript(
         [config['CONTRACT_VERSION'], api_arg.encode('utf8'), api_name.encode('utf8'), contract_addr.encode("utf8"),
          caller_addr.encode('utf8'),
-         5000, 10, OP_CALL])
+         gas, gas_price, OP_CALL])
     call_contract_script_hex = call_contract_script.hex()
     fee = 0.01
     vouts = {
         caller_addr: '%.6f' % float(Decimal(utxo['amount']) - Decimal(fee)),
         'contract': call_contract_script_hex,
     }
+
     if withdraw_infos is None:
         withdraw_infos = {}
     for k, v in withdraw_infos.items():
@@ -976,7 +977,9 @@ class SmartContractTest(BitcoinTestFramework):
         print("create contract of token tests passed")
 
         # init config of token contract
-        invoke_contract_api(node1, admin_addr, contract_addr, "init_token", "test,TEST,1000000,100")
+        res = node1.invokecontractoffline(admin_addr, contract_addr, "init_token", "test,TEST,1000000,100")
+        print(res)
+        invoke_contract_api(node1, admin_addr, contract_addr, "init_token", "test,TEST,1000000,100", gas=25000)
         generate_block(node1, admin_addr)
         state = node1.invokecontractoffline(
             admin_addr, contract_addr, "state", " ",
@@ -989,7 +992,9 @@ class SmartContractTest(BitcoinTestFramework):
         print("init config of token tests passed")
 
         # transfer
-        invoke_contract_api(node1, admin_addr, contract_addr, "transfer", "%s,%d" % (other_addr, 10000))
+        res = node1.invokecontractoffline(admin_addr, contract_addr, "transfer", "%s,%d" % (other_addr, 10000))
+        print(res)
+        invoke_contract_api(node1, admin_addr, contract_addr, "transfer", "%s,%d" % (other_addr, 10000), gas=65000)
         generate_block(node1, admin_addr)
         token_balance = node1.invokecontractoffline(
             admin_addr, contract_addr, "balanceOf", "%s" % admin_addr,
