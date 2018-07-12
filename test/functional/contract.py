@@ -78,7 +78,7 @@ def create_new_contract(node, caller_addr, contract_bytecode_path):
     utxo = get_utxo(node, caller_addr)
     bytecode_hex = read_contract_bytecode_hex(contract_bytecode_path)
     register_contract_script = CScript(
-        [config['CONTRACT_VERSION'], bytes().fromhex(bytecode_hex), caller_addr.encode('utf8'), 5000,
+        [config['CONTRACT_VERSION'], bytes().fromhex(bytecode_hex), caller_addr.encode('utf8'), 10000,
          10, OP_CREATE])
     create_contract_script = register_contract_script.hex()
     create_contract_raw_tx = node.createrawtransaction([
@@ -231,18 +231,19 @@ def deposit_to_contract(node, caller_addr, contract_addr, deposit_amount, deposi
     return node.sendrawtransaction(signed_call_contract_raw_tx)
 
 
-def invoke_contract_api(node, caller_addr, contract_addr, api_name, api_arg, withdraw_infos=None, withdraw_froms=None):
+def invoke_contract_api(node, caller_addr, contract_addr, api_name, api_arg, withdraw_infos=None, withdraw_froms=None, gas=5000, gas_price=10):
     utxo = get_utxo(node, caller_addr)
     call_contract_script = CScript(
         [config['CONTRACT_VERSION'], api_arg.encode('utf8'), api_name.encode('utf8'), contract_addr.encode("utf8"),
          caller_addr.encode('utf8'),
-         5000, 10, OP_CALL])
+         gas, gas_price, OP_CALL])
     call_contract_script_hex = call_contract_script.hex()
     fee = 0.01
     vouts = {
         caller_addr: '%.6f' % float(Decimal(utxo['amount']) - Decimal(fee)),
         'contract': call_contract_script_hex,
     }
+
     if withdraw_infos is None:
         withdraw_infos = {}
     for k, v in withdraw_infos.items():
@@ -932,12 +933,14 @@ class SmartContractTest(BitcoinTestFramework):
 
         # create token contract
         utxo = get_utxo(node1, admin_addr)
-        bytecode_hex = read_contract_bytecode_hex(os.path.dirname(__file__) + os.path.sep + "token.gpc")
+        bytecode_hex = read_contract_bytecode_hex(os.path.dirname(__file__) + os.path.sep + "newtoken.gpc")
+        res = node1.registercontracttesting(admin_addr, bytecode_hex)
+        print("token contract testing register response: ", res)
         register_contract_script = CScript(
             [config['CONTRACT_VERSION'], bytes().fromhex(bytecode_hex), admin_addr.encode('utf8'),
-             5000, 10, OP_CREATE])
+             10000, 10, OP_CREATE])
         create_contract_script = register_contract_script.hex()
-        print("create_contract_script size %d" % len(create_contract_script))
+        # print("create_contract_script size %d" % len(create_contract_script))
         create_contract_raw_tx = node1.createrawtransaction(
             [
                 {
@@ -964,7 +967,7 @@ class SmartContractTest(BitcoinTestFramework):
         )
         self.assertEqual(signed_create_contract_raw_tx_res.get('complete', None), True)
         signed_create_contract_raw_tx = signed_create_contract_raw_tx_res.get('hex')
-        print(signed_create_contract_raw_tx)
+        # print(signed_create_contract_raw_tx)
         node1.sendrawtransaction(signed_create_contract_raw_tx)
         generate_block(node1, admin_addr)
         contract_addr = node1.getcreatecontractaddress(
@@ -976,7 +979,9 @@ class SmartContractTest(BitcoinTestFramework):
         print("create contract of token tests passed")
 
         # init config of token contract
-        invoke_contract_api(node1, admin_addr, contract_addr, "init_token", "test,TEST,1000000,100")
+        res = node1.invokecontractoffline(admin_addr, contract_addr, "init_token", "test,TEST,1000000,100")
+        print(res)
+        invoke_contract_api(node1, admin_addr, contract_addr, "init_token", "test,TEST,1000000,100", gas=25000)
         generate_block(node1, admin_addr)
         state = node1.invokecontractoffline(
             admin_addr, contract_addr, "state", " ",
@@ -989,7 +994,9 @@ class SmartContractTest(BitcoinTestFramework):
         print("init config of token tests passed")
 
         # transfer
-        invoke_contract_api(node1, admin_addr, contract_addr, "transfer", "%s,%d" % (other_addr, 10000))
+        res = node1.invokecontractoffline(admin_addr, contract_addr, "transfer", "%s,%d" % (other_addr, 10000))
+        print(res)
+        invoke_contract_api(node1, admin_addr, contract_addr, "transfer", "%s,%d" % (other_addr, 10000), gas=65000)
         generate_block(node1, admin_addr)
         token_balance = node1.invokecontractoffline(
             admin_addr, contract_addr, "balanceOf", "%s" % admin_addr,
@@ -1024,7 +1031,7 @@ class SmartContractTest(BitcoinTestFramework):
 
         # transferFrom
         invoke_contract_api(node1, other_addr, contract_addr, "transferFrom",
-                            "%s,%s,%d" % (admin_addr, other_addr, 500))
+                            "%s,%s,%d" % (admin_addr, other_addr, 500), gas=10000)
         generate_block(node1, admin_addr)
         token_balance = node1.invokecontractoffline(
             admin_addr, contract_addr, "balanceOf", "%s" % admin_addr,
@@ -1173,14 +1180,14 @@ class SmartContractTest(BitcoinTestFramework):
         other_addr = self.address2
         self.test_price_feeder_contract()
         contract_addr = create_new_contract(node1, caller_addr,
-                                            os.path.dirname(__file__) + os.path.sep + "any_mortgage_token.gpc")
+                                            os.path.dirname(__file__) + os.path.sep + "new_any_mortgage_token.gpc")
         generate_block(node1, caller_addr)
         state = node1.invokecontractoffline(
             caller_addr, contract_addr, "state", " ",
         )['result']
         self.assertEqual(state, "NOT_INITED")
         invoke_contract_api(node1, caller_addr, contract_addr,
-                            "init_token", "%s,%d,%d,%s,%d" % ("test", 1000000, 100, "CNY", 110000))
+                            "init_token", "%s,%d,%d,%s,%d" % ("test", 1000000, 100, "CNY", 110000), gas=10000)
         generate_block(node1, caller_addr)
         state = node1.invokecontractoffline(
             caller_addr, contract_addr, "state", " ",

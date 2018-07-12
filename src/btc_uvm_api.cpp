@@ -408,12 +408,66 @@ namespace uvm {
                 return value;
             }
 
+			static bool compare_key(const std::string& first, const std::string& second)
+			{
+				unsigned int i = 0;
+				while ((i<first.length()) && (i<second.length()))
+				{
+					if (first[i] < second[i])
+						return true;
+					else if (first[i] > second[i])
+						return false;
+					else
+						++i;
+				}
+				return (first.length() < second.length());
+			}
+
+			// parse arg to json_array when it's json object. otherwhile return itself. And recursively process child elements
+			static jsondiff::JsonValue nested_json_object_to_array(const jsondiff::JsonValue& json_value)
+			{
+				if (json_value.is_object())
+				{
+					const auto& obj = json_value.as<jsondiff::JsonObject>();
+					jsondiff::JsonArray json_array;
+					std::list<std::string> keys;
+					for (auto it = obj.begin(); it != obj.end(); it++)
+					{
+						keys.push_back(it->key());
+					}
+					keys.sort(&compare_key);
+					for (const auto& key : keys)
+					{
+						jsondiff::JsonArray item_json;
+						item_json.push_back(key);
+						item_json.push_back(nested_json_object_to_array(obj[key]));
+						json_array.push_back(item_json);
+					}
+					return json_array;
+				}
+				if (json_value.is_array())
+				{
+					const auto& arr = json_value.as<jsondiff::JsonArray>();
+					jsondiff::JsonArray result;
+					for (const auto& item : arr)
+					{
+						result.push_back(nested_json_object_to_array(item));
+					}
+					return result;
+				}
+				return json_value;
+			}
+
             bool BtcUvmChainApi::commit_storage_changes_to_uvm(lua_State *L, AllContractsChangesMap &changes)
             {
 				auto evaluator = get_evaluator(L);
 				if (!evaluator)
 					return true;
 				jsondiff::JsonDiff differ;
+			    int64_t storage_gas = 0;
+
+				auto gas_limit = uvm::lua::lib::get_lua_state_instructions_limit(L);
+				const char* out_of_gas_error = "contract storage changes out of gas";
 				for (const auto& pair : changes)
 				{
 					const auto& contract_id = pair.first;
@@ -432,8 +486,23 @@ namespace uvm {
 						else
 							changes[storage_key] = storage_change.diff.value();
 					}
+					// count gas by changes size
+					const auto& changes_parsed_to_array = nested_json_object_to_array(changes);
+					auto changes_size = jsondiff::json_dumps(changes_parsed_to_array).size();
+					storage_gas += changes_size * 10; // 1 byte storage cost 10 gas
+					if (storage_gas < 0 && gas_limit > 0) {
+						throw_exception(L, UVM_API_LVM_LIMIT_OVER_ERROR, out_of_gas_error);
+						return false;
+					}
 					evaluator->contract_storage_changes.push_back(std::make_pair(contract_id, std::make_shared<jsondiff::DiffResult>(changes)));
 				}
+				if (gas_limit > 0) {
+					if (storage_gas > gas_limit || storage_gas + uvm::lua::lib::get_lua_state_instructions_executed_count(L) > gas_limit) {
+						throw_exception(L, UVM_API_LVM_LIMIT_OVER_ERROR, out_of_gas_error);
+						return false;
+					}
+				}
+				uvm::lua::lib::increment_lvm_instructions_executed_count(L, storage_gas);
                 return true;
             }
 
