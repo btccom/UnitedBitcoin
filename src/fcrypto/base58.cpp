@@ -12,8 +12,6 @@
 // - E-mail usually won't line-break if there's no punctuation to break at.
 // - Doubleclicking selects the whole number as one word if it's all alphanumeric.
 //
-#ifndef BITCOIN_BASE58_H
-#define BITCOIN_BASE58_H
 
 #include <string>
 #include <vector>
@@ -637,5 +635,3 @@ size_t from_base58( const std::string& base58_str, char* out_data, size_t out_da
   return out.size();
 }
 }
-
-#endif
