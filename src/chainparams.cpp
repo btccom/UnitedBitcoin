@@ -108,7 +108,7 @@ public:
 		UB_FORK_BLOCK_NUM = consensus.UBCHeight;
 
         consensus.UBCInitBlockCount = 500;
-        consensus.UBCONTRACT_Height = 999999;
+        consensus.UBCONTRACT_Height = 551111;
 	// Fork to adjust block interval (ForkV1)
 	consensus.ForkV1Height = 506400;
 	UB_FORK1_BLOCK_NUM = consensus.ForkV1Height;
