@@ -2088,7 +2088,7 @@ bool ContractExec::performByteCode()
             pending_contract_exec_result.error_message = "contract version invalid";
             return false;
         }
-		if ((0 != params.gasLimit) && (params.gasLimit < DEFAULT_MIN_GAS_COUNT)) {
+		if (params.gasLimit != 0 && params.gasLimit < DEFAULT_MIN_GAS_COUNT) { // not all contract tx ops need gasLimit params
 			pending_contract_exec_result.exit_code = 1;
 			pending_contract_exec_result.error_message = "too little gas limit";
 			return false;
@@ -2651,6 +2651,10 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 gasPrice = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
+                if (gasLimit <= 0) {
+                    error_ret = "gas limit invalid";
+                    return false;
+                }
                 stack.pop_back();
                 caller_address = stack.back();
                 stack.pop_back();
@@ -2665,6 +2669,10 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 gasPrice = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
+                if (gasLimit <= 0) {
+                    error_ret = "gas limit invalid";
+                    return false;
+                }
                 stack.pop_back();
                 caller_address = stack.back();
                 stack.pop_back();
@@ -2679,6 +2687,10 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 gasPrice = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
+                if (gasLimit <= 0) {
+                    error_ret = "gas limit invalid";
+                    return false;
+                }
                 stack.pop_back();
                 caller_address = stack.back();
                 stack.pop_back();
@@ -2696,6 +2708,10 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 gasPrice = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
+                if (gasLimit <= 0) {
+                    error_ret = "gas limit invalid";
+                    return false;
+                }
                 stack.pop_back();
                 caller_address = stack.back();
                 stack.pop_back();
@@ -2713,6 +2729,10 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 gasPrice = CScriptNum::vch_to_uint64(stack.back());
                 stack.pop_back();
                 gasLimit = CScriptNum::vch_to_uint64(stack.back());
+                if (gasLimit <= 0) {
+                    error_ret = "gas limit invalid";
+                    return false;
+                }
                 stack.pop_back();
                 caller_address = stack.back();
                 stack.pop_back();
