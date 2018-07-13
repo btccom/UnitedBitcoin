@@ -2296,6 +2296,8 @@ UniValue getcreatecontractaddress(const JSONRPCRequest& request)
     return result;
 }
 
+static const uint64_t testing_invoke_contract_gas_limit = 100000000;
+
 UniValue invokecontractoffline(const JSONRPCRequest& request)
 {
 	if (request.fHelp || request.params.size() < 4)
@@ -2338,7 +2340,7 @@ UniValue invokecontractoffline(const JSONRPCRequest& request)
 
 	CBlock block;
 	CMutableTransaction tx;
-	uint64_t gas_limit = 0;
+	uint64_t gas_limit = testing_invoke_contract_gas_limit;
 	uint64_t gas_price = 40;
 
 	valtype version;
@@ -2421,7 +2423,7 @@ UniValue registercontracttesting(const JSONRPCRequest& request)
 
     CBlock block;
     CMutableTransaction tx;
-    uint64_t gas_limit = 0;
+    uint64_t gas_limit = testing_invoke_contract_gas_limit;
     uint64_t gas_price = 40;
 
     valtype version;
@@ -2503,7 +2505,7 @@ UniValue registernativecontracttesting(const JSONRPCRequest& request)
 
 	CBlock block;
 	CMutableTransaction tx;
-	uint64_t gas_limit = 0;
+	uint64_t gas_limit = testing_invoke_contract_gas_limit;
 	uint64_t gas_price = 40;
 
 	valtype version;
@@ -2592,7 +2594,7 @@ UniValue upgradecontracttesting(const JSONRPCRequest& request)
 
     CBlock block;
     CMutableTransaction tx;
-    uint64_t gas_limit = 0;
+    uint64_t gas_limit = testing_invoke_contract_gas_limit;
     uint64_t gas_price = 40;
 
     valtype version;
@@ -2679,7 +2681,7 @@ UniValue deposittocontracttesting(const JSONRPCRequest& request)
 
     CBlock block;
     CMutableTransaction tx;
-    uint64_t gas_limit = 0;
+    uint64_t gas_limit = testing_invoke_contract_gas_limit;
     uint64_t gas_price = 40;
 
     valtype version;

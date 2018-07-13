@@ -1285,6 +1285,22 @@ class SmartContractTest(BitcoinTestFramework):
         tx = node1.decoderawtransaction(raw_tx)
         print("simple tx: ", tx)
 
+    def test_big_data(self):
+        print("test_big_data")
+        self.split_accounts()
+        caller_addr = self.address1
+        node1 = self.nodes[0]
+        contract_addr = create_new_contract(node1, caller_addr, os.path.dirname(__file__) + os.path.sep + 'test_big_data.gpc')
+        generate_block(node1, caller_addr)
+        print("test big data contract: ", contract_addr)
+        try:
+            invoke_res = node1.invokecontractoffline(
+                config['MAIN_USER_ADDRESS'], contract_addr, "fastwrite_bigdata", "1111111111111111111"
+            )
+            self.assertTrue(False, 'need out of gas but not')
+        except Exception as e:
+            print(e)
+
     def run_test(self):
         self.created_contract_addr = self.test_create_contract()
         native_contract_addr = self.test_create_native_contract()
@@ -1316,6 +1332,7 @@ class SmartContractTest(BitcoinTestFramework):
         self.test_invalidate_contract_block()
         self.test_spend_utxo_withdrawed_from_contract()
         self.test_create_contract_rpc()
+        self.test_big_data()
 
         generate_block(self.nodes[0], self.address1, 1)
         self.sync_all()
