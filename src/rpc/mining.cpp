@@ -272,7 +272,7 @@ UniValue getcoinbase(const JSONRPCRequest& request)
     
     CMutableTransaction mtx;
 
-    if (!DecodeHexTx(mtx, request.params[0].get_str(), true, true)) {
+    if (!DecodeHexTx(mtx, request.params[1].get_str(), true, true)) {
         throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "TX decode failed");
     }
 
