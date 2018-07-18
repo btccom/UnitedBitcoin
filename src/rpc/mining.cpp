@@ -604,6 +604,7 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
 
     UniValue aCaps(UniValue::VARR); aCaps.push_back("proposal");
 
+    UniValue coinbasetx_info(UniValue::VOBJ);
     UniValue transactions(UniValue::VARR);
     std::map<uint256, int64_t> setTxIndex;
     int i = 0;
@@ -612,8 +613,12 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
         uint256 txHash = tx.GetHash();
         setTxIndex[txHash] = i++;
 
-        if (tx.IsCoinBase())
+        if (tx.IsCoinBase()) {
+            coinbasetx_info.push_back(Pair("data", EncodeHexTx(tx)));
+            coinbasetx_info.push_back(Pair("txid", txHash.GetHex()));
+            coinbasetx_info.push_back(Pair("hash", tx.GetWitnessHash().GetHex()));
             continue;
+        }
 
         UniValue entry(UniValue::VOBJ);
 
@@ -714,6 +719,7 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
 
     result.push_back(Pair("previousblockhash", pblock->hashPrevBlock.GetHex()));
     result.push_back(Pair("transactions", transactions));
+    result.push_back(Pair("coinbase", coinbasetx_info));
     result.push_back(Pair("coinbaseaux", aux));
     result.push_back(Pair("coinbasevalue", (int64_t)pblock->vtx[0]->vout[0].nValue));
     result.push_back(Pair("longpollid", chainActive.Tip()->GetBlockHash().GetHex() + i64tostr(nTransactionsUpdatedLast)));
@@ -742,6 +748,12 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
 
     if (!pblocktemplate->vchCoinbaseCommitment.empty() && fSupportsSegwit) {
         result.push_back(Pair("default_witness_commitment", HexStr(pblocktemplate->vchCoinbaseCommitment.begin(), pblocktemplate->vchCoinbaseCommitment.end())));
+    }
+
+    auto fAllowContract = (pindexPrev->nHeight+1) >= Params().GetConsensus().UBCONTRACT_Height;
+    result.push_back(Pair("allow_contract", fAllowContract));
+    if (!pblocktemplate->vchCoinbaseRootStateHash.empty() && fAllowContract) {
+        result.push_back(Pair("default_root_state_hash", HexStr(pblocktemplate->vchCoinbaseRootStateHash.begin(), pblocktemplate->vchCoinbaseRootStateHash.end())));
     }
 
     return result;
