@@ -2767,6 +2767,7 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
                 ignore_sender_check = true;
 			} break;
             default: {
+                error_ret = "invalid contract opcode";
                 return false;
             }
         }
@@ -2815,8 +2816,10 @@ bool ContractTxConverter::parseContractTXParams(ContractTransactionParams& param
 				CTxDestination first_vin_address;
 				bool fValidAddress = ExtractDestination(first_coin_script_pub_key, first_vin_address);
 
-				if (!fValidAddress)
-					return false;
+				if (!fValidAddress) {
+				    error_ret = "invalid first voin address format";
+                    return false;
+                }
 				sender_address = EncodeDestination(first_vin_address);
 			}
 			else
