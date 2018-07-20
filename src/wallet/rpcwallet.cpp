@@ -1099,8 +1099,6 @@ UniValue createcontract(const JSONRPCRequest& request)
 
 	int nMinDepth = 3;
 	pwallet->AvailableCoins(vecOutputs, true, nullptr, 0, MAX_MONEY, MAX_MONEY, 0, nMinDepth, 9999999);
-	if(vecOutputs.empty())
-        throw JSONRPCError(RPC_TYPE_ERROR, "can't find utxo to use");
 
 	CAmount totalUsingUtxoAmount = 0;
 	std::vector<COutput> usingUtxos;
@@ -1129,6 +1127,9 @@ UniValue createcontract(const JSONRPCRequest& request)
 		if (totalUsingUtxoAmount >= totalFee)
 			break;
 	}
+
+    if(usingUtxos.empty())
+        throw JSONRPCError(RPC_TYPE_ERROR, "can't find utxo to use");
 
 	// create vout
 	CAmount reward = totalUsingUtxoAmount - totalFee;
@@ -1355,8 +1356,6 @@ UniValue callcontract(const JSONRPCRequest& request)
 
     int nMinDepth = 3;
     pwallet->AvailableCoins(vecOutputs, true, nullptr, 0, MAX_MONEY, MAX_MONEY, 0, nMinDepth, 9999999);
-    if(vecOutputs.empty())
-        throw JSONRPCError(RPC_TYPE_ERROR, "can't find utxo to use");
 
     CAmount totalUsingUtxoAmount = 0;
     std::vector<COutput> usingUtxos;
@@ -1385,6 +1384,9 @@ UniValue callcontract(const JSONRPCRequest& request)
         if (totalUsingUtxoAmount >= totalFee)
             break;
     }
+
+    if(usingUtxos.empty())
+        throw JSONRPCError(RPC_TYPE_ERROR, "can't find utxo to use");
 
 	// withdraw infos' vout
 	std::vector<ContractResultTransferInfo> balance_changes_in_contract_exec;
