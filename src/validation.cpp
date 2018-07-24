@@ -3187,6 +3187,19 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
                                  REJECT_INVALID, "bad-txns-nonfinal");
             }
         }
+        if(block.IsProofOfStake() && tx.IsCoinStake())
+        {
+            const COutPoint &prevout = tx.vin[0].prevout;
+            const Coin& coin = view.AccessCoin(prevout);
+            assert(!coin.IsSpent());
+
+            // If prev is coinbase, check that it's matured
+
+            if (coin.nHeight > ((chainActive.Height() + 1) - Params().GetConsensus().nStakeMinConfirmations))
+                return state.Invalid(false,
+                    REJECT_INVALID, "utxo not reach stake min confirmations",
+                    strprintf("coin.nHeight: %d", coin.nHeight));
+        }
 
         // GetTransactionSigOpCost counts 3 types of sigops:
         // * legacy (always)
