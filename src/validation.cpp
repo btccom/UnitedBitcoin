@@ -3196,9 +3196,8 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
             // If prev is coinbase, check that it's matured
 
             if (coin.nHeight > ((chainActive.Height() + 1) - Params().GetConsensus().nStakeMinConfirmations))
-                return state.Invalid(false,
-                    REJECT_INVALID, "utxo not reach stake min confirmations",
-                    strprintf("coin.nHeight: %d", coin.nHeight));
+                return state.DoS(100, error("%s: ConnectBlock", __func__),
+                                 REJECT_INVALID, "utxo not reach stake min confirmations");
         }
 
         // GetTransactionSigOpCost counts 3 types of sigops:
