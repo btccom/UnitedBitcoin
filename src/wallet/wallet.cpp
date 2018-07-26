@@ -4540,7 +4540,7 @@ void CWallet::AvailableCoinsForStaking(std::vector<COutput>& vCoins) const
                 continue;
 
             for (unsigned int i = 0; i < pcoin->tx->vout.size(); i++)
-                if (!IsSpent(it->first, it->second.nIndex) && IsMine(pcoin->tx->vout[i]) && pcoin->tx->vout[i].nValue> 0)
+                if (!IsSpent(it->first, i) && IsMine(pcoin->tx->vout[i]) && pcoin->tx->vout[i].nValue> 0)
                     vCoins.push_back(COutput(pcoin, i, nDepth, true, true, true));
         }
     }

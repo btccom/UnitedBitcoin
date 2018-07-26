@@ -94,7 +94,11 @@ double GetPosDifficulty(const CBlockIndex* blockindex)
         if (chainActive.Tip() == nullptr)
             return 1.0;
         else
+        {
             blockindex = GetLastBlockIndex(chainActive.Tip(), true, Params().GetConsensus());
+            if (blockindex == nullptr)
+            	return 1.0;
+        }
     }
 
     int nShift = (blockindex->nBits >> 24) & 0xff;
