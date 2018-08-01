@@ -31,6 +31,8 @@
 
 #include <univalue.h>
 
+extern posState posstate;
+
 unsigned int ParseConfirmTarget(const UniValue& value)
 {
     int target = value.get_int();
@@ -287,6 +289,35 @@ CTransactionRef tx(MakeTransactionRef(std::move(mtx)));
     coinbasetx_info.push_back(Pair("hash", (*tx).GetWitnessHash().GetHex()));
 
     return coinbasetx_info;
+}
+
+
+UniValue getposstate(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() !=0)
+            throw std::runtime_error(
+                "getposstate\n"
+                "\nReturns current state of pos."
+                "\nResult:\n"
+                "{\n"
+                "  ifpos:(numeric) whether doing pos mining(0:pos disable;1:pos thread started,but not pos mining;2:pos thread started and doing mining)\n"
+                "   numofutxo: nnn, (numeric) The number of utxo to do pos mining\n"
+                "   weight: nnn,  (numeric) The sum of all the utxo that to do pos mining\n"
+                "}\n"
+                "\nExamples:\n"
+                + HelpExampleCli("getposstate", "")
+                + HelpExampleRpc("getposstate", "")
+            );
+
+    LOCK(cs_main);
+
+    UniValue currentposstate(UniValue::VOBJ);
+
+    currentposstate.push_back(Pair("ifpos", (uint64_t)posstate.ifPos));
+    currentposstate.push_back(Pair("numofutxo", (uint64_t)posstate.numOfUtxo));
+    currentposstate.push_back(Pair("weight", (uint64_t)posstate.sumOfutxo));
+
+    return currentposstate;
 }
 
 
@@ -1060,6 +1091,7 @@ static const CRPCCommand commands[] =
     { "mining",             "prioritisetransaction",  &prioritisetransaction,  {"txid","dummy","fee_delta"} },
     { "mining",             "getblocktemplate",       &getblocktemplate,       {"template_request"} },
     { "mining",             "getcoinbase",       &getcoinbase,       {"scriptpubkey"} },
+    { "mining",             "getposstate",       &getposstate,       {} },
     { "mining",             "submitblock",            &submitblock,            {"hexdata","dummy"} },
 
 

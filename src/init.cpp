@@ -98,7 +98,7 @@ static void ThreadStakeMiner(CWallet *pwallet);
 
 unsigned int nMinerSleep;
 extern int64_t posSleepTime;
-
+extern posState posstate;
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -1819,7 +1819,15 @@ bool AppInitMain()
 #ifdef ENABLE_WALLET
     StartWallets(scheduler);
     if (!gArgs.GetBoolArg("-staking", false))
+    {
         LogPrintf("Staking disabled\n");
+        {
+            LOCK(cs_main);
+            posstate.ifPos = 0;
+            posstate.numOfUtxo = 0;
+            posstate.sumOfutxo = 0;
+        }
+    }
 	else if (!vpwallets.empty())
 		threadGroup.create_thread(boost::bind(&ThreadStakeMiner, vpwallets[0]));
 #endif
@@ -1844,6 +1852,7 @@ static void ThreadStakeMiner(CWallet *pwallet)
 		{
 		    {
 		        LOCK(cs_main);
+		        posstate.ifPos = 1;
 		        nHeight = pindexBestHeader->nHeight;
 		    }
     		if (nHeight < Params().GetConsensus().UBCONTRACT_Height) 

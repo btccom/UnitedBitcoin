@@ -53,6 +53,8 @@ uint64_t nLastBlockWeight = 0;
 uint64_t nLastBlockSize = 0;
 int64_t posSleepTime = 0;
 
+posState posstate;
+
 extern CAmount nMinimumInputValue;
 extern CAmount nReserveBalance;
 //extern int nStakeMinConfirmations;
@@ -397,6 +399,8 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
     int64_t endTime=0;
     startTime = GetTimeMillis();
 
+    posstate.numOfUtxo = setCoins.size();
+    posstate.sumOfutxo = nValueIn;
 	for (const auto& pcoin: setCoins) {
 		COutPoint prevoutStake = COutPoint(pcoin.first->GetHash(), pcoin.second);
 
@@ -1025,6 +1029,7 @@ bool CheckKernel(CBlock* pblock, const COutPoint& prevout, CAmount amount,int nH
 	if (utxoHeight > nHeight - Params().GetConsensus().nStakeMinConfirmations)
 		return false;
 
+    posstate.ifPos = 2;
     return CheckProofOfStake(pblock, prevout, amount, nHeight-utxoHeight);
 }
 

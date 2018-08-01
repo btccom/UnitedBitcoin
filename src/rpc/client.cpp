@@ -165,7 +165,8 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "getcontractstorage", 2, "contract_address" },
     { "createcontract", 5, "owner_address" },
     { "callcontract", 7, "caller_address" },
-    { "getcoinbase", 2, "scriptpubkey" }
+    { "getcoinbase", 2, "scriptpubkey" },
+    { "getposstate", 0, "" }
 };
 
 class CRPCConvertTable

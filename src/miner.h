@@ -31,6 +31,12 @@ static const int32_t BYTECODE_TIME_BUFFER = 6;
 static const int32_t POW_MINER_MAX_TIME = 60;
 static const int32_t POS_MINER_MAX_TIME = 60;
 
+struct posState
+{
+    uint64_t ifPos;
+    uint64_t numOfUtxo;
+    uint64_t sumOfutxo;
+};
 
 struct CBlockTemplate
 {

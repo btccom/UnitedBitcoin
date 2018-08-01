@@ -215,14 +215,20 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, std::vector<std::v
                 // contract code
                 if (opcode2 == OP_VERSION)
                 {
-                    if(vch1.empty() || vch1.size() > 4)
-                        break;
-                    version = CScriptNum::vch_to_uint64(vch1);
-                    if(version != CONTRACT_MAJOR_VERSION){
-                        // only allow standard uvm and no-exec transactions to live in mempool
-                        break;
+                    try{
+                        if(vch1.empty() || vch1.size() > 4)
+                            break;
+                        version = CScriptNum::vch_to_uint64(vch1);
+                        if(version != CONTRACT_MAJOR_VERSION){
+                            // only allow standard uvm and no-exec transactions to live in mempool
+                            break;
+                        }
+                        vSolutionsRet.push_back(CScriptNum(version).getvch());
                     }
-                    vSolutionsRet.push_back(CScriptNum(version).getvch());
+                    catch (const scriptnum_error &err) {
+    //                    return false;
+                        break;
+                    }    
                 }
                 else if(opcode2 == OP_GAS_LIMIT) {
                     try {
