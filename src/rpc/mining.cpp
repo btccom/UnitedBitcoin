@@ -302,7 +302,7 @@ UniValue getposstate(const JSONRPCRequest& request)
                 "{\n"
                 "  ifpos:(numeric) whether doing pos mining(0:pos disable;1:pos thread started,but not pos mining;2:pos thread started and doing mining)\n"
                 "   numofutxo: nnn, (numeric) The number of utxo to do pos mining\n"
-                "   weight: nnn,  (numeric) The sum of all the utxo that to do pos mining\n"
+                "   weight: nnn,  (string) The sum of all the utxo that to do pos mining\n"
                 "}\n"
                 "\nExamples:\n"
                 + HelpExampleCli("getposstate", "")
@@ -315,7 +315,7 @@ UniValue getposstate(const JSONRPCRequest& request)
 
     currentposstate.push_back(Pair("ifpos", (uint64_t)posstate.ifPos));
     currentposstate.push_back(Pair("numofutxo", (uint64_t)posstate.numOfUtxo));
-    currentposstate.push_back(Pair("weight", (uint64_t)posstate.sumOfutxo));
+    currentposstate.push_back(Pair("weight", FormatMoney(posstate.sumOfutxo)));
 
     return currentposstate;
 }
