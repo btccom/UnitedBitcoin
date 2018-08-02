@@ -1844,6 +1844,8 @@ static void ThreadStakeMiner(CWallet *pwallet)
 
     LogPrintf("ThreadStakeMiner start.\n");
     int nHeight = 0;
+    posstate.ifPos = 1;
+    
     while (fThreadPOSstate)
     {
         if(nullptr == pindexBestHeader)
@@ -1852,7 +1854,6 @@ static void ThreadStakeMiner(CWallet *pwallet)
 		{
 		    {
 		        LOCK(cs_main);
-		        posstate.ifPos = 1;
 		        nHeight = pindexBestHeader->nHeight;
 		    }
     		if (nHeight < Params().GetConsensus().UBCONTRACT_Height) 
