@@ -26,7 +26,7 @@
 #ifdef Q_OS_MAC
 #include <qt/macdockiconhandler.h>
 #endif
-
+#include <utilmoneystr.h>
 #include <chainparams.h>
 #include <init.h>
 #include <ui_interface.h>
@@ -60,6 +60,9 @@
 #include <QUrlQuery>
 #endif
 
+#include "../miner.h"
+extern posState posstate;
+
 const std::string BitcoinGUI::DEFAULT_UIPLATFORM =
 #if defined(Q_OS_MAC)
         "macosx"
@@ -82,6 +85,7 @@ BitcoinGUI::BitcoinGUI(const PlatformStyle *_platformStyle, const NetworkStyle *
     unitDisplayControl(0),
     labelWalletEncryptionIcon(0),
     labelWalletHDStatusIcon(0),
+    labelWalletPOSState(0),
     connectionsControl(0),
     labelBlocksIcon(0),
     progressBarLabel(0),
@@ -199,6 +203,7 @@ BitcoinGUI::BitcoinGUI(const PlatformStyle *_platformStyle, const NetworkStyle *
     unitDisplayControl = new UnitDisplayStatusBarControl(platformStyle);
     labelWalletEncryptionIcon = new QLabel();
     labelWalletHDStatusIcon = new QLabel();
+    labelWalletPOSState = new QLabel();
     connectionsControl = new GUIUtil::ClickableLabel();
     labelBlocksIcon = new GUIUtil::ClickableLabel();
     if(enableWallet)
@@ -208,6 +213,8 @@ BitcoinGUI::BitcoinGUI(const PlatformStyle *_platformStyle, const NetworkStyle *
         frameBlocksLayout->addStretch();
         frameBlocksLayout->addWidget(labelWalletEncryptionIcon);
         frameBlocksLayout->addWidget(labelWalletHDStatusIcon);
+        frameBlocksLayout->addStretch();
+        frameBlocksLayout->addWidget(labelWalletPOSState);
     }
     frameBlocksLayout->addStretch();
     frameBlocksLayout->addWidget(connectionsControl);
@@ -741,6 +748,8 @@ void BitcoinGUI::updateNetworkState()
     connectionsControl->setToolTip(tooltip);
 
     connectionsControl->setPixmap(platformStyle->SingleColorIcon(icon).pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
+
+    setPOSStatus();
 }
 
 void BitcoinGUI::setNumConnections(int count)
@@ -1048,6 +1057,30 @@ void BitcoinGUI::setHDStatus(int hdEnabled)
 
     // eventually disable the QLabel to set its opacity to 50% 
     labelWalletHDStatusIcon->setEnabled(hdEnabled);
+}
+
+void BitcoinGUI::setPOSStatus()
+{
+    labelWalletPOSState->setPixmap(platformStyle->SingleColorIcon((posstate.ifPos == 2) ? ":/icons/POS_enabled" : ":/icons/POS_disabled").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
+    QString tip;
+    if(posstate.ifPos == 0)
+    {
+        tip += tr("POS is closed.");
+    }
+    else if(posstate.ifPos == 1)
+    {
+        tip += tr("POS is opened but not running.");
+    }
+    else if(posstate.ifPos == 2)
+    {
+        tip += tr("POS is opened and running.");
+    }
+    tip += tr("\nNum of utxo: %1").arg(posstate.numOfUtxo);
+    tip += tr("\nSum of utxo: %1").arg(QString::fromStdString(FormatMoney(posstate.sumOfutxo)));
+    labelWalletPOSState->setToolTip(tip);
+
+    // eventually disable the QLabel to set its opacity to 50% 
+    labelWalletPOSState->setEnabled(posstate.ifPos == 2);
 }
 
 void BitcoinGUI::setEncryptionStatus(int status)
