@@ -8,6 +8,7 @@
 #include <tinyformat.h>
 #include <utilstrencodings.h>
 #include <util.h>
+#include <script/interpreter.h>
 
 const char* GetOpName(opcodetype opcode)
 {
@@ -325,13 +326,19 @@ bool CScript::HasContractOp() const
     if(size() <= 0) {
         return false;
     }
-    auto last_opcode = *(begin() + size()-1);
-    // check contract version
-	auto version = *begin();
-	auto contract_major_version = 1; // CONTRACT_MAJOR_VERSION
-	if (version != contract_major_version) {
+	std::vector<std::vector<unsigned char> > stack;
+	EvalScript(stack, *this, SCRIPT_EXEC_BYTE_CODE, BaseSignatureChecker(), SIGVERSION_BASE, nullptr);
+	if (stack.empty())
 		return false;
-	}
+	CScript scriptRest(stack.back().begin(), stack.back().end());
+	stack.pop_back();
+	auto last_opcode = (opcodetype)(*scriptRest.begin());
+ //   // check contract version
+	//auto version = *begin();
+	//auto contract_major_version = 1; // CONTRACT_MAJOR_VERSION
+	//if (version != contract_major_version) {
+	//	return false;
+	//}
 	return last_opcode == OP_CREATE_NATIVE || last_opcode == OP_CREATE || last_opcode == OP_UPGRADE || last_opcode == OP_DESTROY
 		|| last_opcode == OP_CALL || last_opcode == OP_DEPOSIT_TO_CONTRACT;
 }
@@ -341,13 +348,20 @@ bool CScript::HasOpDepositToContract() const
     if(size() <= 0) {
         return false;
     }
-    // check contract version
-    auto version = *begin();
-    auto contract_major_version = 1; // CONTRACT_MAJOR_VERSION
-    if (version != contract_major_version) {
-        return false;
-    }
-    auto last_opcode = *(begin() + size()-1);
+	std::vector<std::vector<unsigned char> > stack;
+	EvalScript(stack, *this, SCRIPT_EXEC_BYTE_CODE, BaseSignatureChecker(), SIGVERSION_BASE, nullptr);
+	if (stack.empty())
+		return false;
+	CScript scriptRest(stack.back().begin(), stack.back().end());
+	stack.pop_back();
+	auto last_opcode = (opcodetype)(*scriptRest.begin());
+    //// check contract version
+    //auto version = *begin();
+    //auto contract_major_version = 1; // CONTRACT_MAJOR_VERSION
+    //if (version != contract_major_version) {
+    //    return false;
+    //}
+    //auto last_opcode = *(begin() + size()-1);
     return last_opcode == OP_DEPOSIT_TO_CONTRACT;
 }
 bool CScript::HasOpSpend() const
@@ -355,6 +369,12 @@ bool CScript::HasOpSpend() const
     if(size() <= 0) {
         return false;
     }
-    auto last_opcode = *(begin() + size()-1);
-    return last_opcode == OP_SPEND;
+	std::vector<std::vector<unsigned char> > stack;
+    EvalScript(stack, *this, SCRIPT_EXEC_BYTE_CODE, BaseSignatureChecker(), SIGVERSION_BASE, nullptr);
+    if (stack.empty())
+        return false;
+	CScript scriptRest(stack.back().begin(), stack.back().end());
+	stack.pop_back();
+	auto opcode = (opcodetype)(*scriptRest.begin());
+    return opcode == OP_SPEND;
 }
