@@ -331,14 +331,9 @@ bool CScript::HasContractOp() const
 	if (stack.empty())
 		return false;
 	CScript scriptRest(stack.back().begin(), stack.back().end());
-	stack.pop_back();
+	if(scriptRest.size()!=1)
+	    return false;
 	auto last_opcode = (opcodetype)(*scriptRest.begin());
- //   // check contract version
-	//auto version = *begin();
-	//auto contract_major_version = 1; // CONTRACT_MAJOR_VERSION
-	//if (version != contract_major_version) {
-	//	return false;
-	//}
 	return last_opcode == OP_CREATE_NATIVE || last_opcode == OP_CREATE || last_opcode == OP_UPGRADE || last_opcode == OP_DESTROY
 		|| last_opcode == OP_CALL || last_opcode == OP_DEPOSIT_TO_CONTRACT;
 }
@@ -353,15 +348,9 @@ bool CScript::HasOpDepositToContract() const
 	if (stack.empty())
 		return false;
 	CScript scriptRest(stack.back().begin(), stack.back().end());
-	stack.pop_back();
+    if(scriptRest.size()!=1)
+        return false;
 	auto last_opcode = (opcodetype)(*scriptRest.begin());
-    //// check contract version
-    //auto version = *begin();
-    //auto contract_major_version = 1; // CONTRACT_MAJOR_VERSION
-    //if (version != contract_major_version) {
-    //    return false;
-    //}
-    //auto last_opcode = *(begin() + size()-1);
     return last_opcode == OP_DEPOSIT_TO_CONTRACT;
 }
 bool CScript::HasOpSpend() const
@@ -374,7 +363,8 @@ bool CScript::HasOpSpend() const
     if (stack.empty())
         return false;
 	CScript scriptRest(stack.back().begin(), stack.back().end());
-	stack.pop_back();
+    if(scriptRest.size()!=1)
+        return false;
 	auto opcode = (opcodetype)(*scriptRest.begin());
     return opcode == OP_SPEND;
 }
