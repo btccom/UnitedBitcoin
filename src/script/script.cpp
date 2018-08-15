@@ -7,6 +7,7 @@
 
 #include <tinyformat.h>
 #include <utilstrencodings.h>
+#include <util.h>
 
 const char* GetOpName(opcodetype opcode)
 {
@@ -317,4 +318,43 @@ bool CScript::HasValidOps() const
         }
     }
     return true;
+}
+
+bool CScript::HasContractOp() const
+{
+    if(size() <= 0) {
+        return false;
+    }
+    auto last_opcode = *(begin() + size()-1);
+    // check contract version
+	auto version = *begin();
+	auto contract_major_version = 1; // CONTRACT_MAJOR_VERSION
+	if (version != contract_major_version) {
+		return false;
+	}
+	return last_opcode == OP_CREATE_NATIVE || last_opcode == OP_CREATE || last_opcode == OP_UPGRADE || last_opcode == OP_DESTROY
+		|| last_opcode == OP_CALL || last_opcode == OP_DEPOSIT_TO_CONTRACT;
+}
+
+bool CScript::HasOpDepositToContract() const
+{
+    if(size() <= 0) {
+        return false;
+    }
+    // check contract version
+    auto version = *begin();
+    auto contract_major_version = 1; // CONTRACT_MAJOR_VERSION
+    if (version != contract_major_version) {
+        return false;
+    }
+    auto last_opcode = *(begin() + size()-1);
+    return last_opcode == OP_DEPOSIT_TO_CONTRACT;
+}
+bool CScript::HasOpSpend() const
+{
+    if(size() <= 0) {
+        return false;
+    }
+    auto last_opcode = *(begin() + size()-1);
+    return last_opcode == OP_SPEND;
 }
