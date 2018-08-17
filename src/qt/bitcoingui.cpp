@@ -749,7 +749,7 @@ void BitcoinGUI::updateNetworkState()
 
     connectionsControl->setPixmap(platformStyle->SingleColorIcon(icon).pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
 
-    setPOSStatus();
+    //setPOSStatus();
 }
 
 void BitcoinGUI::setNumConnections(int count)
@@ -1145,6 +1145,7 @@ void BitcoinGUI::toggleHidden()
 
 void BitcoinGUI::detectShutdown()
 {
+    setPOSStatus();
     if (ShutdownRequested())
     {
         if(rpcConsole)

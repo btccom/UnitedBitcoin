@@ -373,6 +373,8 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
     CScript scriptEmpty;
     scriptEmpty.clear();
     //txCoinStake.vout.push_back(CTxOut(0, scriptEmpty));
+    posstate.numOfUtxo = 0;
+    posstate.sumOfutxo = 0;
 
 	// Choose coins to use
     CAmount nBalance = pwallet->GetBalance();
@@ -388,6 +390,9 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
     if (!pwallet->SelectCoinsForStaking(nBalance - nReserveBalance, setCoins, nValueIn))
         return nullptr;
 
+    posstate.numOfUtxo = setCoins.size();
+    posstate.sumOfutxo = nValueIn;
+
     if (setCoins.empty())
         return nullptr;
 
@@ -399,8 +404,6 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
     int64_t endTime=0;
     startTime = GetTimeMillis();
 
-    posstate.numOfUtxo = setCoins.size();
-    posstate.sumOfutxo = nValueIn;
 	for (const auto& pcoin: setCoins) {
 		COutPoint prevoutStake = COutPoint(pcoin.first->GetHash(), pcoin.second);
 
