@@ -1848,6 +1848,9 @@ static void ThreadStakeMiner(CWallet *pwallet)
     
     while (fThreadPOSstate)
     {
+        posstate.ifPos = 1;
+        posstate.numOfUtxo = 0;
+        posstate.sumOfutxo = 0;
         if(nullptr == pindexBestHeader)
 			MilliSleep(1000);
 		else
@@ -1887,7 +1890,7 @@ static void ThreadStakeMiner(CWallet *pwallet)
 				MilliSleep(1000);
 			}
 
-			if((g_connman->GetNodeCount(CConnman::CONNECTIONS_ALL) < 3) || (chainActive.Tip()->GetBlockTime() < (GetTime() - 10 * 60))) {
+			if(g_connman->GetNodeCount(CConnman::CONNECTIONS_ALL) < 3) {
 				MilliSleep(1000);
             	continue;
 			}
