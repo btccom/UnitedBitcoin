@@ -469,7 +469,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
         }
 	}
     endTime  = GetTimeMillis();
-    posSleepTime = startTime - endTime;
+    posSleepTime = endTime - startTime;
 
 	if (!fKernelFound)
 		return nullptr;

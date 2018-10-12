@@ -9,9 +9,11 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+extern uint64_t UB_FORK2_BLOCK_NUM;
 extern uint64_t UB_FORK1_BLOCK_NUM;
 extern uint64_t UB_FORK_BLOCK_NUM;
 extern int COINBASE_MATURITY_FORKV1;
+extern int COINBASE_MATURITY_FORKV2;
 inline unsigned int MaxBlockSize(uint64_t nblock) {
     if (nblock < UB_FORK_BLOCK_NUM)
         return 4000*1000;
@@ -58,8 +60,11 @@ inline int getCoinBaseMaturity(int coinBaseHeight) {
     else if (coinBaseHeight < UB_FORK1_BLOCK_NUM){
         return COINBASE_MATURITY;
     }
+    else if (coinBaseHeight >= UB_FORK1_BLOCK_NUM && coinBaseHeight < UB_FORK2_BLOCK_NUM){
+        return COINBASE_MATURITY_FORKV1;
+    }
 
-    return COINBASE_MATURITY_FORKV1;
+    return COINBASE_MATURITY_FORKV2;
 }
 
 

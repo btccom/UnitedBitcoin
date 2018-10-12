@@ -1900,7 +1900,7 @@ static void ThreadStakeMiner(CWallet *pwallet)
             //
             std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(Params()).CreateNewBlockPos(pwallet, GetAdjustedTime()+POS_MINER_MAX_TIME));
             if (!pblocktemplate.get()) {
-    			MilliSleep(posSleepTime+2000);
+    			MilliSleep(posSleepTime+500);
                 continue;
             }
 
@@ -1934,7 +1934,7 @@ static void ThreadStakeMiner(CWallet *pwallet)
     	    }
     	    {
     	        LOCK(cs_main);
-    		    MilliSleep(posSleepTime+2000);
+    		    MilliSleep(posSleepTime+500);
     		}
 		}
 

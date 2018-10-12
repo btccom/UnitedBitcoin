@@ -148,6 +148,19 @@ unsigned int PosGetNextTargetRequired(const CBlockIndex* pindexLast,  const CBlo
 	{
 	    nLastPosBits = pindexPrev->nBits;
 	    nLastPosTime = pindexPrev->GetBlockTime();
+	    if(pindexPrev->nHeight >= params.UBCONTRACT_Height && pindexPrev->nHeight < params.ForkV2Height)
+	    {
+    	    uint256 hashPrevBlock = pblock->hashPrevBlock;
+        	if (hashPrevBlock != uint256()) 
+        	{
+        		auto iter = mapBlockIndex.find(hashPrevBlock);
+        		if (iter != mapBlockIndex.end()) 
+        		{
+        		    if(iter->second->nHeight >= params.ForkV2Height - 1)
+        		        return bnTargetLimitnBits;
+        		}
+            }
+        }
 	}
 	    
     if (pindexPrev->pprev == NULL)
