@@ -66,6 +66,8 @@
 #include <exception>
 #include <contract_storage/contract_storage.hpp>
 
+#include <miner.h>
+
 #if defined(NDEBUG)
 # error "Bitcoin cannot be compiled without assertions."
 #endif
@@ -4399,6 +4401,12 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
 		auto iter = mapBlockIndex.find(hashPrevBlock);
 		if (iter != mapBlockIndex.end()) 
 		{
+            if(block.IsProofOfStake() && iter->second->nHeight >= Params().GetConsensus().ForkV2Height -1)
+           {
+               if (!CheckProofOfStake((CBlock *)&block, block.vtx[1]->vin[0].prevout, block.vtx[1]->vout[1].nValue, 0))
+      		       return error("checkblock() CheckProofOfStake");
+      	   } 
+		
 			if ((iter->second->nHeight >= Params().GetConsensus().UBCHeight -1) 
 				&& (iter->second->nHeight < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount -1))) 
 			{
