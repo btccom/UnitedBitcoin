@@ -336,7 +336,7 @@ std::string HelpMessage(HelpMessageMode mode)
     std::unique_ptr<CChainParams> testnetChainParams;
     std::unique_ptr<CChainParams> defaultChainParams;
 
-    if(Params().NetworkIDString() == CBaseChainParams::MAIN)
+    if(!gArgs.GetBoolArg("-regtest", false) && !gArgs.GetBoolArg("-testnet", false))
     {
         testnetBaseParams = CreateBaseChainParams(CBaseChainParams::TESTNET);
         defaultBaseParams = CreateBaseChainParams(CBaseChainParams::MAIN);
