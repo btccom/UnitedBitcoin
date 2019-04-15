@@ -2256,8 +2256,14 @@ void ListTransactions(CWallet* const pwallet, const CWalletTx& wtx, const std::s
     bool fAllAccounts = (strAccount == std::string("*"));
     bool involvesWatchonly = wtx.IsFromMe(ISMINE_WATCH_ONLY);
 
+    bool list_sent = fAllAccounts;
+
+    if (IsDeprecatedRPCEnabled("accounts")) {
+        list_sent |= strAccount == strSentAccount;
+    }
+
     // Sent
-    if ((!listSent.empty() || nFee != 0) && (fAllAccounts || strAccount == strSentAccount))
+    if (list_sent) 
     {
         for (const COutputEntry& s : listSent)
         {
