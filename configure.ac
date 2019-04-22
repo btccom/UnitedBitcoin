@@ -1,7 +1,7 @@
 dnl require autoconf 2.60 (AS_ECHO/AS_ECHO_N)
 AC_PREREQ([2.60])
 define(_CLIENT_VERSION_MAJOR, 2)
-define(_CLIENT_VERSION_MINOR, 3)
+define(_CLIENT_VERSION_MINOR, 4)
 define(_CLIENT_VERSION_REVISION, 0)
 define(_CLIENT_VERSION_BUILD, 1)
 define(_CLIENT_VERSION_IS_RELEASE, true)
@@ -52,8 +52,8 @@ else
 fi
 AC_PROG_CXX
 
-CXXFLAGS="-g"
-CFLAGS="-g"
+#CXXFLAGS="-g"
+#CFLAGS="-g"
 
 dnl By default, libtool for mingw refuses to link static libs into a dll for
 dnl fear of mixing pic/non-pic objects, and import/export complications. Since

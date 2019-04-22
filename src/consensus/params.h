@@ -69,6 +69,7 @@ struct Params {
 	/** UBC Fork to adjust block interval (ForkV1) */
 	int ForkV1Height;
 	int ForkV2Height;
+	int ForkV3Height;
 	
 
     /** Block height at which OP_RETURN replay protection stops */

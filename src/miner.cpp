@@ -1039,6 +1039,12 @@ bool CheckKernel(CBlock* pblock, const COutPoint& prevout, CAmount amount,int nH
 
 bool CheckProofOfStake(CBlock* pblock, const COutPoint& prevout,  CAmount amount, int coinAge)
 {
+    int nHeight = 0;
+    {
+        LOCK(cs_main);
+        nHeight = chainActive.Height() / 10 * 10;
+    }
+
     // Base target
     arith_uint256 bnTarget;
     bnTarget.SetCompact(pblock->nBits);
@@ -1046,7 +1052,14 @@ bool CheckProofOfStake(CBlock* pblock, const COutPoint& prevout,  CAmount amount
 
     // Calculate hash
     CDataStream ss(SER_GETHASH, 0);
-	ss << pblock->nTime << prevout.hash << prevout.n;
+    if ((chainActive.Height() + 1) < Params().GetConsensus().ForkV3Height)
+    {
+	    ss << pblock->nTime << prevout.hash << prevout.n;
+	}
+	else
+	{
+	    ss << pblock->nTime << prevout.hash << prevout.n << chainActive[nHeight]->GetBlockHash();
+	}
 	uint256	hashProofOfStake = Hash(ss.begin(), ss.end());
 
 	arith_uint256 bnHashPos = UintToArith256(hashProofOfStake);

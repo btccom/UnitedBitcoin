@@ -125,6 +125,8 @@ public:
 	    consensus.ForkV2Height = 572000;
 	    UB_FORK2_BLOCK_NUM = consensus.ForkV2Height;
 
+	    consensus.ForkV3Height = 783300;
+
         // UnionBitcoin foundation multisig address
         consensus.UBCfoundationAddress = "31rZdrTpN57Wbfhg7xTPxeFGjEQaMBjxoo";
         // UnionBitcoin god mode block generator
@@ -262,6 +264,8 @@ public:
     	UB_FORK1_BLOCK_NUM = consensus.ForkV1Height;
     	consensus.ForkV2Height = 150;
     	UB_FORK2_BLOCK_NUM = consensus.ForkV2Height;
+
+    	consensus.ForkV3Height = 180;
 	
         // UnionBitcoin foundation
         consensus.UBCfoundationPubkey = "026b440cc0f0533a0144a66ac8d297e5df557f3c3c33224e3c40c79c45beda9406";
@@ -376,6 +380,8 @@ public:
     	
     	consensus.ForkV2Height = 1500;
     	UB_FORK2_BLOCK_NUM = consensus.ForkV2Height;
+
+    	consensus.ForkV3Height = 1600;
     	
         // UnionBitcoin foundation
         consensus.UBCfoundationPubkey = "026b440cc0f0533a0144a66ac8d297e5df557f3c3c33224e3c40c79c45beda9406";
