@@ -445,7 +445,7 @@ namespace uvm
         char error_msg[LUA_COMPILE_ERROR_MAX_LENGTH+1];		 \
         memset(error_msg, 0x0, sizeof(error_msg));		     \
         snprintf(error_msg, LUA_COMPILE_ERROR_MAX_LENGTH, error_format, ##__VA_ARGS__);				\
-        error_msg[LUA_COMPILE_ERROR_MAX_LENGTH-1] = '\-';       \
+        error_msg[LUA_COMPILE_ERROR_MAX_LENGTH-1] = '\0';       \
         memcpy(error, error_msg, sizeof(char)*(1 + strlen(error_msg)));								\
      }												\
      global_uvm_chain_api->throw_exception(L, UVM_API_SIMPLE_ERROR, error_format, ##__VA_ARGS__);		\
