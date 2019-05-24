@@ -349,6 +349,8 @@ bool CheckProofOfWork(uint256 hash, uint256 prevHash, unsigned int nBits, const 
 
 	auto iter = mapBlockIndex.find(prevHash);
 	if (iter != mapBlockIndex.end()) {
+	    if(iter->second->nHeight == Params().GetConsensus().ForkV4Height-1)
+	        return true;
 		if ((iter->second->nHeight >= Params().GetConsensus().UBCHeight -1) 
 			&& (iter->second->nHeight < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount -1)))
 			return true;	

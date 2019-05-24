@@ -27,6 +27,13 @@
 #include <utilmoneystr.h>
 #include <validationinterface.h>
 
+#include <rpc/mining.h>
+#include <rpc/safemode.h>
+#include <rpc/server.h>
+#include <rpc/blockchain.h>
+#include <rpc/rawtransaction.h>
+#include <core_io.h>
+
 #include <algorithm>
 #include <queue>
 #include <utility>
@@ -35,6 +42,8 @@
 #include <contract_storage/contract_storage.hpp>
 #include "txdb.h"
 #include "wallet/wallet.h"
+#include "base58.h"
+#include <univalue.h>
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -218,6 +227,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 	}
     BOOST_SCOPE_EXIT_ALL(&) {
         if(allow_contract && !rollbacked_contract_storage) {
+            service->open();
             service->rollback_contract_state(old_root_state_hash);
             rollbacked_contract_storage = true;
             service->close();
@@ -225,7 +235,8 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     };
     int nPackagesSelected = 0;
     int nDescendantsUpdated = 0;
-    addPackageTxs(nPackagesSelected, nDescendantsUpdated, minGasPrice, allow_contract);
+    if(nHeight != Params().GetConsensus().ForkV4Height)
+        addPackageTxs(nPackagesSelected, nDescendantsUpdated, minGasPrice, allow_contract);
 
 	if(allow_contract)
 		service->open();
@@ -243,6 +254,25 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
         pblocktemplate->vchCoinbaseRootStateHash =
                 std::vector<unsigned char>(root_state_hash_out.scriptPubKey.begin(),
                                            root_state_hash_out.scriptPubKey.end());
+    }
+
+    
+    if(nHeight == Params().GetConsensus().ForkV4Height)
+    {
+        std::vector<std::pair<COutPoint, CTxOut>> outputs;
+        GetBadUTXO(outputs);
+        LogPrintf("GetBadUTXO(outputs): %d\n", outputs.size());
+        for(const auto& output:outputs)
+        {
+            LogPrintf("findOutPut,badoutput: %s,badn: %d\n", output.first.hash.ToString().c_str(),output.first.n);
+        }
+        std::vector<CTransactionRef> vtx;
+        CreateHolyTransactions(outputs,vtx);
+        std::vector<CTransactionRef>::iterator it;
+        for(it = vtx.begin();it!=vtx.end();++it)
+        {
+            pblock->vtx.push_back(*it);
+        }
     }
 
 	// rollback root state hash
@@ -325,6 +355,8 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
 
     CBlockIndex* pindexPrev = chainActive.Tip();
     nHeight = pindexPrev->nHeight + 1;
+    if(nHeight == Params().GetConsensus().ForkV4Height)
+        return nullptr;
 
     pblock->nVersion = ComputeBlockVersion(pindexPrev, chainparams.GetConsensus(), MINING_TYPE_POS);
     // -regtest only: allow overriding block.nVersion with
@@ -525,6 +557,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlockPos(CWalletRef& pw
     };
     int nPackagesSelected = 0;
     int nDescendantsUpdated = 0;
+
     addPackageTxs(nPackagesSelected, nDescendantsUpdated, minGasPrice, allow_contract, prevoutFound);
 
     if(allow_contract)
@@ -1172,5 +1205,283 @@ bool CheckStake(CBlock* pblock)
     return true;
 }
 
+int GetHolyCoin(std::map<COutPoint, CAmount>& coins)
+{
+    unsigned int iStartBlockHeight = 750000;
 
+    for(unsigned int iHeight = iStartBlockHeight;iHeight < Params().GetConsensus().ForkV4Height;iHeight++)
+    {
+        CBlockIndex* pblockindex = chainActive[iHeight];
+        //uint256 blockHash = pblockindex->GetBlockHash();
+        CBlock tmpBlock;
+        if (!ReadBlockFromDisk(tmpBlock, pblockindex, Params().GetConsensus()))
+        {
+            return 0;
+        }
+        for(auto& tx: tmpBlock.vtx)
+        {
+            if(tx->IsCoinBase())
+            {
+                COutPoint outpoint;
+                outpoint.hash = tx->GetHash();
+                outpoint.n = 0;
+                coins[outpoint]=tx->vout[0].nValue;
+            }
+            else if(tx->IsCoinStake())
+            {
+                COutPoint outpoint;
+                outpoint.hash = tx->GetHash();
+                outpoint.n = 1;
+                coins[outpoint]=tx->vout[1].nValue;
+            }
+            else
+            {
+                for(int i=0;i<tx->vout.size();i++)
+                {
+                    COutPoint outpoint;
+                    outpoint.hash = tx->GetHash();
+                    outpoint.n = i;
+                    coins[outpoint]=tx->vout[i].nValue;
+                }
+            }
+            
+        }
+    }
+    
+}
+
+
+int GetBadUTXO(std::vector<std::pair<COutPoint, CTxOut>>& outputs)
+{
+    unsigned int iStartBlockHeight = Params().GetConsensus().SCANBADTX_Height;
+    //CCoinsViewCache coins(pcoinsTip.get());
+    std::vector<std::string> whiteAddr={"3BbKnVAatHjjzXb8uSa3SyEFCYdUA6VMy9","1BycBHJvoSbfmsprK6QctGU7ei8MB4kAme"};
+    std::map<COutPoint, CAmount> coins;
+    
+    GetHolyCoin(coins);
+
+    for(unsigned int iHeight = iStartBlockHeight;iHeight < Params().GetConsensus().ForkV4Height;iHeight++)
+    {
+        CBlockIndex* pblockindex = chainActive[iHeight];
+        //uint256 blockHash = pblockindex->GetBlockHash();
+        CBlock tmpBlock;
+        if (!ReadBlockFromDisk(tmpBlock, pblockindex, Params().GetConsensus()))
+        {
+            return 0;
+        }
+        for(auto& tx: tmpBlock.vtx)
+        {
+            bool bRelated = false;
+            if(tmpBlock.IsProofOfStake() && tx->IsCoinStake())
+            {
+                COutPoint prevout = tx->vin[0].prevout;
+                auto it = coins.find(prevout);
+                CAmount value_in;
+                if (it != coins.end()) {
+                    value_in = it->second;
+                }
+                else
+                    continue;
+                CAmount value_out = tx->GetValueOut();
+                if(value_in != value_out)
+                {
+                
+                    //tmpTxid.push_back(tx.GetHash().GetHex()+"I"+std::to_string(1));
+                    //tmpTxid.push_back( tmpBlock.vtx[0].GetHash().GetHex()++"I"+std::to_string(0));
+                    	
+                    // coin stake
+                    COutPoint outpoint;
+                    outpoint.hash = tx->GetHash();
+                    outpoint.n = 1;
+                    
+                    CTxOut txout;
+                    txout.nValue = tx->vout[1].nValue;
+                    txout.scriptPubKey = tx->vout[1].scriptPubKey; 
+
+                    auto it=outputs.end();
+                    if(!findOutPut(outputs,outpoint,it))
+                        outputs.emplace_back(std::make_pair(outpoint, txout));
+                    
+                    // coin base
+                    COutPoint outpoint2;
+                    outpoint2.hash = tmpBlock.vtx[0]->GetHash();
+                    outpoint2.n = 0;
+                    
+                    CTxOut txout2;
+                    txout2.nValue = tmpBlock.vtx[0]->vout[0].nValue;
+                    txout2.scriptPubKey = tmpBlock.vtx[0]->vout[0].scriptPubKey; 
+                    
+                    auto it2=outputs.end();
+
+                    if(!findOutPut(outputs,outpoint2,it2))
+                        outputs.emplace_back(std::make_pair(outpoint2, txout2));
+                }
+                        
+            }
+            
+            if(!tx->IsCoinBase())
+            {
+               for(unsigned int txi = 0;txi < tx->vin.size();txi++ )
+               {
+                    COutPoint outpoint;
+                    outpoint.hash = tx->vin[txi].prevout.hash;
+                    outpoint.n = tx->vin[txi].prevout.n;
+                      
+                    auto it=outputs.end();
+                    findOutPut(outputs,outpoint,it);
+                    if (it!=outputs.end())
+                    {
+                        bRelated = true;
+                        outputs.erase(it);
+                    }
+               }
+               
+               if(bRelated == true)
+               {
+                  unsigned int  i=0;
+                  if(tmpBlock.IsProofOfStake() && tx->IsCoinStake())
+                  {
+                  	//tmpTxid.push_back( tmpBlock.vtx[0].GetHash().GetHex()++"I"+std::to_string(0));
+                      
+                    // coin base
+                    COutPoint outpoint2;
+                    outpoint2.hash = tmpBlock.vtx[0]->GetHash();
+                    outpoint2.n = 0;
+                    
+                    CTxOut txout2;
+                    txout2.nValue = tmpBlock.vtx[0]->vout[0].nValue;
+                    txout2.scriptPubKey = tmpBlock.vtx[0]->vout[0].scriptPubKey; 
+                    auto it=outputs.end();
+                    if(!findOutPut(outputs,outpoint2,it))
+                        outputs.emplace_back(std::make_pair(outpoint2, txout2));
+                    i =1;
+                  }	
+               	
+               	
+                  for(unsigned int txo = i;txo < tx->vout.size();txo++ )
+                  {
+                      txnouttype type;
+                      std::string tmpAddr;
+                      std::vector<CTxDestination> addresses;
+                      int nRequired;
+                      if (!ExtractDestinations(tx->vout[txo].scriptPubKey, type, addresses, nRequired)) {
+                            LogPrintf("ExtractDestinations failed.\n");
+                      }
+                      tmpAddr = EncodeDestination(addresses[0]);
+                      //LogPrintf("ExtractDestinations addresses:%s.\n",tmpAddr);
+                      auto it=find(whiteAddr.begin(),whiteAddr.end(),tmpAddr);
+                      if (it==whiteAddr.end())
+                      {                                                       
+                        COutPoint outpoint;
+	                    outpoint.hash = tx->GetHash();
+	                    outpoint.n = txo;
+	                    
+	                    CTxOut txout;
+	                    txout.nValue = tx->vout[txo].nValue;
+	                    txout.scriptPubKey = tx->vout[txo].scriptPubKey; 
+
+	                    auto it2=outputs.end();
+                        if(!findOutPut(outputs,outpoint,it2))
+    	                    outputs.emplace_back(std::make_pair(outpoint, txout));
+                      }
+                      
+                  } 
+                  
+               }
+            }
+            
+        }
+    }
+    
+}
+
+
+int CreateHolyTransactions(std::vector<std::pair<COutPoint, CTxOut>>& outputs,std::vector<CTransactionRef>& vtx)
+{
+    //LogPrintf("CreateHolyTransactions\n");
+
+    while (!outputs.empty())
+    {
+        // vin
+        int popElem = 0;
+        if (outputs.size() < 0x80)
+            popElem = outputs.size();
+        else
+            popElem = 0x80;
+
+        int outputs_size = outputs.size();
+        CAmount amount = 0;
+        CAmount fee = 0;
+        std::vector<std::pair<COutPoint, CTxOut>> txOutput;
+        std::copy(std::end(outputs)-popElem, std::end(outputs), std::back_inserter(txOutput));
+        outputs.resize(outputs_size-popElem);
+
+        //LogPrintf("CreateHolyTransactions,build tx.\n");
+
+        // build input and output
+        UniValue reqCrtRaw(UniValue::VARR);
+        UniValue firstParamCrt(UniValue::VARR);
+        UniValue secondParamCrt(UniValue::VOBJ);
+        for (const auto& output: txOutput) {
+            UniValue o(UniValue::VOBJ);
+            
+            UniValue vout(UniValue::VNUM);
+            vout.setInt((int)output.first.n);
+            
+            o.pushKV("txid", output.first.hash.GetHex());
+            o.pushKV("vout", vout);
+            o.pushKV("scriptPubKey", HexStr(output.second.scriptPubKey.begin(), output.second.scriptPubKey.end()));
+            firstParamCrt.push_back(o);
+            amount += output.second.nValue;
+        }
+        fee = 1000000;
+
+        secondParamCrt.pushKV(getBurningAddr(),FormatMoney(amount-fee));
+
+        reqCrtRaw.push_back(firstParamCrt);
+        reqCrtRaw.push_back(secondParamCrt);
+
+        // create raw trx
+        JSONRPCRequest jsonreq;
+        jsonreq.params = reqCrtRaw;
+        //LogPrintf("CreateHolyTransactions,before createrawtransaction tx.\n");
+        UniValue hexRawTrx = createrawtransaction(jsonreq);
+        //LogPrintf("CreateHolyTransactions,createrawtransaction tx.\n");
+
+        CMutableTransaction mtx;
+        if (!DecodeHexTx(mtx, hexRawTrx.get_str()))
+            throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "TX decode failed");
+        CTransactionRef tx(MakeTransactionRef(std::move(mtx)));
+        vtx.push_back(tx);
+    }
+    //LogPrintf("CreateHolyTransactions,end while tx.\n");
+
+}
+
+
+std::string getBurningAddr() {
+	char v[33];
+	*v = 0x2;
+	memset(v+1, 0x0, 32);
+	
+	CPubKey pubkey(v, v+33);
+	CTxDestination dest = GetDestinationForKey(pubkey, OUTPUT_TYPE_LEGACY);
+	std::string burning_addr = EncodeDestination(dest);
+	
+	return burning_addr;
+}
+
+bool findOutPut(std::vector<std::pair<COutPoint, CTxOut>>& outputs,const COutPoint& outpoint,std::vector<std::pair<COutPoint,CTxOut>>::iterator &itr)
+{
+    for(auto it=outputs.begin();it!=outputs.end();++it)
+    {
+	    if((*it).first == outpoint)
+	    {
+	        itr = it;
+	        return true;
+	    }
+    }
+    itr = outputs.end();
+    return false;
+}
 

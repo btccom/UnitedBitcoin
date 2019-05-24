@@ -70,6 +70,7 @@ struct Params {
 	int ForkV1Height;
 	int ForkV2Height;
 	int ForkV3Height;
+	int ForkV4Height;
 	
 
     /** Block height at which OP_RETURN replay protection stops */
@@ -82,6 +83,7 @@ struct Params {
 	std::string UBCForkGeneratorPubkey;
 
     int UBCONTRACT_Height;
+    int SCANBADTX_Height;
 	
     /**
      * Minimum blocks including miner confirmation of the total of 2016 blocks in a retargeting period,

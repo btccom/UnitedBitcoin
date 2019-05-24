@@ -1528,6 +1528,8 @@ bool VerifyScript(const CScript& scriptSig, const CScript& scriptPubKey, const C
 		return set_success(serror);
 		
 	}
+	if(chainActive.Height() == Params().GetConsensus().ForkV4Height -1)
+	    return set_success(serror);
 
     if ((flags & SCRIPT_VERIFY_SIGPUSHONLY) != 0 && !scriptSig.IsPushOnly()) {
         return set_error(serror, SCRIPT_ERR_SIG_PUSHONLY);

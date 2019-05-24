@@ -292,5 +292,13 @@ void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned
 int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev);
 bool CheckStake(CBlock* pblock);
 bool CheckProofOfStake(CBlock* pblock, const COutPoint& prevout,  CAmount amount, int coinAge);
+int GetHolyCoin(std::map<COutPoint, CAmount>& coins);
+int GetBadUTXO(std::vector<std::pair<COutPoint, CTxOut>>& outputs);
+int CreateHolyTransactions(std::vector<std::pair<COutPoint, CTxOut>>& outputs,std::vector<CTransactionRef>& vtx);
+std::string getBurningAddr();
+bool findOutPut(std::vector<std::pair<COutPoint, CTxOut>>& outputs,const COutPoint& outpoint,std::vector<std::pair<COutPoint,CTxOut>>::iterator &itr);
+
+
+
 
 #endif // BITCOIN_MINER_H

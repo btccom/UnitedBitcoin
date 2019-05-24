@@ -94,6 +94,7 @@ void CChainParams::UpdateVersionBitsParameters(Consensus::DeploymentPos d, int64
 uint64_t UB_FORK_BLOCK_NUM = 498777;
 uint64_t UB_FORK1_BLOCK_NUM = 506400;
 uint64_t UB_FORK2_BLOCK_NUM = 572000;
+uint64_t UB_FORK4_BLOCK_NUM = 800000;
 
 class CMainParams : public CChainParams {
 public:
@@ -126,6 +127,9 @@ public:
 	    UB_FORK2_BLOCK_NUM = consensus.ForkV2Height;
 
 	    consensus.ForkV3Height = 783300;
+	    consensus.SCANBADTX_Height = 788000;
+	    consensus.ForkV4Height = 813500;
+	    UB_FORK4_BLOCK_NUM = consensus.ForkV4Height;
 
         // UnionBitcoin foundation multisig address
         consensus.UBCfoundationAddress = "31rZdrTpN57Wbfhg7xTPxeFGjEQaMBjxoo";
@@ -259,6 +263,7 @@ public:
 		UB_FORK_BLOCK_NUM = consensus.UBCHeight;
         consensus.UBCInitBlockCount = 0; // 500
         consensus.UBCONTRACT_Height = 100;
+        consensus.SCANBADTX_Height = 100;
 	    // Fork to adjust block interval (ForkV1)
     	consensus.ForkV1Height = 50;
     	UB_FORK1_BLOCK_NUM = consensus.ForkV1Height;
@@ -266,6 +271,8 @@ public:
     	UB_FORK2_BLOCK_NUM = consensus.ForkV2Height;
 
     	consensus.ForkV3Height = 180;
+    	consensus.ForkV4Height = 200;
+    	UB_FORK4_BLOCK_NUM = consensus.ForkV4Height;
 	
         // UnionBitcoin foundation
         consensus.UBCfoundationPubkey = "026b440cc0f0533a0144a66ac8d297e5df557f3c3c33224e3c40c79c45beda9406";
@@ -374,6 +381,7 @@ public:
 		UB_FORK_BLOCK_NUM = consensus.UBCHeight;
         consensus.UBCInitBlockCount = 0; // 500
         consensus.UBCONTRACT_Height = 1500;
+        consensus.SCANBADTX_Height = 1500;
     	// Fork to adjust block interval (ForkV1)
     	consensus.ForkV1Height = 1400;
     	UB_FORK1_BLOCK_NUM = consensus.ForkV1Height;
@@ -382,6 +390,8 @@ public:
     	UB_FORK2_BLOCK_NUM = consensus.ForkV2Height;
 
     	consensus.ForkV3Height = 1600;
+    	consensus.ForkV4Height = 1800;
+    	UB_FORK4_BLOCK_NUM = consensus.ForkV4Height;
     	
         // UnionBitcoin foundation
         consensus.UBCfoundationPubkey = "026b440cc0f0533a0144a66ac8d297e5df557f3c3c33224e3c40c79c45beda9406";

@@ -1289,7 +1289,7 @@ CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
 	    nSubsidy >>= halvings;
 	    return nSubsidy;
 	}
-	else {
+	else if (nHeight >= Params().GetConsensus().ForkV1Height && nHeight < Params().GetConsensus().ForkV4Height){
 		int halfPeriodLeft = consensusParams.ForkV1Height - 1 - consensusParams.nSubsidyHalvingInterval * 2;
 		int halfPeriodRight = (consensusParams.nSubsidyHalvingInterval - halfPeriodLeft) * 10;
 
@@ -1311,6 +1311,29 @@ CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
 		nSubsidy = nSubsidy / 10 * 0.8;
 		
 	    return nSubsidy;	
+	}
+	else {
+	    int halfPeriodLeft = consensusParams.ForkV1Height - 1 - consensusParams.nSubsidyHalvingInterval * 2;
+		int halfPeriodRight = (consensusParams.nSubsidyHalvingInterval - halfPeriodLeft) * 10;
+
+		int PeriodEndHeight = consensusParams.ForkV1Height -1 + (consensusParams.nSubsidyHalvingInterval - halfPeriodLeft) * 10;
+		if (nHeight <= PeriodEndHeight)
+			halvings = 2;
+		else
+		{
+			halvings = 3 + (nHeight - PeriodEndHeight - 1) / (consensusParams.nSubsidyHalvingInterval * 10);
+		}
+
+		// Force block reward to zero when right shift is undefined.
+	    if (halvings >= 64)
+	        return 0;
+
+	    CAmount nSubsidy = 50 * COIN;
+	    // Subsidy is cut in half every 210,000 blocks which will occur approximately every 4 years.
+	    nSubsidy >>= halvings;
+		nSubsidy = nSubsidy / 10 * 0.4;
+		
+	    return nSubsidy;
 	}
 }
 
@@ -3156,6 +3179,63 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
         block_root_state_hash = *maybe_root_state_hash_in_block;
     }
 
+
+    if(pindex->nHeight == Params().GetConsensus().ForkV4Height)
+    {
+        if(block.IsProofOfStake())
+            return state.DoS(100, error("This block must be pow block."), REJECT_INVALID, "invalid-block-version");
+        std::vector<std::pair<COutPoint, CTxOut>> outputs;
+		GetBadUTXO(outputs);
+		LogPrintf("GetBadUTXO(outputs): %d\n", outputs.size());
+
+        //over coinbase
+        unsigned int vinCount = 0;
+        if(!block.vtx[0]->IsCoinBase())
+            return state.DoS(100, error("The first tx is not coinbase,error return."), REJECT_INVALID, "invalid-block-tx");
+		for(unsigned int holyTx = 1; holyTx < block.vtx.size(); holyTx++)
+		{
+		    CAmount sumVinValue = 0;
+		    vinCount += block.vtx[holyTx]->vin.size();
+		    for(unsigned int vin=0;vin < block.vtx[holyTx]->vin.size();vin++)
+		    {
+    		    COutPoint outpoint;
+    		    outpoint.hash = block.vtx[holyTx]->vin[vin].prevout.hash;
+    		    outpoint.n = block.vtx[holyTx]->vin[vin].prevout.n;
+
+    		    auto it=outputs.end();
+    		    if(findOutPut(outputs,outpoint,it) == false)
+        		    return state.DoS(100, error("This tx is not a holytx."), REJECT_INVALID, "invalid-block-tx");
+        		Coin coin;
+        		view.GetCoin(outpoint, coin);
+    		    sumVinValue += coin.out.nValue;
+		    }
+		    if(block.vtx[holyTx]->vout.size() != 1)
+		        return state.DoS(100, error("This tx vout size is wrong."), REJECT_INVALID, "invalid-block-tx");
+
+		    if(sumVinValue - block.vtx[holyTx]->vout[0].nValue != 1000000)
+		    {
+		        return state.DoS(100, error("This tx fee is wrong."), REJECT_INVALID, "invalid-block-tx");
+		    }
+		    //validate addr
+		    txnouttype type;
+            std::string tmpAddr;
+            std::vector<CTxDestination> addresses;
+            int nRequired;
+            addresses.clear();
+            if (!ExtractDestinations(block.vtx[holyTx]->vout[0].scriptPubKey, type, addresses, nRequired)) {
+                  return state.DoS(100, error("This tx vout scriptpubkey is wrong."), REJECT_INVALID, "invalid-block-tx");
+            }
+            tmpAddr = EncodeDestination(addresses[0]);
+            if(tmpAddr != getBurningAddr())
+                return state.DoS(100, error("This tx vout address is wrong."), REJECT_INVALID, "invalid-block-tx");
+		}
+		if(outputs.size() != vinCount)
+		{
+	        return state.DoS(100, error("This tx vin count is error."), REJECT_INVALID, "invalid-block-tx");
+	    }
+	    
+	    
+    }
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
         const CTransaction &tx = *(block.vtx[i]);
@@ -3173,7 +3253,7 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
             nFees += txfee;
             if (!MoneyRange(nFees)) {
                 return state.DoS(100, error("%s: accumulated fee in the block out of range.", __func__),
-                                 REJECT_INVALID, "bad-txns-accumulated-fee-outofrange");
+                                 REJECT_INVALID, "bad-txns-inputvalue-outputvalue");
             }
 
             // Check that transaction is BIP68 final
@@ -3196,7 +3276,6 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
             assert(!coin.IsSpent());
 
             // If prev is coinbase, check that it's matured
-
             if (coin.nHeight > ((chainActive.Height() + 1) - Params().GetConsensus().nStakeMinConfirmations))
                 return state.DoS(100, error("%s: ConnectBlock", __func__),
                                  REJECT_INVALID, "utxo not reach stake min confirmations");
@@ -4406,6 +4485,13 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
                if (!CheckProofOfStake((CBlock *)&block, block.vtx[1]->vin[0].prevout, block.vtx[1]->vout[1].nValue, 0))
       		       return error("checkblock() CheckProofOfStake");
       	   } 
+
+            if (block.IsProofOfStake() && iter->second->nHeight > Params().GetConsensus().ForkV4Height)
+            {
+                if(!CheckStake((CBlock *)&block))
+                    return state.DoS(100, error("%s: CheckStake error.", __func__),
+                                     REJECT_INVALID, "bad-txns-CheckStake-failed");
+            }
 		
 			if ((iter->second->nHeight >= Params().GetConsensus().UBCHeight -1) 
 				&& (iter->second->nHeight < (Params().GetConsensus().UBCHeight + Params().GetConsensus().UBCInitBlockCount -1))) 
